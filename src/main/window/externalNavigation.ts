@@ -4,7 +4,7 @@ type WindowOpenHandlerResult = { action: 'deny' }
 
 const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:'])
 
-export const isSafeExternalUrl = (url: string): boolean => {
+const isSafeExternalUrl = (url: string): boolean => {
   try {
     const parsed = new URL(url)
     return SAFE_EXTERNAL_PROTOCOLS.has(parsed.protocol)
@@ -18,7 +18,7 @@ export const openSafeExternalUrl = (url: string): void => {
   void shell.openExternal(url)
 }
 
-export const denyUnsafeWindowOpen = (details: { url: string }): WindowOpenHandlerResult => {
+const denyUnsafeWindowOpen = (details: { url: string }): WindowOpenHandlerResult => {
   openSafeExternalUrl(details.url)
   return { action: 'deny' }
 }

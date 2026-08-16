@@ -49,7 +49,7 @@ export class DatabaseSchemaMigrationRequiredError extends Error {
 export const isDatabaseSchemaVersionError = (error: unknown): error is DatabaseSchemaVersionError =>
   error instanceof DatabaseSchemaVersionError
 
-export const isDatabaseSchemaMigrationRequiredError = (
+const isDatabaseSchemaMigrationRequiredError = (
   error: unknown
 ): error is DatabaseSchemaMigrationRequiredError =>
   error instanceof DatabaseSchemaMigrationRequiredError

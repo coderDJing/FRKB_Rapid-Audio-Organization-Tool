@@ -118,9 +118,6 @@ export const normalizeStructureGrid = (value: SongStructureGrid | null | undefin
   return { bpm, firstBeatMs, barBeatOffset }
 }
 
-export const normalizeGridBeatOffset = (barBeatOffset: number) =>
-  ((barBeatOffset % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR
-
 export const isSameGridValue = (left: number | undefined, right: number, epsilon: number) =>
   left !== undefined && Math.abs(left - right) <= epsilon
 

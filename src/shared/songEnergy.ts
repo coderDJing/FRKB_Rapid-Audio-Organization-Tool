@@ -337,7 +337,7 @@ export const calculateSongEnergyScoreFromUnifiedDisplay = (
   return calculateSongEnergyScoreFromWaveformSurface(surface, bpm)
 }
 
-export const calculateSongEnergyScoreFromWaveformSurface = (
+const calculateSongEnergyScoreFromWaveformSurface = (
   data: WaveformSurfaceData | null | undefined,
   bpm?: unknown
 ): SongEnergyScorePayload | null => {

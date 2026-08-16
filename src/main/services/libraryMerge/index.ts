@@ -3,7 +3,6 @@ export { inspectLibraryMergeSource } from './inspection'
 export {
   acquireLibraryMergeMutationLock,
   classifyLibraryMergeBusyReasons,
-  getLibraryMergeBusyReasons,
   getLibraryMergeBusySnapshot
 } from './runtime'
 export { LibraryMergeError } from './types'

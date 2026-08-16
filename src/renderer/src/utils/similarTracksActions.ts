@@ -47,7 +47,7 @@ const collectPlayablePlaylistNodes = (
   return result
 }
 
-export const mapRekordboxTrackToSimilarSeed = (
+const mapRekordboxTrackToSimilarSeed = (
   track: IPioneerPlaylistTrack,
   sourceKind: RekordboxSourceKind,
   sourceRootPath?: string

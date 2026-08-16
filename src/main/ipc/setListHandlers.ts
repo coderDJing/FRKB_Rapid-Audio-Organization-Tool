@@ -368,7 +368,7 @@ async function recycleOrphanedSetCustodyFiles(items: SetItemRecord[]): Promise<v
   }
 }
 
-export async function removeSetItemWithCustodyCleanup(id: string): Promise<boolean> {
+async function removeSetItemWithCustodyCleanup(id: string): Promise<boolean> {
   const removed = await removeSetItemsByIdsWithCustodyCleanup([id])
   return removed > 0
 }
@@ -393,7 +393,7 @@ export async function removeSetItemsByPlaylistWithCustodyCleanup(
   return removed
 }
 
-export async function recycleSetItemFilesAndRemoveItems(ids: string[]): Promise<{
+async function recycleSetItemFilesAndRemoveItems(ids: string[]): Promise<{
   total: number
   success: number
   failed: number
@@ -491,7 +491,7 @@ type SetDeleteProtectionResult = {
   unprotectedFiles: string[]
 }
 
-export async function moveFilesToSetCustody(filePaths: string[]): Promise<SetCustodyResult> {
+async function moveFilesToSetCustody(filePaths: string[]): Promise<SetCustodyResult> {
   const movedMap = new Map<string, string>()
   const sourceStats = new Map<string, { size: number; mtimeMs: number }>()
   const failures: Array<{ filePath: string; error: string }> = []
@@ -523,7 +523,7 @@ export async function moveFilesToSetCustody(filePaths: string[]): Promise<SetCus
   return { movedMap, sourceStats, failures }
 }
 
-export async function updateSetMappingsForMovedFiles(
+async function updateSetMappingsForMovedFiles(
   movedMap: Map<string, string>,
   sourceStats?: Map<string, { size: number; mtimeMs: number }>
 ): Promise<number> {

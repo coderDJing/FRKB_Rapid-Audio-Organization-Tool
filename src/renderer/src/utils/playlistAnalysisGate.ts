@@ -17,7 +17,7 @@ export type MainPlayerPlayingAnalysisPayload = {
 
 const normalizeSongListUUID = (value: unknown) => String(value || '').trim()
 
-export const isPlaylistAnalysisPromptDismissed = (
+const isPlaylistAnalysisPromptDismissed = (
   runtime: PlaylistAnalysisGateRuntime,
   songListUUID?: string | null
 ) => {

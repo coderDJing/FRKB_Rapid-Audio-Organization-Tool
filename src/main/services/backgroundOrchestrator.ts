@@ -38,7 +38,7 @@ export const getBackgroundTaskExecutionStatus = () => ({
   paused: executionPaused
 })
 
-export const pauseBackgroundTaskExecution = (): (() => void) => {
+const pauseBackgroundTaskExecution = (): (() => void) => {
   executionPaused = true
   let released = false
   return () => {

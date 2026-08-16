@@ -22,7 +22,7 @@ export const PLAYBACK_RANGE_SECTION_LABELS: Record<SongStructureSectionKind, str
   outro: 'OUTRO'
 }
 
-export const DEFAULT_PLAYBACK_RANGE_SECTION_KINDS = [
+const DEFAULT_PLAYBACK_RANGE_SECTION_KINDS = [
   'drop'
 ] as const satisfies readonly SongStructureSectionKind[]
 

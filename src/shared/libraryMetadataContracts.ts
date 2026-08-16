@@ -65,7 +65,7 @@ export const LIBRARY_MERGEABLE_METADATA_CONTRACTS = LIBRARY_METADATA_CONTRACTS.f
   isMergeableLibraryMetadataContract
 )
 
-export const getLibraryMetadataContract = (key: string): LibraryMetadataContract | null => {
+const getLibraryMetadataContract = (key: string): LibraryMetadataContract | null => {
   const normalizedKey = String(key || '').trim()
   if (!normalizedKey) return null
   for (const contract of LIBRARY_METADATA_CONTRACTS) {

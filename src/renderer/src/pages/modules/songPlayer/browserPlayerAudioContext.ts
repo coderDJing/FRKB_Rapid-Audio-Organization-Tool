@@ -9,7 +9,7 @@ import type {
  * 从 WebAudioPlayer 抽出：这些逻辑只依赖 window 全局与传入参数，不触及播放器实例状态。
  */
 
-export const resolveAudioContextConstructor = (): AudioContextConstructor | null => {
+const resolveAudioContextConstructor = (): AudioContextConstructor | null => {
   const windowWithAudio = window as WindowWithAudioContext
   return windowWithAudio.AudioContext || windowWithAudio.webkitAudioContext || null
 }

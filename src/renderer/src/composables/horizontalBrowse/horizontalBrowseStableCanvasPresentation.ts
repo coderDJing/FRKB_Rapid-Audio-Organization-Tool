@@ -31,7 +31,7 @@ export const resolveHorizontalBrowseStableCanvasOffsetCssPx = (
   return Math.round(rawOffset * pixelRatio) / pixelRatio
 }
 
-export const shouldReanchorHorizontalBrowseStableCanvas = (
+const shouldReanchorHorizontalBrowseStableCanvas = (
   frame: HorizontalBrowseStableCanvasPresentationFrame,
   offsetCssPx: number
 ) => {

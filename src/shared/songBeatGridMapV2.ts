@@ -106,7 +106,7 @@ export const normalizeSongBeatGridV2BpmDisplayScaled = (value: unknown): number 
   return Math.round(bpm * BPM_DISPLAY_SCALE)
 }
 
-export const formatSongBeatGridV2BpmDisplay = (value: unknown, fallback = 'N/A') => {
+const formatSongBeatGridV2BpmDisplay = (value: unknown, fallback = 'N/A') => {
   const scaled = normalizeSongBeatGridV2BpmDisplayScaled(value)
   if (scaled === null) return fallback
   return String(Number((scaled / BPM_DISPLAY_SCALE).toFixed(BPM_DISPLAY_DECIMALS)))
@@ -192,9 +192,7 @@ const buildSignaturePayload = (clips: readonly SongBeatGridClipV2[]) =>
     )
     .join('|')
 
-export const calculateSongBeatGridMapV2Signature = (
-  clips: readonly SongBeatGridClipV2[]
-): string => {
+const calculateSongBeatGridMapV2Signature = (clips: readonly SongBeatGridClipV2[]): string => {
   const payload = `v${SONG_BEAT_GRID_MAP_V2_VERSION}:${buildSignaturePayload(clips)}`
   let hash = SIGNATURE_HASH_OFFSET
   for (let index = 0; index < payload.length; index += 1) {
@@ -447,7 +445,7 @@ export const resolveSongBeatGridV2BpmAtSec = (
   secInput: unknown
 ): number | null => resolveSongBeatGridV2ClipAtSec(value, durationSecInput, secInput)?.bpm ?? null
 
-export const resolveSongBeatGridV2BeatOrdinalAtSec = (
+const resolveSongBeatGridV2BeatOrdinalAtSec = (
   value: unknown,
   durationSecInput: unknown,
   secInput: unknown
@@ -471,7 +469,7 @@ export const resolveSongBeatGridV2BeatOrdinalAtSec = (
   return referenceLine.beatOrdinal + (sec - referenceLine.sec) / clip.beatSec
 }
 
-export const resolveSongBeatGridV2SecAtBeatOrdinal = (
+const resolveSongBeatGridV2SecAtBeatOrdinal = (
   value: unknown,
   durationSecInput: unknown,
   beatOrdinalInput: unknown

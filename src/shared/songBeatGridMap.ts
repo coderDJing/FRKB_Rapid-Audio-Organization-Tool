@@ -7,8 +7,6 @@ const SIGNATURE_HASH_OFFSET = 2166136261
 const SIGNATURE_HASH_PRIME = 16777619
 const SECONDS_DECIMALS = 6
 const BPM_DECIMALS = 6
-const BPM_DISPLAY_DECIMALS = 2
-const BPM_DISPLAY_SCALE = 10 ** BPM_DISPLAY_DECIMALS
 const PHASE_EPSILON_BEATS = 0.0001
 const LINE_EPSILON_SEC = 0.000001
 
@@ -30,14 +28,6 @@ export type SongBeatGridFixedProjection = {
   bpm: number
   firstBeatMs: number
   barBeatOffset: number
-}
-
-export type SongBeatGridBpmSummary = {
-  displayText: string
-  titleText: string
-  values: number[]
-  minimumBpm: number | null
-  isDynamic: boolean
 }
 
 export type SongBeatGridLineLevel = 'bar' | 'beat4' | 'beat'
@@ -106,29 +96,6 @@ export const normalizeSongBeatGridBarBeatOffset = (value: unknown) => {
 
 export const normalizeSongBeatGridBpm = (value: unknown) =>
   normalizePositiveNumber(value, BPM_DECIMALS)
-
-export const normalizeSongBeatGridBpmDisplayScaled = (value: unknown): number | null => {
-  const normalized = normalizeSongBeatGridBpm(value)
-  if (normalized === null) return null
-
-  const [integerPartRaw, fractionPartRaw = ''] = normalized.toFixed(BPM_DECIMALS).split('.')
-  const integerPart = Number(integerPartRaw)
-  const fractionPart = fractionPartRaw.padEnd(BPM_DECIMALS, '0')
-  const preservedDigits = Number(fractionPart.slice(0, BPM_DISPLAY_DECIMALS) || '0')
-  const thirdDigit = Number(fractionPart.charAt(BPM_DISPLAY_DECIMALS) || '0')
-
-  let scaled = integerPart * BPM_DISPLAY_SCALE + preservedDigits
-  if (thirdDigit >= 6) {
-    scaled += 1
-  }
-  return scaled
-}
-
-export const formatSongBeatGridBpmDisplay = (value: unknown, fallback = 'N/A') => {
-  const scaled = normalizeSongBeatGridBpmDisplayScaled(value)
-  if (scaled === null) return fallback
-  return (scaled / BPM_DISPLAY_SCALE).toFixed(BPM_DISPLAY_DECIMALS)
-}
 
 const normalizeClip = (value: unknown): SongBeatGridClip | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -205,7 +172,7 @@ const buildSignaturePayload = (clips: readonly SongBeatGridClip[]) =>
     )
     .join('|')
 
-export const calculateSongBeatGridMapSignature = (clips: readonly SongBeatGridClip[]) => {
+const calculateSongBeatGridMapSignature = (clips: readonly SongBeatGridClip[]) => {
   const payload = `v${SONG_BEAT_GRID_MAP_VERSION}:${buildSignaturePayload(clips)}`
   let hash = SIGNATURE_HASH_OFFSET
   for (let index = 0; index < payload.length; index += 1) {
@@ -396,195 +363,3 @@ export const createSongBeatGridRuntime = (
     clipBoundaries: map.clips.slice(1).map((clip) => clip.startSec)
   }
 }
-
-export const resolveSongBeatGridClipAtSec = (
-  value: unknown,
-  durationSec: unknown,
-  secInput: unknown
-): SongBeatGridRuntimeClip | null => {
-  const runtime = createSongBeatGridRuntime(value, durationSec)
-  if (!runtime) return null
-  const sec = Math.max(0, Math.min(runtime.durationSec, Number(secInput) || 0))
-  let left = 0
-  let right = runtime.clips.length - 1
-  let answer = runtime.clips[0] || null
-  while (left <= right) {
-    const middle = (left + right) >> 1
-    const clip = runtime.clips[middle]
-    if (!clip) break
-    if (clip.startSec <= sec + LINE_EPSILON_SEC) {
-      answer = clip
-      left = middle + 1
-    } else {
-      right = middle - 1
-    }
-  }
-  if (!answer) return null
-  return sec <= answer.endSec + LINE_EPSILON_SEC ? answer : null
-}
-
-export const resolveSongBeatGridBpmAtSec = (
-  value: unknown,
-  durationSec: unknown,
-  secInput: unknown
-): number | null => resolveSongBeatGridClipAtSec(value, durationSec, secInput)?.bpm ?? null
-
-export const resolveNearestSongBeatGridLine = (
-  value: unknown,
-  durationSec: unknown,
-  secInput: unknown,
-  options: {
-    minSec?: number
-    maxSec?: number
-    levels?: SongBeatGridLineLevel[]
-  } = {}
-): SongBeatGridLine | null => {
-  const runtime = createSongBeatGridRuntime(value, durationSec)
-  if (!runtime) return null
-  const sec = Math.max(0, Math.min(runtime.durationSec, Number(secInput) || 0))
-  const minSec = Number.isFinite(Number(options.minSec)) ? Number(options.minSec) : 0
-  const maxSec = Number.isFinite(Number(options.maxSec))
-    ? Number(options.maxSec)
-    : runtime.durationSec
-  const levelSet = Array.isArray(options.levels) ? new Set(options.levels) : null
-  let nearest: SongBeatGridLine | null = null
-  let nearestDistance = Number.POSITIVE_INFINITY
-  for (const line of runtime.lines) {
-    if (line.sec < minSec - LINE_EPSILON_SEC || line.sec > maxSec + LINE_EPSILON_SEC) continue
-    if (levelSet && !levelSet.has(line.level)) continue
-    const distance = Math.abs(line.sec - sec)
-    if (distance >= nearestDistance) continue
-    nearest = line
-    nearestDistance = distance
-  }
-  return nearest
-}
-
-export const resolveSongBeatGridLineByOrdinal = (
-  value: unknown,
-  durationSec: unknown,
-  beatOrdinalInput: unknown
-): SongBeatGridLine | null => {
-  const runtime = createSongBeatGridRuntime(value, durationSec)
-  if (!runtime) return null
-  const beatOrdinal = Math.round(Number(beatOrdinalInput))
-  if (!Number.isFinite(beatOrdinal)) return null
-  return runtime.lines.find((line) => line.beatOrdinal === beatOrdinal) || null
-}
-
-export const resolveSongBeatGridBeatOrdinalAtSec = (
-  value: unknown,
-  durationSec: unknown,
-  secInput: unknown
-): number | null => {
-  const runtime = createSongBeatGridRuntime(value, durationSec)
-  if (!runtime) return null
-  const sec = Math.max(0, Math.min(runtime.durationSec, Number(secInput) || 0))
-  const lines = runtime.lines
-  if (!lines.length) return null
-  for (let index = 0; index < lines.length - 1; index += 1) {
-    const left = lines[index]
-    const right = lines[index + 1]
-    if (sec < left.sec || sec > right.sec) continue
-    const spanSec = right.sec - left.sec
-    if (!Number.isFinite(spanSec) || spanSec <= 0) return left.beatOrdinal
-    return left.beatOrdinal + (sec - left.sec) / spanSec
-  }
-  const nearestClip = resolveSongBeatGridClipAtSec(runtime.map, runtime.durationSec, sec)
-  if (!nearestClip) return lines[0].beatOrdinal
-  const referenceLine = sec < lines[0].sec ? lines[0] : lines[lines.length - 1]
-  return referenceLine.beatOrdinal + (sec - referenceLine.sec) / nearestClip.beatSec
-}
-
-export const resolveSongBeatGridSecAtBeatOrdinal = (
-  value: unknown,
-  durationSec: unknown,
-  beatOrdinalInput: unknown
-): number | null => {
-  const runtime = createSongBeatGridRuntime(value, durationSec)
-  if (!runtime) return null
-  const beatOrdinal = Number(beatOrdinalInput)
-  if (!Number.isFinite(beatOrdinal)) return null
-  const lines = runtime.lines
-  if (!lines.length) return null
-  if (beatOrdinal <= lines[0].beatOrdinal) return 0
-  const lastLine = lines[lines.length - 1]
-  if (beatOrdinal >= lastLine.beatOrdinal) return runtime.durationSec
-  const leftOrdinal = Math.floor(beatOrdinal)
-  const rightOrdinal = Math.ceil(beatOrdinal)
-  const leftLine = lines.find((line) => line.beatOrdinal === leftOrdinal) || null
-  const rightLine = lines.find((line) => line.beatOrdinal === rightOrdinal) || null
-  if (!leftLine || !rightLine) return null
-  if (leftOrdinal === rightOrdinal) return leftLine.sec
-  const ratio = beatOrdinal - leftOrdinal
-  return roundSongBeatGridSec(leftLine.sec + (rightLine.sec - leftLine.sec) * ratio)
-}
-
-export const resolveSongBeatGridBeatJumpSec = (
-  value: unknown,
-  durationSec: unknown,
-  secInput: unknown,
-  beatDeltaInput: unknown
-): number | null => {
-  const beatOrdinal = resolveSongBeatGridBeatOrdinalAtSec(value, durationSec, secInput)
-  const beatDelta = Number(beatDeltaInput)
-  if (beatOrdinal === null || !Number.isFinite(beatDelta)) return null
-  return resolveSongBeatGridSecAtBeatOrdinal(value, durationSec, beatOrdinal + beatDelta)
-}
-
-const collectDistinctBpmValues = (map: SongBeatGridMap) => {
-  const result: number[] = []
-  let previousScaled: number | null = null
-  for (const clip of map.clips) {
-    const scaled = normalizeSongBeatGridBpmDisplayScaled(clip.bpm)
-    if (scaled === null || scaled === previousScaled) continue
-    previousScaled = scaled
-    result.push(clip.bpm)
-  }
-  return result
-}
-
-const formatBpmSequence = (values: readonly number[]) =>
-  values.map((value) => formatSongBeatGridBpmDisplay(value, ''))
-
-export const summarizeSongBeatGridBpm = (
-  beatGridMap: unknown,
-  fixedBpm?: unknown
-): SongBeatGridBpmSummary => {
-  const map = normalizeSongBeatGridMap(beatGridMap)
-  if (map) {
-    const values = collectDistinctBpmValues(map)
-    const displayValues =
-      values.length > 3
-        ? [
-            ...formatBpmSequence(values.slice(0, 2)),
-            '...',
-            formatSongBeatGridBpmDisplay(values[values.length - 1], '')
-          ]
-        : formatBpmSequence(values)
-    const titleValues = formatBpmSequence(values)
-    const minimumBpm = values.length > 0 ? Math.min(...values) : null
-    return {
-      displayText: displayValues.join(' -> '),
-      titleText: titleValues.join(' -> '),
-      values,
-      minimumBpm,
-      isDynamic: map.clips.length > 1
-    }
-  }
-
-  const bpm = normalizeSongBeatGridBpm(fixedBpm)
-  return {
-    displayText: bpm === null ? '' : formatSongBeatGridBpmDisplay(bpm, ''),
-    titleText: bpm === null ? '' : formatSongBeatGridBpmDisplay(bpm, ''),
-    values: bpm === null ? [] : [bpm],
-    minimumBpm: bpm,
-    isDynamic: false
-  }
-}
-
-export const resolveSongBeatGridBpmFilterValues = (beatGridMap: unknown, fixedBpm?: unknown) =>
-  summarizeSongBeatGridBpm(beatGridMap, fixedBpm).values
-
-export const resolveSongBeatGridBpmSortValue = (beatGridMap: unknown, fixedBpm?: unknown) =>
-  summarizeSongBeatGridBpm(beatGridMap, fixedBpm).minimumBpm

@@ -131,9 +131,6 @@ export const classifyLibraryMergeBusyReasons = (
   return { cancellable, blocking }
 }
 
-export const getLibraryMergeBusyReasons = (options: BusyCollectOptions = {}): string[] =>
-  collectBusyReasons(options)
-
 export const getLibraryMergeBusySnapshot = (
   options: BusyCollectOptions = {}
 ): LibraryMergeBusyClassification => classifyLibraryMergeBusyReasons(collectBusyReasons(options))

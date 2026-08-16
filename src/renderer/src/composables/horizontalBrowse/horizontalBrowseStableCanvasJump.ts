@@ -1,8 +1,8 @@
 import type { HorizontalBrowseStableCanvasPresentationMeasureResult } from './horizontalBrowseStableCanvasPresentation'
 
-export const STABLE_PLAYBACK_START_REANCHOR_SUPPRESS_MS = 220
+const STABLE_PLAYBACK_START_REANCHOR_SUPPRESS_MS = 220
 export const STABLE_PLAYBACK_POSITION_JUMP_SEC = 0.25
-export const STABLE_SEEK_REUSE_MAX_OFFSET_CSS_PX = Number.POSITIVE_INFINITY
+const STABLE_SEEK_REUSE_MAX_OFFSET_CSS_PX = Number.POSITIVE_INFINITY
 
 export const createHorizontalBrowseStablePlaybackReanchorGate = () => {
   let suppressedUntilMs = 0

@@ -15,7 +15,7 @@ type MixtapeAnalysisCopyField =
   | 'stemBassPath'
   | 'stemDrumsPath'
 
-export const MIXTAPE_GRID_COPY_FIELDS = [
+const MIXTAPE_GRID_COPY_FIELDS = [
   'bpm',
   'firstBeatMs',
   'downbeatBeatOffset',

@@ -5,7 +5,7 @@ import {
   type SongBeatGridMapV2
 } from '@shared/songBeatGridMapV2'
 
-export const resolveMixtapeTimeBasisOffsetSec = (track: MixtapeTrack) => {
+const resolveMixtapeTimeBasisOffsetSec = (track: MixtapeTrack) => {
   const offsetMs = Number(track.timeBasisOffsetMs)
   if (!Number.isFinite(offsetMs) || offsetMs <= 0) return 0
   return offsetMs / 1000

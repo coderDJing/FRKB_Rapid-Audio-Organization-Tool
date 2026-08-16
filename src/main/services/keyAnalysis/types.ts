@@ -233,9 +233,6 @@ export const isValidBpm = (value: unknown): value is number =>
 export const isValidFirstBeatMs = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 
-export const isValidBarBeatOffset = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value)
-
 export const BACKGROUND_IDLE_DELAY_MS = 3000
 export const BACKGROUND_SCAN_COOLDOWN_MS = 5000
 export const BACKGROUND_SCAN_ROW_LIMIT = 200

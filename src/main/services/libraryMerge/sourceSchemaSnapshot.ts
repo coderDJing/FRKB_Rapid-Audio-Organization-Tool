@@ -14,7 +14,7 @@ const SOURCE_SCHEMA_SNAPSHOT_OVERHEAD_BYTES = 16 * 1024 * 1024
 export const getDatabaseSchemaVersion = (db: SqliteDatabase): number =>
   Number(db.pragma('user_version', { simple: true }))
 
-export const getSourceSchemaSnapshotReserveBytes = (sourceDb: SqliteDatabase): number => {
+const getSourceSchemaSnapshotReserveBytes = (sourceDb: SqliteDatabase): number => {
   const pageSize = Number(sourceDb.pragma('page_size', { simple: true }))
   const pageCount = Number(sourceDb.pragma('page_count', { simple: true }))
   const logicalBytes = Math.max(
@@ -29,7 +29,7 @@ export const getSourceSchemaSnapshotReserveBytes = (sourceDb: SqliteDatabase): n
   )
 }
 
-export const getTargetAvailableBytes = async (targetRoot: string): Promise<number> => {
+const getTargetAvailableBytes = async (targetRoot: string): Promise<number> => {
   try {
     const stats = await fs.statfs(targetRoot)
     const availableBytes = Number(stats.bavail) * Number(stats.bsize)

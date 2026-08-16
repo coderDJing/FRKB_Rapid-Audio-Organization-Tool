@@ -167,7 +167,7 @@ export const collectSetListUuids = (uuids: string[]): string[] => {
   return result
 }
 
-export const collectMixtapeListUuids = (uuids: string[]): string[] => {
+const collectMixtapeListUuids = (uuids: string[]): string[] => {
   const seen = new Set<string>()
   const result: string[] = []
   const traverse = (node: IDir) => {
@@ -235,7 +235,7 @@ export const loadSetPlaylistSongs = async (playlistUuid: string): Promise<ISongI
   return Array.isArray(result?.scanData) ? result.scanData : []
 }
 
-export const loadMixtapePlaylistSongs = async (playlistUuid: string): Promise<ISongInfo[]> => {
+const loadMixtapePlaylistSongs = async (playlistUuid: string): Promise<ISongInfo[]> => {
   const result = (await window.electron.ipcRenderer.invoke('mixtape:list', {
     playlistId: playlistUuid
   })) as {
@@ -295,7 +295,7 @@ export const collectOrderedSongsForMixtape = async (
   return entries
 }
 
-export const collectSetPlaylistFiles = async (uuids: string[]): Promise<string[]> => {
+const collectSetPlaylistFiles = async (uuids: string[]): Promise<string[]> => {
   const files: string[] = []
   for (const uuid of uuids) {
     const songs = await loadSetPlaylistSongs(uuid)

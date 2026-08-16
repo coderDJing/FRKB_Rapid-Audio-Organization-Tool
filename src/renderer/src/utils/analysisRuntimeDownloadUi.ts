@@ -13,7 +13,7 @@ type AnalysisRuntimeDisplayState = {
 const clampAnalysisRuntimePercent = (value: unknown) =>
   Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 10) / 10))
 
-export const formatAnalysisRuntimePercent = (value: unknown) => {
+const formatAnalysisRuntimePercent = (value: unknown) => {
   const percent = clampAnalysisRuntimePercent(value)
   return Number.isInteger(percent) ? String(percent) : percent.toFixed(1)
 }

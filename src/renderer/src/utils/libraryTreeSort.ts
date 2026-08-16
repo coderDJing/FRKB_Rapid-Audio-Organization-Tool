@@ -4,7 +4,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 
 export type LibraryTreeSortRule = 'manual' | 'nameAsc' | 'nameDesc' | 'countAsc' | 'countDesc'
 
-export const LIBRARY_TREE_SORT_RULES: LibraryTreeSortRule[] = [
+const LIBRARY_TREE_SORT_RULES: LibraryTreeSortRule[] = [
   'manual',
   'nameAsc',
   'nameDesc',
@@ -226,7 +226,7 @@ export const sortLibraryTreeChildren = (
   return pending.length ? [...pending, ...sorted] : sorted
 }
 
-export const collectPlaylistNodes = (root?: IDir | null): IDir[] => {
+const collectPlaylistNodes = (root?: IDir | null): IDir[] => {
   const result: IDir[] = []
   const walk = (node?: IDir | null) => {
     if (!node) return

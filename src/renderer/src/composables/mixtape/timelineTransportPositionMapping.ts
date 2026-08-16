@@ -81,7 +81,7 @@ export const createEntryBaseTimeMap = (entry: TransportEntry) =>
     loopSegment: undefined
   })
 
-export const resolveEntryTimelineSecFromSourcePosition = (
+const resolveEntryTimelineSecFromSourcePosition = (
   entry: TransportEntry,
   sourcePositionSec: number,
   startOffsetKind: 'source' | 'plan'
@@ -105,7 +105,7 @@ export const resolveEntryTimelineSecFromSourcePosition = (
   return Number(entry.startSec) + localSec
 }
 
-export const resolveNodeRuntimeTimelineSec = (node: TrackGraphNode, timelineSec: number) => {
+const resolveNodeRuntimeTimelineSec = (node: TrackGraphNode, timelineSec: number) => {
   const sourcePositionSec = node.source.resolvePlaybackPositionSec()
   if (sourcePositionSec === null) return null
   const playbackPositionSec = Number(sourcePositionSec)

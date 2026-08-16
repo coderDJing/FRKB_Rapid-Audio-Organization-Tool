@@ -6,12 +6,12 @@ import type {
   ISongInfo
 } from 'src/types/globals'
 
-export const createSimilarTracksProgressId = () => `similar_batch_${uuidV4()}`
+const createSimilarTracksProgressId = () => `similar_batch_${uuidV4()}`
 
 export const seedKeyOfSimilarSong = (song: ISongInfo, index: number): string =>
   song.filePath || song.mixtapeItemId || song.setItemId || `seed:${index}`
 
-export const buildSimilarTrackSeedPayloads = (seeds: ISongInfo[]): ISimilarTracksBatchSeed[] =>
+const buildSimilarTrackSeedPayloads = (seeds: ISongInfo[]): ISimilarTracksBatchSeed[] =>
   (seeds || []).map((song, index) => ({
     seedKey: seedKeyOfSimilarSong(song, index),
     filePath: song.filePath,
