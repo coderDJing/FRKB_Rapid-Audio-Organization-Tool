@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.2.2-rc.202608171739",
+  "version": "1.2.2-rc.202608171801",
   "description": "Rapid Audio Organization Tool",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
@@ -175,7 +175,7 @@
           "to": "demucs/bootstrap"
         }
       ],
-      "x64ArchFiles": "{Contents/Resources/ffmpeg/darwin/{ffmpeg,ffprobe},Contents/Resources/rekordboxDesktopRuntime/**/*,Contents/Resources/app.asar.unpacked/node_modules/@parcel/watcher-darwin-arm64/**/*,Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/**/*,Contents/Resources/app.asar.unpacked/node_modules/rust_package/**/*}",
+      "x64ArchFiles": "{Contents/Resources/ffmpeg/darwin/{ffmpeg,ffprobe},Contents/Resources/rekordboxDesktopRuntime/**/*,Contents/Resources/app.asar.unpacked/node_modules/@parcel/watcher-darwin-arm64/**/*,Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/**/*,Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3-multiple-ciphers/**/*,Contents/Resources/app.asar.unpacked/node_modules/rust_package/**/*}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {
