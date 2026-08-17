@@ -528,25 +528,40 @@ impl HorizontalBrowseTransportEngine {
         eprintln!("[horizontal-browse-transport] no default output device");
         return;
       };
-      let Ok(supported) = device.default_output_config() else {
-        eprintln!("[horizontal-browse-transport] default output config failed");
-        return;
+      let supported = match Self::default_output_config_with_retry(&device) {
+        Ok(config) => config,
+        Err(err) => {
+          eprintln!(
+            "[horizontal-browse-transport] default output config failed: {}",
+            err
+          );
+          return;
+        }
       };
       {
         let mut engine = engine().lock();
-        engine.output_sample_rate = supported.sample_rate().0;
+        engine.output_sample_rate = supported.sample_rate();
         engine.output_channels = supported.channels();
       }
-      let stream_config: cpal::StreamConfig = supported.clone().into();
+      let stream_config: cpal::StreamConfig = supported.into();
       let stream_result = match supported.sample_format() {
         cpal::SampleFormat::F32 => {
-          HorizontalBrowseTransportEngine::build_output_stream::<f32>(&device, &stream_config)
+          HorizontalBrowseTransportEngine::build_output_stream::<f32>(&device, stream_config)
+        }
+        cpal::SampleFormat::F64 => {
+          HorizontalBrowseTransportEngine::build_output_stream::<f64>(&device, stream_config)
+        }
+        cpal::SampleFormat::I32 => {
+          HorizontalBrowseTransportEngine::build_output_stream::<i32>(&device, stream_config)
+        }
+        cpal::SampleFormat::I24 => {
+          HorizontalBrowseTransportEngine::build_output_stream::<cpal::I24>(&device, stream_config)
         }
         cpal::SampleFormat::I16 => {
-          HorizontalBrowseTransportEngine::build_output_stream::<i16>(&device, &stream_config)
+          HorizontalBrowseTransportEngine::build_output_stream::<i16>(&device, stream_config)
         }
         cpal::SampleFormat::U16 => {
-          HorizontalBrowseTransportEngine::build_output_stream::<u16>(&device, &stream_config)
+          HorizontalBrowseTransportEngine::build_output_stream::<u16>(&device, stream_config)
         }
         other => {
           eprintln!(
@@ -575,9 +590,28 @@ impl HorizontalBrowseTransportEngine {
     Ok(())
   }
 
+  fn default_output_config_with_retry(
+    device: &cpal::Device,
+  ) -> std::result::Result<cpal::SupportedStreamConfig, cpal::Error> {
+    const MAX_BUSY_RETRIES: usize = 10;
+    let mut busy_retries = 0;
+    loop {
+      match device.default_output_config() {
+        Ok(config) => return Ok(config),
+        Err(err)
+          if err.kind() == cpal::ErrorKind::DeviceBusy && busy_retries < MAX_BUSY_RETRIES =>
+        {
+          busy_retries += 1;
+          thread::sleep(Duration::from_millis(100));
+        }
+        Err(err) => return Err(err),
+      }
+    }
+  }
+
   fn build_output_stream<T>(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
   ) -> napi::Result<cpal::Stream>
   where
     T: cpal::SizedSample + cpal::FromSample<f32>,
