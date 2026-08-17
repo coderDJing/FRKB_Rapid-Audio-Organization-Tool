@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.2.2-rc.202608170030",
+  "version": "1.2.2-rc.202608171739",
   "description": "Rapid Audio Organization Tool",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
@@ -262,16 +262,16 @@
     "@electron-toolkit/utils": "^4.0.0",
     "better-sqlite3": "^13.0.3",
     "better-sqlite3-multiple-ciphers": "^13.0.3",
-    "dompurify": "^3.4.5",
+    "dompurify": "^3.4.13",
     "dotenv": "^17.4.2",
     "electron-updater": "^6.8.9",
     "fs-extra": "^11.3.5",
     "hotkeys-js": "^4.0.4",
     "iconv-lite": "^0.7.2",
-    "marked": "^18.0.3",
+    "marked": "^18.0.9",
     "mitt": "^3.0.1",
     "ml-matrix": "^6.13.0",
-    "music-metadata": "^11.12.3",
+    "music-metadata": "^11.14.0",
     "overlayscrollbars": "^2.16.0",
     "overlayscrollbars-vue": "^0.5.10",
     "pinia": "^3.0.4",
@@ -284,12 +284,11 @@
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
-    "@types/dompurify": "^3.0.5",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^25.8.0",
     "@vitejs/plugin-vue": "^6.0.7",
-    "electron": "^41.10.5",
-    "electron-builder": "^26.8.1",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.3.0",
     "eslint-plugin-vue": "^10.9.1",
@@ -316,7 +315,14 @@
       "vue-demi"
     ],
     "overrides": {
-      "@electron/rebuild>node-abi": "^4.31.0"
+      "@electron/rebuild>node-abi": "^4.33.0"
+    },
+    "packageExtensions": {
+      "cliui@8": {
+        "dependencies": {
+          "ansi-styles": "4.3.0"
+        }
+      }
     }
   }
 }
