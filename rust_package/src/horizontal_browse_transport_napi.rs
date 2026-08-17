@@ -506,3 +506,21 @@ pub fn horizontal_browse_transport_drain_decode_diagnostics(
 ) -> Vec<HorizontalBrowseTransportDecodeDiagnostic> {
   drain_decode_diagnostics()
 }
+
+#[napi]
+pub fn process_r3_master_tempo_offline(
+  pcm_data: Buffer,
+  sample_rate: u32,
+  channels: u32,
+  tempo: f64,
+  mode: Option<String>,
+) -> napi::Result<R3MasterTempoOfflineResult> {
+  let mode = mode.unwrap_or_else(|| "r3-mw".to_owned());
+  horizontal_browse_transport_master_tempo_offline::process_r3_master_tempo_offline(
+    pcm_data.as_ref(),
+    sample_rate,
+    channels,
+    tempo,
+    &mode,
+  )
+}

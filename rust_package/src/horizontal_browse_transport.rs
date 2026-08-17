@@ -21,6 +21,8 @@ mod horizontal_browse_transport_grid_sync;
 mod horizontal_browse_transport_limiter;
 #[path = "horizontal_browse_transport_loop.rs"]
 mod horizontal_browse_transport_loop;
+#[path = "horizontal_browse_transport_master_tempo_offline.rs"]
+mod horizontal_browse_transport_master_tempo_offline;
 #[path = "horizontal_browse_transport_mix.rs"]
 mod horizontal_browse_transport_mix;
 #[path = "horizontal_browse_transport_napi.rs"]
@@ -41,6 +43,20 @@ use crate::FfmpegTransportDecodeMetrics;
 use horizontal_browse_transport_auto_gain::{DeckAutoGainState, LoudnessAnalysis};
 use horizontal_browse_transport_decode::prepare_decoded_audio;
 pub use horizontal_browse_transport_napi::*;
+
+#[napi(object)]
+pub struct R3MasterTempoOfflineResult {
+  pub pcm_data: Buffer,
+  pub mode: String,
+  pub engine_version: i32,
+  pub input_frames: u32,
+  pub output_frames: u32,
+  pub preferred_start_pad: u32,
+  pub start_delay: u32,
+  pub feed_calls: u32,
+  pub retrieve_calls: u32,
+  pub zero_retrieve_calls: u32,
+}
 pub use horizontal_browse_transport_recording::HorizontalBrowseTransportRecordingStatus;
 use horizontal_browse_transport_runtime::{
   drain_decode_diagnostics, engine, execute_decode_request_sync, native_now_ms,
@@ -54,8 +70,8 @@ pub use horizontal_browse_transport_types::{
   HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridClipInput,
   HorizontalBrowseTransportBeatGridInput, HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportDecodeDiagnostic,
-  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
-  HorizontalBrowseTransportRekordboxBeatGridEntryInput, HorizontalBrowseTransportStateInput,
+  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportRekordboxBeatGridEntryInput,
+  HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
   HorizontalBrowseTransportVisualizerSnapshot,
 };
 
@@ -610,11 +626,10 @@ impl HorizontalBrowseTransportEngine {
       record_left += deck_output.program.0;
       record_right += deck_output.program.1;
     }
-    let (limited_record_left, limited_record_right) = self.master_limiter.process(
-      record_left,
-      record_right,
-      self.output_sample_rate,
-    );
+    let (limited_record_left, limited_record_right) =
+      self
+        .master_limiter
+        .process(record_left, record_right, self.output_sample_rate);
     let playback_left = limited_record_left + (playback_left - record_left);
     let playback_right = limited_record_right + (playback_right - record_right);
     let protected_playback_left =

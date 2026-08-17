@@ -2,9 +2,17 @@ use std::ffi::c_void;
 
 unsafe extern "C" {
   fn frkb_r3_stretch_create(channels: u32, sample_rate: u32, tempo: f64) -> *mut c_void;
+  fn frkb_r3_stretch_create_with_mode(
+    channels: u32,
+    sample_rate: u32,
+    tempo: f64,
+    mode: u32,
+  ) -> *mut c_void;
   fn frkb_r3_stretch_destroy(handle: *mut c_void);
   fn frkb_r3_stretch_reset(handle: *mut c_void, tempo: f64);
   fn frkb_r3_stretch_engine_version(handle: *mut c_void) -> i32;
+  fn frkb_r3_stretch_preferred_start_pad(handle: *mut c_void) -> u32;
+  fn frkb_r3_stretch_start_delay(handle: *mut c_void) -> u32;
   fn frkb_r3_stretch_set_tempo(handle: *mut c_void, tempo: f64);
   fn frkb_r3_stretch_get_samples_required(handle: *mut c_void) -> u32;
   fn frkb_r3_stretch_process_interleaved(
@@ -30,15 +38,32 @@ impl R3MasterTempoProcessor {
     if handle.is_null() {
       return None;
     }
-    let processor = Self(handle);
-    if processor.engine_version() != 3 {
+    Some(Self(handle))
+  }
+
+  pub(super) fn new_with_mode(
+    channels: u32,
+    sample_rate: u32,
+    tempo: f64,
+    mode: u32,
+  ) -> Option<Self> {
+    let handle = unsafe { frkb_r3_stretch_create_with_mode(channels, sample_rate, tempo, mode) };
+    if handle.is_null() {
       return None;
     }
-    Some(processor)
+    Some(Self(handle))
   }
 
   pub(super) fn engine_version(&self) -> i32 {
     unsafe { frkb_r3_stretch_engine_version(self.0) }
+  }
+
+  pub(super) fn preferred_start_pad(&self) -> u32 {
+    unsafe { frkb_r3_stretch_preferred_start_pad(self.0) }
+  }
+
+  pub(super) fn start_delay(&self) -> u32 {
+    unsafe { frkb_r3_stretch_start_delay(self.0) }
   }
 
   pub(super) fn reset(&mut self, tempo: f64) {
@@ -88,6 +113,25 @@ mod tests {
   use super::*;
 
   #[test]
+  fn offline_modes_select_expected_engine_versions() {
+    if std::env::var_os("FRKB_R3_STRETCH_LIBRARY").is_none() {
+      return;
+    }
+
+    let r3_mw = R3MasterTempoProcessor::new_with_mode(2, 48_000, 1.02, 0).unwrap();
+    let r3_sw = R3MasterTempoProcessor::new_with_mode(2, 48_000, 1.02, 1).unwrap();
+    let faster = R3MasterTempoProcessor::new_with_mode(2, 48_000, 1.02, 2).unwrap();
+    let production = R3MasterTempoProcessor::new(2, 48_000, 1.02).unwrap();
+    assert_eq!(r3_mw.engine_version(), 3);
+    assert_eq!(r3_sw.engine_version(), 3);
+    assert_eq!(faster.engine_version(), 2);
+    assert_eq!(production.engine_version(), faster.engine_version());
+    assert_eq!(production.preferred_start_pad(), faster.preferred_start_pad());
+    assert_eq!(production.start_delay(), faster.start_delay());
+    assert!(R3MasterTempoProcessor::new_with_mode(2, 48_000, 1.02, 3).is_none());
+  }
+
+  #[test]
   fn r3_streaming_contract_produces_aligned_stereo_output() {
     if std::env::var_os("FRKB_R3_STRETCH_LIBRARY").is_none() {
       return;
@@ -110,9 +154,9 @@ mod tests {
     }
 
     let mut processor = R3MasterTempoProcessor::new(2, sample_rate, tempo).unwrap();
-    assert_eq!(processor.engine_version(), 3);
+    assert_eq!(processor.engine_version(), 2);
     processor.reset(tempo);
-    assert_eq!(processor.engine_version(), 3);
+    assert_eq!(processor.engine_version(), 2);
     let mut input_cursor = 0_usize;
     let mut output = vec![0.0_f32; 8192];
     let output_capacity_frames = output.len() / 2;

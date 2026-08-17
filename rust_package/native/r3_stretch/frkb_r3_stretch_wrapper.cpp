@@ -19,9 +19,14 @@
 namespace {
 
 constexpr int kProcessRealTime = 0x00000001;
+constexpr int kWindowShort = 0x00100000;
 constexpr int kChannelsTogether = 0x10000000;
 constexpr int kEngineFiner = 0x20000000;
 constexpr uint32_t kMaxProcessFrames = 65536;
+constexpr uint32_t kModeR3MediumWindow = 0;
+constexpr uint32_t kModeR3ShortWindow = 1;
+constexpr uint32_t kModeFaster = 2;
+constexpr uint32_t kProductionMode = kModeFaster;
 
 using StretchState = void*;
 using NewFn = StretchState (*)(uint32_t, uint32_t, int, double, double);
@@ -148,6 +153,8 @@ struct StretchHandle {
   StretchApi* api = nullptr;
   StretchState state = nullptr;
   uint32_t channels = 0;
+  uint32_t preferred_start_pad = 0;
+  uint32_t start_delay = 0;
   uint32_t remaining_start_delay = 0;
   bool finished = false;
   std::vector<std::vector<float>> input;
@@ -171,8 +178,10 @@ struct StretchHandle {
   }
 
   void process_start_pad() {
-    uint32_t remaining = api->get_preferred_start_pad(state);
-    remaining_start_delay = api->get_start_delay(state);
+    preferred_start_pad = api->get_preferred_start_pad(state);
+    start_delay = api->get_start_delay(state);
+    uint32_t remaining = preferred_start_pad;
+    remaining_start_delay = start_delay;
     while (remaining > 0) {
       const uint32_t block = std::min(remaining, kMaxProcessFrames);
       api->process(state, input_ptrs.data(), block, 0);
@@ -196,7 +205,19 @@ extern "C" void* frkb_r3_stretch_create(
     uint32_t channels,
     uint32_t sample_rate,
     double tempo) {
+  return frkb_r3_stretch_create_with_mode(
+      channels, sample_rate, tempo, kProductionMode);
+}
+
+extern "C" void* frkb_r3_stretch_create_with_mode(
+    uint32_t channels,
+    uint32_t sample_rate,
+    double tempo,
+    uint32_t mode) {
   if (channels == 0 || channels > 2 || sample_rate == 0) {
+    return nullptr;
+  }
+  if (mode > kModeFaster) {
     return nullptr;
   }
   StretchApi& api = stretch_api();
@@ -205,13 +226,20 @@ extern "C" void* frkb_r3_stretch_create(
   }
 
   auto handle = std::make_unique<StretchHandle>(&api, channels);
-  const int options = kProcessRealTime | kChannelsTogether | kEngineFiner;
+  int options = kProcessRealTime | kChannelsTogether;
+  if (mode != kModeFaster) {
+    options |= kEngineFiner;
+  }
+  if (mode == kModeR3ShortWindow) {
+    options |= kWindowShort;
+  }
   handle->state = api.create(
       sample_rate, channels, options, time_ratio_from_tempo(tempo), 1.0);
   if (handle->state == nullptr) {
     return nullptr;
   }
-  if (api.get_engine_version(handle->state) != 3) {
+  const int expected_engine_version = mode == kModeFaster ? 2 : 3;
+  if (api.get_engine_version(handle->state) != expected_engine_version) {
     api.destroy(handle->state);
     handle->state = nullptr;
     return nullptr;
@@ -235,6 +263,16 @@ extern "C" int32_t frkb_r3_stretch_engine_version(void* opaque) {
     return 0;
   }
   return handle->api->get_engine_version(handle->state);
+}
+
+extern "C" uint32_t frkb_r3_stretch_preferred_start_pad(void* opaque) {
+  StretchHandle* handle = as_handle(opaque);
+  return handle == nullptr ? 0 : handle->preferred_start_pad;
+}
+
+extern "C" uint32_t frkb_r3_stretch_start_delay(void* opaque) {
+  StretchHandle* handle = as_handle(opaque);
+  return handle == nullptr ? 0 : handle->start_delay;
 }
 
 extern "C" void frkb_r3_stretch_reset(void* opaque, double tempo) {

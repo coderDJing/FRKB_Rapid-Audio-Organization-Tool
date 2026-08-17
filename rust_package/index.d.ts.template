@@ -419,5 +419,18 @@ export interface HorizontalBrowseTransportDecodeDiagnostic {
   channels: number
 }
 export declare function horizontalBrowseTransportDrainDecodeDiagnostics(): HorizontalBrowseTransportDecodeDiagnostic[]
+export interface R3MasterTempoOfflineResult {
+  pcmData: Buffer
+  mode: string
+  engineVersion: number
+  inputFrames: number
+  outputFrames: number
+  preferredStartPad: number
+  startDelay: number
+  feedCalls: number
+  retrieveCalls: number
+  zeroRetrieveCalls: number
+}
+export declare function processR3MasterTempoOffline(pcmData: Buffer, sampleRate: number, channels: number, tempo: number, mode?: string): R3MasterTempoOfflineResult
 
 export {}
