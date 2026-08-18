@@ -13,6 +13,11 @@ import {
   pickManualMacUpdateAsset
 } from '../services/manualMacUpdate'
 import { fetchReleaseNotesRange } from '../services/releaseNotes'
+import {
+  classifyUpdateError,
+  logIfUnexpectedUpdateError,
+  type UpdateErrorKind
+} from '../services/updateError'
 import { openSafeExternalUrl, restrictExternalNavigation } from './externalNavigation'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 const autoUpdater = electronUpdater.autoUpdater
@@ -45,8 +50,6 @@ type AutoUpdaterWithExtras = typeof autoUpdater & {
 type BrowserWindowWithVisualEffect = BrowserWindow & {
   setVisualEffectMaterial?: (material: string) => void
 }
-
-type UpdateErrorKind = 'network' | 'signature' | 'install' | 'unknown'
 
 type UpdateErrorPayload = {
   kind: UpdateErrorKind
@@ -153,53 +156,32 @@ const setCachedUpdateInfo = (info: UpdateInfo) => {
 }
 
 const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
-  const message =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : String(error || '')
-  const normalized = message.toLowerCase()
-
-  if (
-    normalized.includes('net::err_timed_out') ||
-    normalized.includes('net::err_name_not_resolved') ||
-    normalized.includes('net::err_internet_disconnected') ||
-    normalized.includes('net::err_connection') ||
-    normalized.includes('fetch failed') ||
-    normalized.includes('timeout')
-  ) {
-    return { kind: 'network', message }
-  }
-
-  if (
-    normalized.includes('code signature') ||
-    normalized.includes('did not pass validation') ||
-    normalized.includes('not signed') ||
-    message.includes('未签名') ||
-    normalized.includes('shipit')
-  ) {
+  const classified = classifyUpdateError(error)
+  if (classified.kind === 'signature') {
     return {
-      kind: 'signature',
-      message,
+      kind: classified.kind,
+      message: classified.message,
       manualUrl: latestManualUpdateUrl
     }
   }
-
-  if (
-    normalized.includes('install') ||
-    normalized.includes('permission') ||
-    normalized.includes('eacces') ||
-    normalized.includes('access denied')
-  ) {
+  if (classified.kind === 'network') {
     return {
-      kind: 'install',
-      message,
-      manualUrl: process.platform === 'darwin' ? latestManualUpdateUrl : undefined
+      kind: classified.kind,
+      message: classified.message
     }
   }
-
   return {
-    kind: 'unknown',
-    message,
+    kind: classified.kind,
+    message: classified.message,
     manualUrl: process.platform === 'darwin' ? latestManualUpdateUrl : undefined
   }
+}
+
+const reportUpdateErrorToWindow = (tag: string, error: unknown) => {
+  const payload = buildUpdateErrorPayload(error)
+  sendToUpdateWindow('isError', payload)
+  logIfUnexpectedUpdateError(tag, error, payload)
+  return payload
 }
 
 const registerAutoUpdaterListeners = () => {
@@ -219,7 +201,7 @@ const registerAutoUpdaterListeners = () => {
       })
       .catch((error) => {
         setLastReleaseNotesRange(null)
-        log.error('[updateWindow] fetch release notes failed', error)
+        logIfUnexpectedUpdateError('[updateWindow] fetch release notes failed', error)
       })
   })
 
@@ -237,9 +219,7 @@ const registerAutoUpdaterListeners = () => {
 
   autoUpdater.on('error', (err) => {
     autoDownloadInProgress = false
-    const payload = buildUpdateErrorPayload(err)
-    sendToUpdateWindow('isError', payload)
-    log.error('autoUpdater error', payload, err)
+    reportUpdateErrorToWindow('autoUpdater error', err)
   })
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -297,7 +277,11 @@ const handleStartDownload = () => {
         const payload = buildUpdateErrorPayload(error)
         payload.manualUrl = latestManualUpdateUrl
         sendToUpdateWindow('isError', payload)
-        log.error('[updateWindow] manual mac update download failed', payload, error)
+        logIfUnexpectedUpdateError(
+          '[updateWindow] manual mac update download failed',
+          error,
+          payload
+        )
       })
       .finally(() => {
         manualMacDownloadPromise = null
@@ -316,9 +300,7 @@ const handleStartDownload = () => {
   })
   void autoUpdater.downloadUpdate().catch((error) => {
     autoDownloadInProgress = false
-    const payload = buildUpdateErrorPayload(error)
-    sendToUpdateWindow('isError', payload)
-    log.error('[updateWindow] downloadUpdate failed', payload, error)
+    reportUpdateErrorToWindow('[updateWindow] downloadUpdate failed', error)
   })
 }
 
@@ -457,9 +439,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
       return
     }
     void autoUpdater.checkForUpdates().catch((error) => {
-      const payload = buildUpdateErrorPayload(error)
-      sendToUpdateWindow('isError', payload)
-      log.error('[updateWindow] checkForUpdates failed', payload, error)
+      reportUpdateErrorToWindow('[updateWindow] checkForUpdates failed', error)
     })
   })
   ipcMain.on('updateWindow-startDownload', handleStartDownload)

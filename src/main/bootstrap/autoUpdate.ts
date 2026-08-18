@@ -3,8 +3,8 @@ import electronUpdater = require('electron-updater')
 import updateWindow from '../window/updateWindow'
 import foundNewVersionWindow from '../window/foundNewVersionWindow'
 import store from '../store'
-import { log } from '../log'
 import { fetchReleaseNotesRange } from '../services/releaseNotes'
+import { logIfUnexpectedUpdateError } from '../services/updateError'
 
 type AutoUpdaterWithExtras = typeof electronUpdater.autoUpdater & {
   allowPrerelease?: boolean
@@ -31,12 +31,12 @@ export function setupAutoUpdate() {
   if (store.settingConfig.nextCheckUpdateTime) {
     if (new Date() > new Date(store.settingConfig.nextCheckUpdateTime)) {
       void autoUpdater.checkForUpdates().catch((error) => {
-        log.error('[autoUpdate] initial check failed', error)
+        logIfUnexpectedUpdateError('[autoUpdate] initial check failed', error)
       })
     }
   } else {
     void autoUpdater.checkForUpdates().catch((error) => {
-      log.error('[autoUpdate] initial check failed', error)
+      logIfUnexpectedUpdateError('[autoUpdate] initial check failed', error)
     })
   }
 
@@ -56,7 +56,7 @@ export function setupAutoUpdate() {
           updateWindow.setLastReleaseNotesRange(releaseNotes)
         })
         .catch((error) => {
-          log.error('[autoUpdate] fetch release notes failed', error)
+          logIfUnexpectedUpdateError('[autoUpdate] fetch release notes failed', error)
           foundNewVersionWindow.updateReleaseNotes(null)
           updateWindow.setLastReleaseNotesRange(null)
         })
