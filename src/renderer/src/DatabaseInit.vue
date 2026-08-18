@@ -153,9 +153,10 @@ const flashBorder = (flashAreaName: string) => {
 // Tab 状态：create | existing
 const activeTab = ref<'create' | 'existing'>('create')
 
-// 新建库：父路径与子文件夹名
+// 新建库：父路径与子文件夹名。默认建议系统音乐目录 + FRKB，用户确认后才创建。
+const DEFAULT_DB_NAME = 'FRKB'
 const folderPathVal = ref('')
-const dbName = ref('')
+const dbName = ref(DEFAULT_DB_NAME)
 const sep = computed(() => (runtime.setting.platform === 'win32' ? '\\' : '/'))
 const targetDir = computed(() =>
   folderPathVal.value && dbName.value.trim()
@@ -200,7 +201,11 @@ const clickChooseDir = async () => {
     return
   }
   clickChooseDirFlag = true
-  const folderPath = await window.electron.ipcRenderer.invoke('select-folder', false)
+  const folderPath = await window.electron.ipcRenderer.invoke(
+    'select-folder',
+    false,
+    folderPathVal.value.trim() || undefined
+  )
   clickChooseDirFlag = false
   if (folderPath) {
     // 向上探测：若父路径位于库内则三选项
@@ -458,6 +463,12 @@ onMounted(async () => {
     const hidden = await window.electron.ipcRenderer.invoke('get-windows-hide-ext')
     windowsHideExt.value = !!hidden
   } catch {}
+  try {
+    const parentDir = await window.electron.ipcRenderer.invoke('get-default-database-parent-dir')
+    if (typeof parentDir === 'string' && parentDir.trim() && !folderPathVal.value) {
+      folderPathVal.value = parentDir.trim()
+    }
+  } catch {}
 })
 
 onUnmounted(() => {
@@ -657,7 +668,19 @@ window.electron.ipcRenderer.on('databaseInitWindow-schemaMigrationProgress', (_e
               />
             </div>
           </div>
-          <div class="helper">{{ t('database.initHintCreate') }}</div>
+          <div class="initCreateHints">
+            <bubbleBoxTrigger
+              v-if="targetDir"
+              tag="div"
+              class="helper targetPathText"
+              :title="targetDir"
+              :max-width="480"
+              :only-when-overflow="true"
+            >
+              {{ t('database.initTargetPath', { path: targetDir }) }}
+            </bubbleBoxTrigger>
+            <div class="helper">{{ t('database.storageHint') }}</div>
+          </div>
           <div class="field" style="border-radius: 4px">
             <div class="fieldLabel" style="display: flex; align-items: center; gap: 6px">
               <span>{{ t('fingerprints.mode') }}</span>
@@ -777,6 +800,18 @@ body {
 .helper {
   font-size: 11px;
   color: var(--text-weak);
+}
+
+.initCreateHints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.targetPathText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chooseDirDiv {

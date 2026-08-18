@@ -43,6 +43,7 @@ const exactInvokeChannels = new Set([
   'exportSongsToDir',
   'find-db-root-upwards',
   'foundNewVersionWindow-startUpdate',
+  'get-default-database-parent-dir',
   'get-drives',
   'get-file-sizes',
   'get-user-home',

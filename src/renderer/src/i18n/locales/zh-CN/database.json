@@ -34,6 +34,7 @@
     "inputDbNamePlaceholder": "用于展示的数据库名称",
     "initHintExisting": "在文件选择器中选择 {manifestName} 文件以进入已有数据库。",
     "initHintCreate": "选择文件夹并输入库名，系统将在该路径下创建库名子文件夹作为数据库。",
+    "initTargetPath": "将创建到：{path}",
     "selectFingerprintModeRequired": "请选择指纹模式（PCM 内容哈希 或 整文件哈希）",
     "invalidManifestFile": "不是有效的 FRKB 数据库声明文件",
     "incompatibleManifest": "该库需要 FRKB {minVersion} 或更高版本。当前版本：{currentVersion}。请升级后再试。",

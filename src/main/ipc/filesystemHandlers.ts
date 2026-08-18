@@ -56,15 +56,36 @@ const normalizeDriveInfo = (drive: DriveInfo) => {
   }
 }
 
+const resolveDefaultDatabaseParentDir = () => {
+  try {
+    const musicPath = String(app.getPath('music') || '').trim()
+    if (musicPath) return musicPath
+  } catch {}
+  try {
+    const homePath = String(app.getPath('home') || '').trim()
+    if (homePath) return homePath
+  } catch {}
+  return os.homedir()
+}
+
 export function registerFilesystemHandlers() {
-  ipcMain.handle('select-folder', async (_event, multiSelections: boolean = true) => {
-    const result = await dialog.showOpenDialog({
-      properties: multiSelections ? ['openDirectory', 'multiSelections'] : ['openDirectory']
-    })
-    if (result.canceled) {
-      return null
+  ipcMain.handle(
+    'select-folder',
+    async (_event, multiSelections: boolean = true, defaultPath?: string) => {
+      const resolvedDefaultPath = String(defaultPath || '').trim()
+      const result = await dialog.showOpenDialog({
+        properties: multiSelections ? ['openDirectory', 'multiSelections'] : ['openDirectory'],
+        ...(resolvedDefaultPath ? { defaultPath: resolvedDefaultPath } : {})
+      })
+      if (result.canceled) {
+        return null
+      }
+      return result.filePaths
     }
-    return result.filePaths
+  )
+
+  ipcMain.handle('get-default-database-parent-dir', async () => {
+    return resolveDefaultDatabaseParentDir()
   })
 
   ipcMain.handle('check-path-exists', async (_event, pathToCheck: string) => {

@@ -58,7 +58,7 @@ const createWindow = ({
   databaseInitWindow = new BrowserWindow({
     resizable: false,
     width: 640,
-    height: 430,
+    height: 500,
     frame: process.platform === 'darwin' ? true : false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,

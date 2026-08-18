@@ -34,6 +34,7 @@
     "inputDbNamePlaceholder": "Name for display",
     "initHintExisting": "In the file picker, select the {manifestName} file to enter the existing database.",
     "initHintCreate": "Select a folder and enter the database name. A subfolder with that name will be created as the database.",
+    "initTargetPath": "Will be created at: {path}",
     "selectFingerprintModeRequired": "Please choose a fingerprint mode (PCM content hash or File hash)",
     "invalidManifestFile": "Not a valid FRKB database manifest",
     "incompatibleManifest": "This library requires FRKB {minVersion} or later. Current version: {currentVersion}. Please update and try again.",
