@@ -1,5 +1,10 @@
 import { createVNode, render } from 'vue'
 import { attachAppContext } from '@renderer/utils/appContext'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { t } from '@renderer/utils/translate'
+import confirm from '@renderer/components/confirmDialog'
+import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
+import pkg from '../../../../package.json'
 import LibraryStemSeparationDialog from './libraryStemSeparationDialog.vue'
 
 type OpenLibraryStemSeparationDialogArgs = {
@@ -8,8 +13,34 @@ type OpenLibraryStemSeparationDialogArgs = {
   initialSnapshot?: unknown
 }
 
-export default (args: OpenLibraryStemSeparationDialogArgs) => {
-  return new Promise<void>((resolve) => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value)
+
+const isInProgressSnapshot = (value: unknown) => {
+  if (!isRecord(value)) return false
+  return value.status === 'pending' || value.status === 'running'
+}
+
+let stemWorkbenchRuntimeGate: ReturnType<typeof useAnalysisRuntimeDownload> | null = null
+
+const ensureStemWorkbenchAnalysisRuntime = async () => {
+  if (!stemWorkbenchRuntimeGate) {
+    stemWorkbenchRuntimeGate = useAnalysisRuntimeDownload({
+      runtime: useRuntimeStore(),
+      t,
+      confirmDialog: confirm,
+      appVersion: String(pkg.version || '')
+    })
+  }
+  return await stemWorkbenchRuntimeGate.ensureAnalysisRuntimeForStemWorkbench()
+}
+
+export default async (args: OpenLibraryStemSeparationDialogArgs) => {
+  if (!isInProgressSnapshot(args.initialSnapshot)) {
+    const canOpen = await ensureStemWorkbenchAnalysisRuntime()
+    if (!canOpen) return
+  }
+  return await new Promise<void>((resolve) => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const close = () => {

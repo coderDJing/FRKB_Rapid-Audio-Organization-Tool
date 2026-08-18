@@ -11,7 +11,7 @@ import {
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 type ConfirmDialogFn = typeof import('@renderer/components/confirmDialog').default
 
-type AnalysisRuntimePromptSource = 'startup' | 'help' | 'horizontal'
+type AnalysisRuntimePromptSource = 'startup' | 'help' | 'horizontal' | 'stem'
 type AnalysisRuntimePromptResult = 'ready' | 'started' | 'blocked'
 
 type AnalysisRuntimeDownloadStatus =
@@ -352,21 +352,27 @@ export const useAnalysisRuntimeDownload = (options: {
     }
   }
 
-  const ensureAnalysisRuntimeForHorizontalMode = async () => {
+  const ensureAnalysisRuntimeForFeature = async (params: {
+    source: Exclude<AnalysisRuntimePromptSource, 'startup'>
+    blockedHintKey: string
+  }) => {
     if (options.runtime.analysisRuntime.available) {
       return true
     }
 
-    const result = await promptAnalysisRuntimeDownload('horizontal')
+    const result = await promptAnalysisRuntimeDownload(params.source)
     if (result === 'ready' || options.runtime.analysisRuntime.available) {
       return true
     }
-    if (result === 'started' || analysisRuntimeDownloadVisible.value) {
+    if (
+      result === 'started' ||
+      isAnalysisRuntimeDownloadActiveStatus(options.runtime.analysisRuntime.state.status)
+    ) {
       return false
     }
     await options.confirmDialog({
       title: options.t('analysisRuntime.unsupportedTitle'),
-      content: [options.t('analysisRuntime.horizontalBlockedHint')],
+      content: [options.t(params.blockedHintKey)],
       confirmShow: false,
       textAlign: 'left',
       innerWidth: 560,
@@ -374,6 +380,18 @@ export const useAnalysisRuntimeDownload = (options: {
     })
     return false
   }
+
+  const ensureAnalysisRuntimeForHorizontalMode = () =>
+    ensureAnalysisRuntimeForFeature({
+      source: 'horizontal',
+      blockedHintKey: 'analysisRuntime.horizontalBlockedHint'
+    })
+
+  const ensureAnalysisRuntimeForStemWorkbench = () =>
+    ensureAnalysisRuntimeForFeature({
+      source: 'stem',
+      blockedHintKey: 'analysisRuntime.stemBlockedHint'
+    })
 
   const handleAnalysisRuntimeDownloadState = async (payload: unknown) => {
     const prevStatus = options.runtime.analysisRuntime.state.status
@@ -416,6 +434,7 @@ export const useAnalysisRuntimeDownload = (options: {
     refreshAnalysisRuntimeStatus,
     promptAnalysisRuntimeDownload,
     ensureAnalysisRuntimeForHorizontalMode,
+    ensureAnalysisRuntimeForStemWorkbench,
     handleAnalysisRuntimeDownloadState
   }
 }

@@ -13,6 +13,7 @@ import {
   resolveMixtapeStemModelByProfile
 } from '../../shared/mixtapeStemProfiles'
 import { computeLibraryStemSourceSignature } from './libraryStemAssetStorage'
+import { isAnalysisRuntimeAvailable } from './analysisRuntimeDownload'
 import { isDemucsUltraModelInstalled } from './demucsUltraModelDownload'
 import type {
   MixtapeStemComputeDevice,
@@ -226,6 +227,14 @@ export async function enqueueLibraryStemJob(params: {
 
   const snapshot = await getLibraryStemStatusSnapshot(params?.filePath || '', model)
   if (!snapshot.filePath || !fs.existsSync(snapshot.filePath)) return snapshot
+  if (!(await isAnalysisRuntimeAvailable())) {
+    return createLibraryStemSnapshot({
+      ...snapshot,
+      status: 'failed',
+      errorCode: 'STEM_RUNTIME_NOT_INSTALLED',
+      errorMessage: '分析运行时尚未下载'
+    })
+  }
   if (parseMixtapeStemModel(model).profile === 'ultra' && !(await isDemucsUltraModelInstalled())) {
     return createLibraryStemSnapshot({
       ...snapshot,
