@@ -1,5 +1,7 @@
 // 必须在导入任何原生模块之前设置 FFmpeg DLL 路径（仅 Windows 生效）
 import './nativeModuleSetup'
+// 必须在任何 ipcMain.handle / ipcMain.on 注册之前打补丁，卡住时才能对上通道名。
+import './services/mainProcessActivityTrace'
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'

@@ -1,20 +1,20 @@
 import { app, type BrowserWindow, type ProcessMetric } from 'electron'
 import { log } from '../../log'
+import { getMainProcessStallContext } from '../../services/mainProcessActivityTrace'
 import { getPlaylistScanDiagnosticSnapshot } from '../../services/playlistScanDiagnostics'
 
 const MAIN_PROCESS_STALL_THRESHOLD_MS = 3_000
 const MAIN_PROCESS_HEARTBEAT_INTERVAL_MS = 1_000
 
-type ResponsivenessSnapshot = {
-  windowId: number
-  webContentsId: number
-  rendererPid: number | null
-  url: string | null
-  loading: boolean
-  focused: boolean
-  visible: boolean
-  processMetrics: ProcessMetric[]
-  playlistScans: ReturnType<typeof getPlaylistScanDiagnosticSnapshot>
+type SlimProcessMetric = {
+  pid: number
+  type: string
+  serviceName?: string
+  percentCPUUsage?: number
+  cumulativeCPUUsage?: number
+  workingSetKb?: number
+  peakWorkingSetKb?: number
+  privateKb?: number
 }
 
 const getRendererPid = (browserWindow: BrowserWindow): number | null => {
@@ -25,28 +25,47 @@ const getRendererPid = (browserWindow: BrowserWindow): number | null => {
   }
 }
 
-const getProcessMetrics = (rendererPid: number | null): ProcessMetric[] => {
+const summarizeProcessMetrics = (metrics: ProcessMetric[]): SlimProcessMetric[] =>
+  metrics.map((metric) => ({
+    pid: metric.pid,
+    type: metric.type,
+    serviceName:
+      'serviceName' in metric ? String(metric.serviceName || '') || undefined : undefined,
+    percentCPUUsage: metric.cpu?.percentCPUUsage,
+    cumulativeCPUUsage: metric.cpu?.cumulativeCPUUsage,
+    workingSetKb: metric.memory?.workingSetSize,
+    peakWorkingSetKb: metric.memory?.peakWorkingSetSize,
+    privateKb: metric.memory?.privateBytes
+  }))
+
+const getProcessMetrics = (rendererPid: number | null): SlimProcessMetric[] => {
   try {
-    return app
-      .getAppMetrics()
-      .filter(
-        (metric) =>
-          metric.pid === rendererPid ||
-          metric.type === 'Browser' ||
-          metric.type === 'GPU' ||
-          metric.type === 'Utility'
-      )
+    return summarizeProcessMetrics(
+      app
+        .getAppMetrics()
+        .filter(
+          (metric) =>
+            metric.pid === rendererPid ||
+            metric.type === 'Browser' ||
+            metric.type === 'GPU' ||
+            metric.type === 'Utility'
+        )
+    )
   } catch {
     return []
   }
 }
 
-const captureSnapshot = (browserWindow: BrowserWindow): ResponsivenessSnapshot => {
+const captureSnapshot = (
+  browserWindow: BrowserWindow,
+  options?: { sinceMs?: number; processMetrics?: SlimProcessMetric[] }
+) => {
   const rendererPid = getRendererPid(browserWindow)
   let url: string | null = null
   try {
     url = browserWindow.webContents.getURL() || null
   } catch {}
+  const sinceMs = options?.sinceMs ?? Date.now() - 5_000
 
   return {
     windowId: browserWindow.id,
@@ -56,30 +75,40 @@ const captureSnapshot = (browserWindow: BrowserWindow): ResponsivenessSnapshot =
     loading: browserWindow.webContents.isLoading(),
     focused: browserWindow.isFocused(),
     visible: browserWindow.isVisible(),
-    processMetrics: getProcessMetrics(rendererPid),
-    playlistScans: getPlaylistScanDiagnosticSnapshot()
+    processMetrics: options?.processMetrics ?? getProcessMetrics(rendererPid),
+    playlistScans: getPlaylistScanDiagnosticSnapshot(),
+    ...getMainProcessStallContext(sinceMs)
   }
 }
 
 /**
  * 记录 Windows 未响应的可定位证据：
  * - Electron 事件用于区分 renderer 卡死、恢复和崩溃；
- * - 心跳延迟用于发现主进程消息循环被同步任务或原生调用阻塞的情况。
+ * - 心跳延迟用于发现主进程消息循环被同步任务或原生调用阻塞的情况；
+ * - 每次心跳都采样进程 CPU，卡住时才能看到卡顿窗口内的占用，而不是恢复后的 0。
  */
 export const attachMainWindowResponsivenessDiagnostics = (browserWindow: BrowserWindow) => {
   let rendererUnresponsiveAt: number | null = null
   let lastHeartbeatAt = Date.now()
 
   const heartbeat = setInterval(() => {
+    const previousHeartbeatAt = lastHeartbeatAt
     const now = Date.now()
-    const stallDurationMs = now - lastHeartbeatAt - MAIN_PROCESS_HEARTBEAT_INTERVAL_MS
+    const stallDurationMs = now - previousHeartbeatAt - MAIN_PROCESS_HEARTBEAT_INTERVAL_MS
     lastHeartbeatAt = now
+    // 必须每拍都采样，Electron 的 percentCPUUsage 是相对上次调用的增量。
+    const processMetrics = browserWindow.isDestroyed()
+      ? []
+      : getProcessMetrics(getRendererPid(browserWindow))
     if (stallDurationMs < MAIN_PROCESS_STALL_THRESHOLD_MS || browserWindow.isDestroyed()) {
       return
     }
     log.error('[main-window] main-process event loop stalled', {
       stallDurationMs,
-      snapshot: captureSnapshot(browserWindow)
+      snapshot: captureSnapshot(browserWindow, {
+        sinceMs: previousHeartbeatAt,
+        processMetrics
+      })
     })
   }, MAIN_PROCESS_HEARTBEAT_INTERVAL_MS)
 
@@ -98,21 +127,23 @@ export const attachMainWindowResponsivenessDiagnostics = (browserWindow: Browser
       return
     }
     const durationMs = Date.now() - rendererUnresponsiveAt
+    const sinceMs = rendererUnresponsiveAt
     rendererUnresponsiveAt = null
     log.error('[main-window] renderer recovered', {
       durationMs,
-      snapshot: captureSnapshot(browserWindow)
+      snapshot: captureSnapshot(browserWindow, { sinceMs })
     })
   })
 
   browserWindow.webContents.on('render-process-gone', (_event, details) => {
     const durationMs =
       rendererUnresponsiveAt === null ? null : Math.max(0, Date.now() - rendererUnresponsiveAt)
+    const sinceMs = rendererUnresponsiveAt ?? Date.now() - 5_000
     rendererUnresponsiveAt = null
     log.error('[main-window] render-process-gone', {
       details,
       unresponsiveDurationMs: durationMs,
-      snapshot: captureSnapshot(browserWindow)
+      snapshot: captureSnapshot(browserWindow, { sinceMs })
     })
   })
 

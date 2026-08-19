@@ -10,6 +10,7 @@ import {
   assertLibraryMergeParticipantCoverage,
   LibraryMergeParticipantContractError
 } from './services/libraryMerge/participants'
+import { runTracedSync } from './services/mainProcessActivityTraceState'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
 const SCHEMA_VERSION = 38
@@ -990,14 +991,20 @@ export function getLibraryDbPath(dirPath: string): string {
   return path.join(dirPath, DB_FILE_NAME)
 }
 
+const checkpointWal = (instance: SqliteDatabase): void => {
+  runTracedSync('sqlite:wal_checkpoint', () => {
+    instance.pragma('wal_checkpoint(TRUNCATE)')
+  })
+}
+
 // 用于不会成为当前活动库的隔离数据库副本。它复用正式 schema 迁移，但不会读写
 // store、切换全局连接或影响正在使用的库。
 export function migrateStandaloneLibraryDb(dbPath: string): void {
   const normalizedPath = String(dbPath || '').trim()
   if (!normalizedPath) throw new Error('数据库快照路径不能为空')
-  const instance = createDatabase(normalizedPath)
+  const instance = runTracedSync('sqlite:createDatabase', () => createDatabase(normalizedPath))
   try {
-    instance.pragma('wal_checkpoint(TRUNCATE)')
+    checkpointWal(instance)
   } finally {
     instance.close()
   }
@@ -1012,7 +1019,7 @@ export function initLibraryDb(dirPath: string): SqliteDatabase | null {
   if (db && dbRoot === dirPath) return db
   try {
     closeLibraryDb()
-    db = createDatabase(getLibraryDbPath(dirPath))
+    db = runTracedSync('sqlite:createDatabase', () => createDatabase(getLibraryDbPath(dirPath)))
     dbRoot = dirPath
     return db
   } catch (error) {
@@ -1043,7 +1050,7 @@ export function getLibraryDb(): SqliteDatabase | null {
 export function closeLibraryDb(): void {
   if (db) {
     try {
-      db.pragma('wal_checkpoint(TRUNCATE)')
+      checkpointWal(db)
     } catch {}
     try {
       db.close()
