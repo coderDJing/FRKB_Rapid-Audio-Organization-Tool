@@ -25,6 +25,13 @@ import {
   normalizeAnalysisBpmRangeId,
   type AnalysisBpmRangePresetId
 } from '@shared/analysisBpmRange'
+import {
+  BROWSER_PLAYER_RIGHT_TRACK_INFO_BPM_KEY,
+  BROWSER_PLAYER_RIGHT_TRACK_INFO_COLUMN_KEYS,
+  BROWSER_PLAYER_RIGHT_TRACK_INFO_COLUMN_LABEL_KEYS,
+  normalizeBrowserPlayerRightTrackInfo,
+  type BrowserPlayerRightTrackInfoField
+} from '@shared/browserPlayerRightTrackInfo'
 
 const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
@@ -102,6 +109,24 @@ const analysisBpmRangeModel = computed<AnalysisBpmRangePresetId>({
 const analysisBpmRangeOptions = computed(() =>
   buildAnalysisBpmRangeOptions(analysisBpmRangeModel.value)
 )
+
+const browserPlayerRightTrackInfoModel = computed<BrowserPlayerRightTrackInfoField>({
+  get: () => normalizeBrowserPlayerRightTrackInfo(runtime.setting.browserPlayerRightTrackInfo),
+  set: (value) => {
+    runtime.setting.browserPlayerRightTrackInfo = normalizeBrowserPlayerRightTrackInfo(value)
+  }
+})
+
+const browserPlayerRightTrackInfoOptions = computed(() => [
+  {
+    label: `${t('columns.bpm')}/${t('columns.key')}`,
+    value: BROWSER_PLAYER_RIGHT_TRACK_INFO_BPM_KEY
+  },
+  ...BROWSER_PLAYER_RIGHT_TRACK_INFO_COLUMN_KEYS.map((key) => ({
+    label: t(BROWSER_PLAYER_RIGHT_TRACK_INFO_COLUMN_LABEL_KEYS[key]),
+    value: key
+  }))
+])
 
 const autoFillSkipCompletedModel = computed<boolean>({
   get: () => runtime.setting.autoFillSkipCompleted !== false,
@@ -234,6 +259,17 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 v-model="runtime.setting.language"
                 :options="languageOptions"
                 :width="220"
+                @change="setSetting"
+              />
+            </div>
+
+            <div class="setting-block">{{ t('player.browserPlayerRightTrackInfo') }}：</div>
+            <div class="setting-control">
+              <BaseSelect
+                v-model="browserPlayerRightTrackInfoModel"
+                :options="browserPlayerRightTrackInfoOptions"
+                :width="220"
+                :max-height="280"
                 @change="setSetting"
               />
             </div>

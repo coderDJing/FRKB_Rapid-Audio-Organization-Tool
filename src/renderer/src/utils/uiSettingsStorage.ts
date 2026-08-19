@@ -6,6 +6,7 @@ import {
   UI_SETTING_KEYS,
   type UiSettingKey
 } from '../../../shared/uiSettings'
+import { isBrowserPlayerRightTrackInfoField } from '../../../shared/browserPlayerRightTrackInfo'
 import {
   normalizePlaybackRangeMode,
   normalizePlaybackRangeSectionKinds,
@@ -76,6 +77,11 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
         break
       case 'keyDisplayStyle':
         if (value === 'Classic' || value === 'Camelot') {
+          output[key] = value
+        }
+        break
+      case 'browserPlayerRightTrackInfo':
+        if (isBrowserPlayerRightTrackInfoField(value)) {
           output[key] = value
         }
         break

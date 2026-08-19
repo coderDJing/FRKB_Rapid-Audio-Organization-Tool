@@ -1,5 +1,6 @@
 import { ILayoutConfig, ISettingConfig } from 'src/types/globals'
 import { defaultLayoutConfig } from './layoutConfigDefaults'
+import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '../shared/browserPlayerRightTrackInfo'
 
 let songFingerprintList: string[] = [] //声音指纹列表（基于音频内容哈希）
 let databaseDir: string = '' //数据库目录
@@ -44,6 +45,7 @@ let settingConfig: ISettingConfig = {
   hiddenPlayControlArea: false,
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
+  browserPlayerRightTrackInfo: DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   analysisBpmRange: '70-180',
   autoPlayNextSong: false,
   startPlayPercent: 0,

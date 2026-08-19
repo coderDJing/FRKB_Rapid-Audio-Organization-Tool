@@ -11,6 +11,10 @@ import {
   LEGACY_ANALYSIS_BPM_RANGE,
   normalizeAnalysisBpmRangeId
 } from '../../shared/analysisBpmRange'
+import {
+  DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
+  normalizeBrowserPlayerRightTrackInfo
+} from '../../shared/browserPlayerRightTrackInfo'
 import fs = require('fs-extra')
 
 const platform = process.platform
@@ -76,6 +80,7 @@ const defaultSettings = {
   hiddenPlayControlArea: false,
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
+  browserPlayerRightTrackInfo: DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   showIdleAnalysisStatus: false,
   analysisBpmRange: DEFAULT_ANALYSIS_BPM_RANGE_ID,
   autoPlayNextSong: false,
@@ -167,7 +172,10 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   const finalSettings: ExtendedSettingConfig = {
     ...mergedSettings,
     waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half',
-    keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
+    keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic',
+    browserPlayerRightTrackInfo: normalizeBrowserPlayerRightTrackInfo(
+      mergedSettings.browserPlayerRightTrackInfo
+    )
   }
 
   finalSettings.analysisBpmRange = normalizeAnalysisBpmRangeId(

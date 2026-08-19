@@ -927,11 +927,7 @@ watch(
           @seek-play="handlePlayerStructureSectionClick"
         />
       </div>
-      <BpmTap
-        :bpm="bpm"
-        :waveform-show="waveformShow"
-        :key-text="runtime.playingData.playingSong?.key || ''"
-      />
+      <BpmTap :song="runtime.playingData.playingSong" :waveform-show="waveformShow" />
     </div>
   </transition>
   <Teleport to="body">

@@ -1,74 +1,81 @@
 <script setup lang="ts">
 import { computed, ref, watch, useTemplateRef } from 'vue'
+import type { ISongInfo } from 'src/types/globals'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { formatBpmDisplay } from '@renderer/utils/bpm'
-import { getKeyDisplayText } from '@shared/keyDisplay'
+import {
+  canTapBrowserPlayerRightTrackInfo,
+  normalizeBrowserPlayerRightTrackInfo
+} from '@shared/browserPlayerRightTrackInfo'
+import { formatBrowserPlayerRightTrackInfoText } from '@renderer/utils/browserPlayerRightTrackInfoDisplay'
+import { resolveSongListKeyDisplayStyle } from '@renderer/utils/songListFieldDisplay'
 
-// 组件用于显示 BPM，并支持通过左键点击节拍来计算 BPM，右键恢复系统分析值
 const props = defineProps<{
-  // 系统自动分析得到的 BPM 值（可能为 number、字符串 'N/A' 或空字符串）
-  bpm: number | string
-  // 与父级保持一致的可见控制
+  song?: ISongInfo | null
   waveformShow: boolean
-  // 调性文本（Mixxx 口径）
-  keyText?: string
 }>()
 
-// 是否处于手动点击（Tap Tempo）模式
 const isManual = ref(false)
-// 是否已开始手动点击（用于隐藏气泡直到右键恢复）
 const isTapActive = ref(false)
-// 手动计算得到的 BPM（保留 6 位小数供展示层统一格式化）
 const manualBpm = ref<number | null>(null)
-// 最近的点击时间戳（毫秒）
 const tapTimestamps = ref<number[]>([])
 
-// 提示气泡绑定 DOM
-const bpmDomRef = useTemplateRef<HTMLDivElement>('bpmDomRef')
+const valueDomRef = useTemplateRef<HTMLSpanElement>('valueDomRef')
 const runtime = useRuntimeStore()
 
-// 当系统 BPM 变化（如切歌或重新分析）时，自动退出手动模式
+const selectedField = computed(() =>
+  normalizeBrowserPlayerRightTrackInfo(runtime.setting.browserPlayerRightTrackInfo)
+)
+
+const canTap = computed(() => canTapBrowserPlayerRightTrackInfo(selectedField.value))
+
+const fieldDisplayOptions = computed(() => ({
+  keyDisplayStyle: resolveSongListKeyDisplayStyle(runtime.setting.keyDisplayStyle),
+  isDesktopRekordboxSong: props.song?.externalSourceKind === 'desktop'
+}))
+
+const fieldText = computed(() =>
+  formatBrowserPlayerRightTrackInfoText(props.song, selectedField.value, fieldDisplayOptions.value)
+)
+
+const displayValue = computed<string>(() => {
+  if (!isManual.value || manualBpm.value === null || !canTap.value) {
+    return fieldText.value.displayText
+  }
+  const tappedBpm = formatBpmDisplay(manualBpm.value, '') || '-'
+  if (selectedField.value === 'bpm') {
+    return tappedBpm
+  }
+  const keyText = formatBrowserPlayerRightTrackInfoText(
+    props.song,
+    'key',
+    fieldDisplayOptions.value
+  ).displayText
+  return `${tappedBpm} · ${keyText}`
+})
+
+const bubbleTitle = computed(() => fieldText.value.titleText || displayValue.value)
+
 watch(
-  () => props.bpm,
+  () => [
+    props.song?.filePath,
+    props.song?.bpm,
+    props.song?.beatGridMap,
+    props.song?.key,
+    selectedField.value
+  ],
   () => {
     resetManual()
   }
 )
 
-// 将显示值统一成字符串；缺失侧用 `-` 占位，始终保留 BPM/Key 格式
-const displayValue = computed<string>(() => {
-  let bpmText = ''
-  if (isManual.value && manualBpm.value !== null) {
-    bpmText = formatBpmDisplay(manualBpm.value, '')
-  } else if (typeof props.bpm === 'number') {
-    bpmText = formatBpmDisplay(props.bpm, '')
-  } else {
-    bpmText = props.bpm || ''
-  }
-  if (!bpmText) bpmText = '-'
-
-  const rawKey = typeof props.keyText === 'string' ? props.keyText.trim() : ''
-  let keyText = ''
-  if (!rawKey) {
-    keyText = '-'
-  } else if (rawKey.toLowerCase() === 'o') {
-    keyText = '-'
-  } else {
-    const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-    keyText = getKeyDisplayText(rawKey, style) || '-'
-  }
-
-  return `${bpmText}/${keyText}`
-})
-
-// 左键点击：加入一次节拍点击并重新计算 BPM
 const handleLeftClick = () => {
+  if (!canTap.value) return
   isTapActive.value = true
   const now = Date.now()
 
-  // 如果距离上次点击过久，则从头开始
   const last = tapTimestamps.value[tapTimestamps.value.length - 1]
   if (last && now - last > 2000) {
     tapTimestamps.value = []
@@ -76,26 +83,21 @@ const handleLeftClick = () => {
 
   tapTimestamps.value.push(now)
 
-  // 仅保留最近 8 次点击（约 7 个间隔），更平滑，通常 2~4 秒得到稳定近似
   if (tapTimestamps.value.length > 8) {
     tapTimestamps.value = tapTimestamps.value.slice(-8)
   }
 
   if (tapTimestamps.value.length >= 2) {
-    // 计算相邻时间差（ms）
     const deltas: number[] = []
     for (let i = 1; i < tapTimestamps.value.length; i++) {
       const delta = tapTimestamps.value[i] - tapTimestamps.value[i - 1]
-      // 过滤异常的长间隔，避免拖慢平均值
       if (delta > 50 && delta < 2000) {
         deltas.push(delta)
       }
     }
 
     if (deltas.length > 0) {
-      // 仅取最近的间隔（窗口已限制至 5 taps，最多 4 个间隔）
-      const recent = deltas
-      const avgMs = recent.reduce((a, b) => a + b, 0) / recent.length
+      const avgMs = deltas.reduce((a, b) => a + b, 0) / deltas.length
       const bpm = 60000 / avgMs
       manualBpm.value = Math.max(1, Math.min(999, Number(bpm.toFixed(6))))
       isManual.value = true
@@ -103,8 +105,8 @@ const handleLeftClick = () => {
   }
 }
 
-// 右键点击：恢复系统 BPM
 const handleRightClick = (e: MouseEvent) => {
+  if (!canTap.value) return
   e.preventDefault()
   resetManual()
 }
@@ -120,21 +122,21 @@ const resetManual = () => {
 <template>
   <div
     v-show="waveformShow"
-    ref="bpmDomRef"
     class="unselectable bpm-tap"
-    :class="{ 'is-manual': isManual }"
+    :class="{ 'is-manual': isManual, 'is-tappable': canTap }"
     @click.left="handleLeftClick"
     @contextmenu="handleRightClick"
   >
-    <span class="bpm-tap__value">{{ displayValue }}</span>
+    <span ref="valueDomRef" class="bpm-tap__value">{{ displayValue }}</span>
   </div>
   <bubbleBox
     v-if="!isTapActive"
-    :dom="bpmDomRef || undefined"
-    :title="displayValue ? `BPM ${displayValue}` : 'BPM'"
-    :shortcut="t('player.tapBeat')"
+    :dom="valueDomRef || undefined"
+    :title="bubbleTitle"
+    :shortcut="canTap ? t('player.tapBeat') : ''"
     :max-width="250"
     :interactive="false"
+    :only-when-overflow="true"
   />
 </template>
 
@@ -147,10 +149,12 @@ const resetManual = () => {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 6px;
   font-size: 16px;
   font-weight: bold;
+}
+
+.bpm-tap.is-tappable {
+  cursor: pointer;
 }
 
 .bpm-tap.is-manual {
@@ -159,9 +163,13 @@ const resetManual = () => {
 
 .bpm-tap__value {
   display: block;
-  max-width: 100%;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 </style>

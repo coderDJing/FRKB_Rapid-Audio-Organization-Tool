@@ -24,6 +24,7 @@
     "keyDisplayStyle": "调性显示风格",
     "keyDisplayStyleClassic": "Classic（C#m）",
     "keyDisplayStyleCamelot": "Camelot（1A/1B）",
+    "browserPlayerRightTrackInfo": "浏览器模式播放器右侧曲目信息",
     "showTitleAudioVisualizer": "显示标题栏音频可视化",
     "showIdleAnalysisStatus": "显示闲时分析状态",
     "titleAudioVisualizerModeBars": "标题栏音频可视化：柱状图",

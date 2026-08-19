@@ -7,6 +7,7 @@ import type { SongStructureAnalysis } from '../shared/songStructure'
 import type { SongBeatGridMapV2 } from '../shared/songBeatGridMapV2'
 import type { PlaybackRangeMode, PlaybackRangeSectionMatchMode } from '../shared/playbackRange'
 import type { AnalysisBpmRangePresetId } from '../shared/analysisBpmRange'
+import type { BrowserPlayerRightTrackInfoField } from '../shared/browserPlayerRightTrackInfo'
 
 interface IDir {
   uuid: string
@@ -648,6 +649,7 @@ interface ISettingConfig {
   hiddenPlayControlArea: boolean
   waveformMode?: 'half' | 'full'
   keyDisplayStyle?: 'Classic' | 'Camelot'
+  browserPlayerRightTrackInfo?: BrowserPlayerRightTrackInfoField
   // 是否显示闲时分析状态（默认不显示）
   showIdleAnalysisStatus?: boolean
   // Beat This BPM 候选范围；用户选择的范围决定半速/倍速解释。

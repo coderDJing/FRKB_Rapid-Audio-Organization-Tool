@@ -17,6 +17,7 @@ import type {
   CloudSyncProgressDetails,
   CloudSyncSummary
 } from 'src/types/cloudSync'
+import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '@shared/browserPlayerRightTrackInfo'
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
@@ -406,6 +407,7 @@ export const useRuntimeStore = defineStore('runtime', {
         hiddenPlayControlArea: false,
         waveformMode: 'half',
         keyDisplayStyle: 'Classic',
+        browserPlayerRightTrackInfo: DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
         analysisBpmRange: '70-180',
         autoPlayNextSong: false,
         startPlayPercent: 0,

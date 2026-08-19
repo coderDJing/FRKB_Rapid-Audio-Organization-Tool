@@ -1,5 +1,9 @@
 import type { IPlayerGlobalShortcuts, ISettingConfig } from 'src/types/globals'
 import { normalizeAnalysisBpmRangeId } from '@shared/analysisBpmRange'
+import {
+  DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
+  normalizeBrowserPlayerRightTrackInfo
+} from '@shared/browserPlayerRightTrackInfo'
 
 export const AUDIO_OUTPUT_FOLLOW_SYSTEM_ID = ''
 
@@ -91,5 +95,8 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.keyDisplayStyle === undefined) {
     runtime.setting.keyDisplayStyle = 'Classic'
   }
+  runtime.setting.browserPlayerRightTrackInfo = normalizeBrowserPlayerRightTrackInfo(
+    runtime.setting.browserPlayerRightTrackInfo ?? DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO
+  )
   ensurePlayerGlobalShortcuts(runtime)
 }

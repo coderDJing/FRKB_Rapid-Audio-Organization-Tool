@@ -3,6 +3,7 @@ export const UI_SETTING_KEYS = [
   'hiddenPlayControlArea',
   'waveformMode',
   'keyDisplayStyle',
+  'browserPlayerRightTrackInfo',
   'autoPlayNextSong',
   'startPlayPercent',
   'endPlayPercent',

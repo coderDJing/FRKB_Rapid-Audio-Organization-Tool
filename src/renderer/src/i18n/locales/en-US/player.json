@@ -24,6 +24,7 @@
     "keyDisplayStyle": "Key display style",
     "keyDisplayStyleClassic": "Classic (C#m)",
     "keyDisplayStyleCamelot": "Camelot (1A/1B)",
+    "browserPlayerRightTrackInfo": "Browser mode player right-side track info",
     "showTitleAudioVisualizer": "Show title-bar audio visualizer",
     "showIdleAnalysisStatus": "Show idle analysis status",
     "titleAudioVisualizerModeBars": "Title-bar audio visualizer: bars",

@@ -1,14 +1,14 @@
 import { computed } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
-import {
-  getKeyDisplayText as formatKeyDisplayText,
-  isHarmonicMixCompatible
-} from '@shared/keyDisplay'
+import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { t } from '@renderer/utils/translate'
-import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
-import { summarizeSongBeatGridV2Bpm } from '@shared/songBeatGridMapV2'
+import {
+  getSongListFieldDisplayTitle,
+  getSongListFieldDisplayValue,
+  resolveSongListKeyDisplayStyle
+} from '@renderer/utils/songListFieldDisplay'
 
 export const useSongRowDisplay = (params: {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -19,58 +19,16 @@ export const useSongRowDisplay = (params: {
   const isDesktopRekordboxSong = (song: ISongInfo) =>
     sourceLibraryName() === 'PioneerDeviceLibrary' && song.externalSourceKind === 'desktop'
 
-  const getKeyDisplayText = (value: unknown): string => {
-    const text = typeof value === 'string' ? value.trim() : ''
-    const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-    const display = formatKeyDisplayText(text, style)
-    if (display.toLowerCase() === 'o') {
-      return t('player.keyDisplayNone')
-    }
-    return display
-  }
+  const getFieldDisplayOptions = (song: ISongInfo) => ({
+    keyDisplayStyle: resolveSongListKeyDisplayStyle(runtime.setting.keyDisplayStyle),
+    isDesktopRekordboxSong: isDesktopRekordboxSong(song)
+  })
 
-  const getCellValue = (song: ISongInfo, colKey: string): string | number => {
-    if (colKey === 'key') {
-      if (isDesktopRekordboxSong(song) && !String(song.key || '').trim()) {
-        return t('rekordboxDesktop.analysisRequired')
-      }
-      return getKeyDisplayText(song.key)
-    }
-    if (colKey === 'deletedAtMs') {
-      return formatDeletedAtMs(song.deletedAtMs)
-    }
-    if (colKey === 'originalPlaylistPath') {
-      return getOriginalPlaylistDisplay(song)
-    }
-    const raw = song[colKey as keyof ISongInfo]
-    if (colKey === 'bpm') {
-      const bpmSummary = summarizeSongBeatGridV2Bpm(song.beatGridMap, song.bpm)
-      if (bpmSummary.displayText) {
-        return bpmSummary.displayText
-      }
-      if (song.beatGridStatus === 'no-bpm') {
-        return t('tracks.noBpm')
-      }
-      return isDesktopRekordboxSong(song) ? t('rekordboxDesktop.analysisRequired') : ''
-    }
-    if (colKey === 'energyScore') {
-      const energyScore = Number(raw)
-      if (Number.isFinite(energyScore)) {
-        return Math.max(0, Math.min(100, Math.round(energyScore)))
-      }
-      return ''
-    }
-    if (raw === undefined || raw === null) return ''
-    return raw as string | number
-  }
+  const getCellValue = (song: ISongInfo, colKey: string): string | number =>
+    getSongListFieldDisplayValue(song, colKey, getFieldDisplayOptions(song))
 
-  const getCellTitle = (song: ISongInfo, colKey: string): string => {
-    if (colKey === 'bpm') {
-      const bpmSummary = summarizeSongBeatGridV2Bpm(song.beatGridMap, song.bpm)
-      if (bpmSummary.titleText) return bpmSummary.titleText
-    }
-    return String(getCellValue(song, colKey))
-  }
+  const getCellTitle = (song: ISongInfo, colKey: string): string =>
+    getSongListFieldDisplayTitle(song, colKey, getFieldDisplayOptions(song))
 
   const curatedArtistFavoriteSet = computed(
     () =>
