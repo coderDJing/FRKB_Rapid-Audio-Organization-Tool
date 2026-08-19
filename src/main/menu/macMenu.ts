@@ -14,6 +14,7 @@ import store from '../store'
 import mainWindow from '../window/mainWindow'
 import { openLogFile } from '../log'
 import { openLibraryMergeDialog } from '../ipc/libraryMergeHandlers'
+import { openLibraryRelocateDialog } from '../services/libraryRelocate/openDialog'
 
 type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 
@@ -198,6 +199,13 @@ const buildFullMenu = () =>
           label: tMenu('migration.mergeCuratedLibrary'),
           click: () => {
             openLibraryMergeDialog('curated')
+          }
+        },
+        { type: 'separator' },
+        {
+          label: tMenu('migration.moveLibrary'),
+          click: () => {
+            openLibraryRelocateDialog()
           }
         }
       ]

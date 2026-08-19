@@ -156,7 +156,8 @@ export default defineConfig({
           foundNewVersion: resolve(__dirname, 'src/renderer/', 'foundNewVersion.html'),
           whatsNew: resolve(__dirname, 'src/renderer/', 'whatsNew.html'),
           startup: resolve(__dirname, 'src/renderer/', 'startup.html'),
-          mixtape: resolve(__dirname, 'src/renderer/', 'mixtape.html')
+          mixtape: resolve(__dirname, 'src/renderer/', 'mixtape.html'),
+          libraryRelocate: resolve(__dirname, 'src/renderer/', 'libraryRelocate.html')
         }
       }
     }

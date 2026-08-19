@@ -27,6 +27,7 @@ import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
 import AnalysisRuntimeDownloadOverlay from '@renderer/components/AnalysisRuntimeDownloadOverlay.vue'
 import LibraryMergeDialog from '@renderer/components/LibraryMergeDialog.vue'
+import { startLibraryRelocateFromMenu } from '@renderer/utils/libraryRelocateActions'
 import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
@@ -83,6 +84,9 @@ const openLibraryMergeDialog = () => {
 }
 const openCuratedLibraryMergeDialog = () => {
   curatedLibraryMergeDialogVisible.value = true
+}
+const openLibraryRelocateDialog = () => {
+  void startLibraryRelocateFromMenu()
 }
 const fileOpDialogVisible = ref(false)
 const fileOpContext = ref('')
@@ -760,6 +764,7 @@ onMounted(() => {
   window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
   window.electron.ipcRenderer.on('library-merge:open-dialog', openLibraryMergeDialog)
   window.electron.ipcRenderer.on('curated-library-merge:open-dialog', openCuratedLibraryMergeDialog)
+  window.electron.ipcRenderer.on('library-relocate:open-dialog', openLibraryRelocateDialog)
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.addEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
@@ -814,6 +819,10 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener(
     'curated-library-merge:open-dialog',
     openCuratedLibraryMergeDialog
+  )
+  window.electron.ipcRenderer.removeListener(
+    'library-relocate:open-dialog',
+    openLibraryRelocateDialog
   )
   window.removeEventListener('openDialogFromChild', handleOpenDialogFromChild)
   window.electron.ipcRenderer.removeListener('cloudSync/state', handleCloudSyncState)

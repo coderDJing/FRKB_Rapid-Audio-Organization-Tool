@@ -15,6 +15,8 @@ import {
 import { loadList } from '../fingerprintStore'
 import { ensureLegacyMigration } from '../libraryMigration'
 import { recoverIncompleteLibraryMerges } from '../services/libraryMerge'
+import { handleLibraryRelocateStartup } from '../services/libraryRelocate/startup'
+import libraryRelocateWindow from '../window/libraryRelocateWindow'
 import {
   assertExistingDatabaseSchemaSupported,
   getLibraryDbPath,
@@ -40,6 +42,15 @@ const isConfiguredDevDatabase = (): boolean => {
 
 // 幂等准备数据库并打开主窗口；异常或缺少数据库则进入初始化窗口
 export const prepareAndOpenMainWindow = async (): Promise<void> => {
+  const relocateStartup = await handleLibraryRelocateStartup()
+  if (relocateStartup === 'wait-ui') {
+    startupWindow.closeWindow()
+    return
+  }
+  if (libraryRelocateWindow.instance) {
+    startupWindow.closeWindow()
+  }
+
   // 未配置数据库路径：进入初始化
   if (!store.settingConfig.databaseUrl) {
     startupWindow.setStage('selecting-library')
@@ -137,6 +148,7 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     startupWindow.setStage('opening-main-window')
     databaseSchemaMigrationWindow.close()
     mainWindow.createWindow()
+    libraryRelocateWindow.closeWindow()
     databaseInitWindow.instance?.close()
   } catch (error) {
     if (databaseSchemaMigrationWindow.hasFailedMigration()) return

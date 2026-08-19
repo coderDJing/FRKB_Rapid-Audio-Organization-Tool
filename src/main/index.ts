@@ -19,6 +19,7 @@ import mixtapeWindow from './window/mixtapeWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import startupWindow from './window/startupWindow'
 import databaseSchemaMigrationWindow from './window/databaseSchemaMigrationWindow'
+import libraryRelocateWindow from './window/libraryRelocateWindow'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
 import {
@@ -76,6 +77,7 @@ import { registerMemoryCueHandlers } from './ipc/memoryCueHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import { registerPlaybackForegroundActivityHandlers } from './services/playbackForegroundActivity'
 import { registerLibraryMergeHandlers } from './ipc/libraryMergeHandlers'
+import { registerLibraryRelocateHandlers } from './ipc/libraryRelocateHandlers'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
 import fs from 'fs-extra'
@@ -202,6 +204,7 @@ const attachExternalOpenRendererLifecycle = (): void => {
 
 const ensurePrimaryWindowVisible = async (): Promise<void> => {
   if (focusWindowIfPossible(databaseSchemaMigrationWindow.instance)) return
+  if (focusWindowIfPossible(libraryRelocateWindow.instance)) return
   if (focusWindowIfPossible(databaseInitWindow.instance)) return
   if (focusWindowIfPossible(mainWindow.instance)) return
   await prepareAndOpenMainWindow()
@@ -314,6 +317,7 @@ errorReport.setup()
 registerWhatsNewHandlers()
 registerPlaybackForegroundActivityHandlers()
 registerLibraryMergeHandlers()
+registerLibraryRelocateHandlers()
 registerSettingsHandlers({
   loadFingerprintList: async (mode) => {
     const FingerprintStore = require('./fingerprintStore')

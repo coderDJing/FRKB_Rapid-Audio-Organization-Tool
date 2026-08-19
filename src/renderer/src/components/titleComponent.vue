@@ -180,7 +180,8 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
       [
         { name: 'migration.mergeLibrary', action: 'library-merge' },
         { name: 'migration.mergeCuratedLibrary', action: 'curated-library-merge' }
-      ]
+      ],
+      [{ name: 'migration.moveLibrary', action: 'library-relocate' }]
     ]
   },
   {
@@ -351,6 +352,10 @@ const menuButtonClick = async (item: MenuItem) => {
   }
   if (item.action === 'curated-library-merge') {
     await window.electron.ipcRenderer.invoke('library-merge:run-from-menu', { scope: 'curated' })
+    return
+  }
+  if (item.action === 'library-relocate') {
+    await window.electron.ipcRenderer.invoke('library-relocate:run-from-menu')
     return
   }
   if (item.action === 'download-analysis-runtime') {

@@ -22,6 +22,10 @@ import { registerMainWindowFilesystemHandlers } from './mainWindowFilesystemHand
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { registerSetListHandlers } from '../../ipc/setListHandlers'
 import { isLibraryMergeActive } from '../../services/libraryMerge'
+import {
+  hasLibraryRelocateJournalSync,
+  isLibraryRelocateActive
+} from '../../services/libraryRelocate'
 import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
 import {
@@ -573,6 +577,7 @@ function createWindow() {
   })
 
   ipcMain.handle('reSelectLibrary', async () => {
+    if (isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) return
     databaseInitWindow.createWindow()
     await persistMainWindowLayout()
     mainWindow?.close()

@@ -20,6 +20,7 @@ import {
   LibraryMergeInspectCancelledError
 } from '../services/libraryMerge/inspectOffThread'
 import { acquireLibraryMergeMutationLock } from '../services/libraryMerge/runtime'
+import { hasLibraryRelocateJournalSync, isLibraryRelocateActive } from '../services/libraryRelocate'
 
 let activeInspectAbort: AbortController | null = null
 
@@ -82,6 +83,9 @@ const runMerge = async (
   cancelCancellableTasks: boolean,
   duplicatePlaylistPolicy: LibraryMergeDuplicatePlaylistPolicy
 ) => {
+  if (isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) {
+    throw new LibraryMergeError('TARGET_NOT_READY', '正在移动 FRKB 库，暂时不能合并')
+  }
   const targetRoot = getTargetRoot()
   if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前 FRKB 库尚未打开')
   const releaseMutationLock = await acquireLibraryMergeMutationLock(mainWindow.instance, {
@@ -131,7 +135,7 @@ const selectSourceRoot = async (): Promise<string | null> => {
 }
 
 export function openLibraryMergeDialog(scope: LibraryMergeScope = 'full'): void {
-  if (isLibraryMergeActive()) return
+  if (isLibraryMergeActive() || isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) return
   const channel =
     scope === 'curated' ? 'curated-library-merge:open-dialog' : 'library-merge:open-dialog'
   mainWindow.instance?.webContents.send(channel)
