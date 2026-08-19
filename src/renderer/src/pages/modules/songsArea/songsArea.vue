@@ -290,7 +290,6 @@ const { loadingShow, isRequesting, openSongList, invalidatePendingSongListLoads 
 })
 
 const {
-  songListAutoAnalyzeEnabled,
   playlistAnalysisActionVisible,
   playlistAnalysisActionPending,
   handleUserOpenedSongList,
@@ -889,7 +888,6 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
                   :source-library-name="currentSongListSourceLibraryName"
                   :source-song-list-u-u-i-d="songsAreaState.songListUUID"
                   :source-pane-key="props.pane"
-                  :enable-key-analysis-queue="songListAutoAnalyzeEnabled"
                   :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
                   :external-scroll-top="externalScrollTop"
                   :external-viewport-height="externalViewportHeight"

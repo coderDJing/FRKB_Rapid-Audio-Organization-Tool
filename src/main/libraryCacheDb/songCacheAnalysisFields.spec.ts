@@ -79,6 +79,15 @@ describe('stripSongCoreAnalysisFields', () => {
     })
     expect(source.beatGridMap).toBeDefined()
   })
+
+  it('可以只清段落并保留已有网格', () => {
+    const source = createSongInfo()
+    const result = stripSongCoreAnalysisFields(source, { structure: true })
+    expect(result).not.toHaveProperty('songStructure')
+    expect(result.beatGridMap).toEqual(source.beatGridMap)
+    expect(result.key).toBe('8A')
+    expect(result.energyScore).toBe(74)
+  })
 })
 
 describe('normalizeSongCacheInfoForStorage', () => {

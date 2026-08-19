@@ -25,6 +25,10 @@ import {
 } from '../../../shared/songBeatGridMapV2'
 import { getBeatThisRuntimeAvailabilitySnapshot } from '../../workers/beatThisRuntime'
 import {
+  resolveInitialAnalysisNeeds,
+  shouldSkipStructureWithoutPreparedGrid
+} from './analysisTargets'
+import {
   resolveAudioFirstBeatTimelineMs,
   resolveAudioTimeBasisOffsetMsForFile
 } from '../audioTimeBasisOffset'
@@ -568,7 +572,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {
     const filePath = job.filePath
-    const forceAnalysis = job.forceAnalysis === true
+    const initialNeeds = resolveInitialAnalysisNeeds(job)
+    const forceKey = initialNeeds.forceKey
+    const forceBpm = initialNeeds.forceBpm
+    const forceWaveform = initialNeeds.forceWaveform
+    const forceEnergy = initialNeeds.forceEnergy
+    const forceStructure = initialNeeds.forceStructure
     job.cachedUnifiedDisplayWaveformData = undefined
     job.cachedBeatGridMap = undefined
     let stat: { size: number; mtimeMs: number }
@@ -582,7 +591,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     let needsBpm = false
     let needsWaveform = false
     let needsEnergy = false
-    let needsStructure = job.includeStructure === true
+    let needsStructure = false
     const buildCurrentPrepareDetails = () =>
       buildPrepareDetails({
         listRootResolved,
@@ -629,42 +638,46 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     job.fileSize = stat.size
     job.fileMtimeMs = stat.mtimeMs
 
-    needsKey = true
-    needsBpm = true
-    needsWaveform = true
-    needsEnergy = true
+    needsKey = initialNeeds.needsKey
+    needsBpm = initialNeeds.needsBpm
+    needsWaveform = initialNeeds.needsWaveform
+    needsEnergy = initialNeeds.needsEnergy
+    needsStructure = initialNeeds.needsStructure
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       doneEntryHit = true
       const doneGrid = resolveCanonicalSongBeatGridV2(done)
       const hasDoneNoBpm = doneGrid.kind === 'no-bpm'
       const hasDoneCompleteGrid = doneGrid.kind === 'grid'
-      if (!forceAnalysis && hasUsableKeyAnalysis({ key: done.keyText })) {
+      if (!forceKey && hasUsableKeyAnalysis({ key: done.keyText })) {
         needsKey = false
       }
       if (hasDoneCompleteGrid) {
         job.cachedBpm = doneGrid.bpm
         job.cachedBeatGridMap = doneGrid.beatGridMap
-        if (!forceAnalysis) needsBpm = false
-      } else if (!forceAnalysis && hasDoneNoBpm) {
+        if (!forceBpm) needsBpm = false
+      } else if (!forceBpm && hasDoneNoBpm) {
         needsBpm = false
         needsStructure = false
       }
-      if (!forceAnalysis && done.hasWaveform) {
+      if (!forceWaveform && done.hasWaveform) {
         needsWaveform = false
       }
-      if (!forceAnalysis && hasUsableSongEnergyAnalysis(done)) {
+      if (!forceEnergy && hasUsableSongEnergyAnalysis(done)) {
         energyCacheHit = true
         needsEnergy = false
       }
       if (
-        !forceAnalysis &&
+        !forceStructure &&
         hasDoneCompleteGrid &&
         hasUsableSongStructureAnalysis({
           beatGridMap: doneGrid.beatGridMap,
           songStructure: done.songStructure
         })
       ) {
+        needsStructure = false
+      }
+      if (needsStructure && !needsBpm && !hasDoneCompleteGrid) {
         needsStructure = false
       }
       if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy && !needsStructure) {
@@ -693,7 +706,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const hasNoBpm = cachedGrid.kind === 'no-bpm'
         const hasCompleteGrid = cachedGrid.kind === 'grid'
         const cachedEnergy = resolveUsableEnergy(cached.info)
-        if (!forceAnalysis && cachedEnergy) {
+        if (!forceEnergy && cachedEnergy) {
           energyCacheHit = true
           needsEnergy = false
         }
@@ -716,25 +729,28 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             hasWaveform: false
           })
         }
-        if (!forceAnalysis && needsKey && hasKey) {
+        if (!forceKey && needsKey && hasKey) {
           needsKey = false
         }
         if (hasCompleteGrid) {
           job.cachedBpm = cachedGrid.bpm
           job.cachedBeatGridMap = cachedGrid.beatGridMap
-          if (!forceAnalysis) needsBpm = false
-        } else if (!forceAnalysis && needsBpm && hasNoBpm) {
+          if (!forceBpm) needsBpm = false
+        } else if (!forceBpm && needsBpm && hasNoBpm) {
           needsBpm = false
           needsStructure = false
         }
         if (
-          !forceAnalysis &&
+          !forceStructure &&
           hasCompleteGrid &&
           hasUsableSongStructureAnalysis({
             beatGridMap: cachedGrid.beatGridMap,
             songStructure: cached.info?.songStructure
           })
         ) {
+          needsStructure = false
+        }
+        if (needsStructure && !needsBpm && !hasCompleteGrid) {
           needsStructure = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
@@ -759,8 +775,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             songStructure: existingDone?.songStructure,
             hasWaveform: true
           })
-          if (!forceAnalysis) needsWaveform = false
-          if (!forceAnalysis && (needsEnergy || needsStructure)) {
+          if (!forceWaveform) needsWaveform = false
+          if (!forceWaveform && (needsEnergy || needsStructure)) {
             const cachedUnifiedWaveform = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
               listRoot,
               filePath,
@@ -797,7 +813,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           const hasNoBpm = cachedGrid.kind === 'no-bpm'
           const hasCompleteGrid = cachedGrid.kind === 'grid'
           const cachedEnergy = resolveUsableEnergy(cached.info)
-          if (!forceAnalysis && cachedEnergy) {
+          if (!forceEnergy && cachedEnergy) {
             energyCacheHit = true
             needsEnergy = false
           }
@@ -820,19 +836,19 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               hasWaveform: cached.hasWaveform
             })
           }
-          if (!forceAnalysis && needsKey && hasKey) {
+          if (!forceKey && needsKey && hasKey) {
             needsKey = false
           }
           if (hasCompleteGrid) {
             job.cachedBpm = cachedGrid.bpm
             job.cachedBeatGridMap = cachedGrid.beatGridMap
-            if (!forceAnalysis) needsBpm = false
-          } else if (!forceAnalysis && needsBpm && hasNoBpm) {
+            if (!forceBpm) needsBpm = false
+          } else if (!forceBpm && needsBpm && hasNoBpm) {
             needsBpm = false
             needsStructure = false
           }
           if (
-            !forceAnalysis &&
+            !forceStructure &&
             hasCompleteGrid &&
             hasUsableSongStructureAnalysis({
               beatGridMap: cachedGrid.beatGridMap,
@@ -841,7 +857,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           ) {
             needsStructure = false
           }
-          if (!forceAnalysis && cached.hasWaveform && !needsStructure) {
+          if (needsStructure && !needsBpm && !hasCompleteGrid) {
+            needsStructure = false
+          }
+          if (!forceWaveform && cached.hasWaveform && !needsStructure) {
             waveformCacheHit = true
             needsWaveform = false
           }
@@ -874,6 +893,19 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       needsStructure = false
     }
 
+    const applyStructureGridGuard = () => {
+      if (
+        shouldSkipStructureWithoutPreparedGrid(
+          needsStructure,
+          needsBpm,
+          Boolean(job.cachedBeatGridMap)
+        )
+      ) {
+        needsStructure = false
+      }
+    }
+
+    applyStructureGridGuard()
     if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy && !needsStructure) {
       applyJobNeeds()
       job.prepareReason = job.waveformOnly
@@ -889,6 +921,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     if (needsBpm && beatThisRuntimeAvailable === false) {
       needsBpm = false
     }
+    applyStructureGridGuard()
     if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy && !needsStructure) {
       applyJobNeeds()
       job.prepareReason = 'skip-runtime-unavailable'

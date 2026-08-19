@@ -1,9 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, type Ref } from 'vue'
 import {
   collectMissingAnalysisFilesFromSongs,
-  promptAnalysisBpmRangeForManualBatch,
-  promptAndQueueManualKeyAnalysisBatch,
-  queueManualKeyAnalysisBatch
+  promptAndQueueManualKeyAnalysisBatch
 } from '@renderer/utils/manualKeyAnalysis'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
@@ -28,6 +26,13 @@ type SongsAreaAnalysisState = {
 type QueueManualBatchResult = {
   batchId?: string
   queued?: number
+  canceled?: boolean
+  empty?: boolean
+  aborted?: boolean
+}
+
+type PromptOwnedManualBatch = {
+  songListUUID: string
 }
 
 type ManualBatchEndPayload = {
@@ -52,12 +57,8 @@ export function usePlaylistAnalysisPrompt({
   songsAreaState: SongsAreaAnalysisState
   isMixtapeListView: Ref<boolean>
 }) {
-  const autoAnalyzeEnabled = ref(false)
   const manualAnalyzePending = ref(false)
-  const promptOwnedManualBatchSongListUUIDs = new Map<string, string>()
-  const songListAutoAnalyzeEnabled = computed(() =>
-    isMixtapeListView.value ? true : autoAnalyzeEnabled.value
-  )
+  const promptOwnedManualBatches = new Map<string, PromptOwnedManualBatch>()
   const missingAnalysisFiles = computed(() =>
     collectMissingAnalysisFilesFromSongs(
       songsAreaState.songInfoArr,
@@ -126,19 +127,18 @@ export function usePlaylistAnalysisPrompt({
   const rememberManualBatch = (result: QueueManualBatchResult, songListUUID: string) => {
     const batchId = String(result?.batchId || '').trim()
     if (!batchId || !songListUUID) return
-    promptOwnedManualBatchSongListUUIDs.set(batchId, songListUUID)
+    promptOwnedManualBatches.set(batchId, { songListUUID })
   }
 
   const handleManualBatchEnd = (_event: unknown, payload?: ManualBatchEndPayload) => {
     const batchId = String(payload?.batchId || '').trim()
     if (!batchId) return
-    const songListUUID = promptOwnedManualBatchSongListUUIDs.get(batchId)
-    if (!songListUUID) return
-    promptOwnedManualBatchSongListUUIDs.delete(batchId)
-    if (!payload?.canceled) return
-    if (songsAreaState.songListUUID !== songListUUID) return
-    autoAnalyzeEnabled.value = false
-    if (missingAnalysisFiles.value.length) markDismissedSongList(songListUUID)
+    const owned = promptOwnedManualBatches.get(batchId)
+    if (!owned) return
+    promptOwnedManualBatches.delete(batchId)
+    if (songsAreaState.songListUUID !== owned.songListUUID) return
+    if (missingAnalysisFiles.value.length) markDismissedSongList(owned.songListUUID)
+    else clearDismissedSongList(owned.songListUUID)
   }
 
   const handleSongWaveformUpdated = (_event: unknown, payload?: { filePath?: string }) => {
@@ -156,7 +156,7 @@ export function usePlaylistAnalysisPrompt({
   })
 
   onUnmounted(() => {
-    promptOwnedManualBatchSongListUUIDs.clear()
+    promptOwnedManualBatches.clear()
     window.electron.ipcRenderer.removeListener(
       'key-analysis:manual-batch-end',
       handleManualBatchEnd
@@ -168,7 +168,6 @@ export function usePlaylistAnalysisPrompt({
     songListUUID: string,
     options?: OpenSongListAnalysisPromptOptions
   ) => {
-    autoAnalyzeEnabled.value = false
     if (shouldSkipAnalysisPrompt(songListUUID)) return
 
     const missingFilesForEvaluation = missingAnalysisFiles.value
@@ -178,8 +177,7 @@ export function usePlaylistAnalysisPrompt({
     }
     const promptMissingResult = await filterManualBatchPendingFiles(missingFilesForEvaluation)
     const missingFilesToPrompt = promptMissingResult.files
-    const missingCount = missingFilesToPrompt.length
-    if (!missingCount) {
+    if (!missingFilesToPrompt.length) {
       return
     }
     if (options?.forceAnalysisPrompt) {
@@ -188,28 +186,27 @@ export function usePlaylistAnalysisPrompt({
       return
     }
 
-    const analysisBpmRangeId = await promptAnalysisBpmRangeForManualBatch(missingCount)
+    const result = (await promptAndQueueManualKeyAnalysisBatch(
+      missingFilesToPrompt,
+      'tracks.analyzingPlaylist',
+      {
+        songs: songsAreaState.songInfoArr,
+        missingWaveformFilePaths: songsAreaState.missingWaveformFilePaths,
+        shouldContinue: () => songsAreaState.songListUUID === songListUUID,
+        filterQueueFiles: async (files) => (await filterManualBatchPendingFiles(files)).files
+      }
+    )) as QueueManualBatchResult
 
-    if (songsAreaState.songListUUID !== songListUUID) {
-      return
-    }
-    if (!analysisBpmRangeId) {
+    if (result?.canceled) {
       const stillMissingFiles = missingAnalysisFiles.value
       if (stillMissingFiles.length) markDismissedSongList(songListUUID)
       return
     }
-
-    const missingFiles = missingAnalysisFiles.value
-    const confirmMissingResult = await filterManualBatchPendingFiles(missingFiles)
-    if (!confirmMissingResult.files.length) return
+    if (result?.aborted || result?.empty || !result?.batchId) {
+      return
+    }
 
     clearDismissedSongList(songListUUID)
-    autoAnalyzeEnabled.value = true
-    const result = (await queueManualKeyAnalysisBatch(
-      confirmMissingResult.files,
-      'tracks.analyzingPlaylist',
-      analysisBpmRangeId
-    )) as QueueManualBatchResult
     rememberManualBatch(result, songListUUID)
   }
 
@@ -234,23 +231,26 @@ export function usePlaylistAnalysisPrompt({
     }
 
     manualAnalyzePending.value = true
-    autoAnalyzeEnabled.value = true
     clearDismissedSongList(songListUUID)
     try {
       const pendingResult = await filterManualBatchPendingFiles(missingFiles)
       if (!pendingResult.files.length) return
       const result = (await promptAndQueueManualKeyAnalysisBatch(
         pendingResult.files,
-        'tracks.analyzingPlaylist'
+        'tracks.analyzingPlaylist',
+        {
+          songs: songsAreaState.songInfoArr,
+          missingWaveformFilePaths: songsAreaState.missingWaveformFilePaths,
+          shouldContinue: () => songsAreaState.songListUUID === songListUUID,
+          filterQueueFiles: async (files) => (await filterManualBatchPendingFiles(files)).files
+        }
       )) as QueueManualBatchResult
-      if (!result.batchId) {
-        autoAnalyzeEnabled.value = false
+      if (result.canceled || result.empty || result.aborted || !result.batchId) {
         markDismissedSongList(songListUUID)
         return
       }
       rememberManualBatch(result, songListUUID)
     } catch (error) {
-      autoAnalyzeEnabled.value = false
       markDismissedSongList(songListUUID)
       console.error('queue playlist analysis failed', error)
     } finally {
@@ -259,7 +259,6 @@ export function usePlaylistAnalysisPrompt({
   }
 
   return {
-    songListAutoAnalyzeEnabled,
     playlistAnalysisActionVisible,
     playlistAnalysisActionPending: manualAnalyzePending,
     handleUserOpenedSongList,

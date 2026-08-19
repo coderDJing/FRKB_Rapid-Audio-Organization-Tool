@@ -47,6 +47,20 @@ let settingConfig: ISettingConfig = {
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
   browserPlayerRightTrackInfo: DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   analysisBpmRange: '70-180',
+  trackAnalysisSelection: {
+    key: true,
+    beatGrid: true,
+    waveform: true,
+    energy: true,
+    structure: true
+  },
+  trackReanalysisSelection: {
+    key: true,
+    beatGrid: true,
+    waveform: true,
+    energy: true,
+    structure: true
+  },
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,

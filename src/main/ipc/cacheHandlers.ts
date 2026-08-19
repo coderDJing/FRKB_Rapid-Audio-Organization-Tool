@@ -12,6 +12,13 @@ import { registerMixtapeRawWaveformHandlers } from './mixtapeRawWaveformHandlers
 import mainWindow from '../window/mainWindow'
 import { enqueueKeyAnalysisList, enqueueManualKeyAnalysisBatch } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
+import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
+import {
+  hasAnyTrackReanalysisUserSelection,
+  isFullTrackReanalysisPlan,
+  normalizeTrackReanalysisSelection,
+  resolveTrackReanalysisPlan
+} from '../../shared/trackReanalysisSelection'
 import type { UnifiedDisplayWaveformDetailData } from '../../shared/unifiedDisplayWaveform'
 import type {
   WaveformGlobalOverviewData,
@@ -21,6 +28,27 @@ import {
   assertLibraryMergeMutationAllowed,
   isLibraryMergeMutationLocked
 } from '../services/libraryMerge/runtime'
+
+type TrackCacheClearBatchPayload = {
+  filePaths?: string[]
+  selection?: unknown
+  analysisBpmRangeId?: string
+}
+
+const normalizeClearBatchFilePaths = (payload: unknown) => {
+  const rawPaths = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as TrackCacheClearBatchPayload).filePaths
+      : []
+  return Array.from(
+    new Set(
+      (Array.isArray(rawPaths) ? rawPaths : [])
+        .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+        .map((p) => p.trim())
+    )
+  )
+}
 
 type PlayerWaveformCacheItem = {
   filePath: string
@@ -95,7 +123,8 @@ export function registerCacheHandlers() {
       source: 'foreground',
       preemptible: true,
       category: 'waveform-preview',
-      waveformOnly: isInRecordingLibraryAbsPath(filePath)
+      waveformOnly: true,
+      includeStructure: false
     })
   }
 
@@ -128,7 +157,7 @@ export function registerCacheHandlers() {
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         return data
       }
-      if (options.queueIfMissing !== false) {
+      if (options.queueIfMissing === true) {
         await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         queueSurfaceAnalysis(filePath, priority)
@@ -168,7 +197,7 @@ export function registerCacheHandlers() {
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         return data
       }
-      if (options.queueIfMissing !== false) {
+      if (options.queueIfMissing === true) {
         await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         queueSurfaceAnalysis(filePath, priority)
@@ -179,66 +208,80 @@ export function registerCacheHandlers() {
     }
   }
 
-  ipcMain.handle('track:cache:clear:batch', async (_e, filePaths: string[]) => {
-    assertLibraryMergeMutationAllowed()
-    const files = Array.from(
-      new Set(
-        Array.isArray(filePaths)
-          ? filePaths
-              .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
-              .map((p) => p.trim())
-          : []
+  ipcMain.handle(
+    'track:cache:clear:batch',
+    async (_e, payload: string[] | TrackCacheClearBatchPayload) => {
+      assertLibraryMergeMutationAllowed()
+      const files = normalizeClearBatchFilePaths(payload)
+      const selection = normalizeTrackReanalysisSelection(
+        Array.isArray(payload) ? undefined : payload?.selection
       )
-    )
-    if (files.length === 0) return { cleared: 0 }
+      const plan = resolveTrackReanalysisPlan(selection)
+      if (files.length === 0 || !hasAnyTrackReanalysisUserSelection(plan)) {
+        return { cleared: 0, queued: 0, skipped: 0, skippedItems: [] }
+      }
 
-    const progressId = `reanalyze_${Date.now()}`
-    const sendProgress = (now: number, dismiss = false) => {
-      mainWindow.instance?.webContents.send('progressSet', {
-        id: progressId,
-        titleKey: 'tracks.clearingOldAnalysis',
-        now,
-        total: files.length,
-        dismiss
-      })
-    }
-    sendProgress(0)
+      const progressId = `reanalyze_${Date.now()}`
+      const sendProgress = (now: number, dismiss = false) => {
+        mainWindow.instance?.webContents.send('progressSet', {
+          id: progressId,
+          titleKey: 'tracks.clearingOldAnalysis',
+          now,
+          total: files.length,
+          dismiss
+        })
+      }
+      sendProgress(0)
 
-    const clearedFiles: string[] = []
-    const skippedItems: Array<{ filePath: string; reason: string }> = []
-    for (let i = 0; i < files.length; i++) {
-      const filePath = files[i]
-      if (isInRecordingLibraryAbsPath(filePath)) {
-        skippedItems.push({ filePath, reason: 'recording-library-unsupported' })
-      } else {
-        const result = await clearTrackCoreAnalysisForReanalysis(filePath)
-        if (result.status === 'cleared') {
-          clearedFiles.push(result.filePath)
+      const clearedFiles: string[] = []
+      const skippedItems: Array<{ filePath: string; reason: string }> = []
+      for (let i = 0; i < files.length; i++) {
+        const filePath = files[i]
+        if (isInRecordingLibraryAbsPath(filePath)) {
+          skippedItems.push({ filePath, reason: 'recording-library-unsupported' })
         } else {
-          skippedItems.push({ filePath: result.filePath, reason: result.reason })
+          const result = await clearTrackCoreAnalysisForReanalysis(filePath, plan)
+          if (result.status === 'cleared') {
+            clearedFiles.push(result.filePath)
+          } else {
+            skippedItems.push({ filePath: result.filePath, reason: result.reason })
+          }
+        }
+        const processed = i + 1
+        if (processed % 10 === 0 || processed === files.length) {
+          sendProgress(processed)
         }
       }
-      const processed = i + 1
-      if (processed % 10 === 0 || processed === files.length) {
-        sendProgress(processed)
+
+      if (clearedFiles.length > 0) {
+        enqueueManualKeyAnalysisBatch(clearedFiles, {
+          titleKey: 'tracks.reanalyzingTracks',
+          forceAnalysis: isFullTrackReanalysisPlan(plan),
+          analysisTargets: {
+            key: plan.key,
+            bpm: plan.beatGrid,
+            waveform: plan.waveform,
+            energy: plan.energy,
+            structure: plan.structure
+          },
+          includeStructure: plan.structure,
+          analysisBpmRangeId: plan.beatGrid
+            ? normalizeAnalysisBpmRangeId(
+                Array.isArray(payload) ? undefined : payload?.analysisBpmRangeId
+              )
+            : undefined
+        })
+      }
+
+      sendProgress(files.length, true)
+      return {
+        cleared: clearedFiles.length,
+        queued: clearedFiles.length,
+        skipped: skippedItems.length,
+        skippedItems
       }
     }
-
-    if (clearedFiles.length > 0) {
-      enqueueManualKeyAnalysisBatch(clearedFiles, {
-        titleKey: 'tracks.reanalyzingTracks',
-        forceAnalysis: true
-      })
-    }
-
-    sendProgress(files.length, true)
-    return {
-      cleared: clearedFiles.length,
-      queued: clearedFiles.length,
-      skipped: skippedItems.length,
-      skippedItems
-    }
-  })
+  )
 
   ipcMain.handle('getLibrary', async () => {
     return await getLibrary()
@@ -292,12 +335,6 @@ export function registerCacheHandlers() {
           return { status: 'ready' as const, data }
         }
         await clearLegacyLargeWaveformCaches(listRoot, filePath)
-        enqueueKeyAnalysisList([filePath], 'medium', {
-          source: 'foreground',
-          preemptible: true,
-          category: 'waveform-preview',
-          waveformOnly: isInRecordingLibraryAbsPath(filePath)
-        })
         return { status: 'missing' as const, data: null }
       } catch {
         await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)

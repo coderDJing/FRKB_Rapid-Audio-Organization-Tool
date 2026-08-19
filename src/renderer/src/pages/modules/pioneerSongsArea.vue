@@ -728,7 +728,6 @@ onUnmounted(() => {
         :reorder-mode="canReorderDesktopTracks ? 'playlist' : 'none'"
         song-list-root-dir="library/PioneerDeviceLibrary"
         :enable-cover-thumbnails="true"
-        :enable-key-analysis-queue="false"
         @song-click="handleSongClick"
         @song-contextmenu="handleSongContextMenu"
         @song-dblclick="handleSongDblClick"

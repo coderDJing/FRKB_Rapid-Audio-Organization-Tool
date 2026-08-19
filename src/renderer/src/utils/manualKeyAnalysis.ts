@@ -1,4 +1,5 @@
 import libraryUtils from '@renderer/utils/libraryUtils'
+import confirm from '@renderer/components/confirmDialog'
 import {
   collectMissingAnalysisFilesFromSongs,
   type MissingAnalysisOptions
@@ -9,8 +10,10 @@ import {
   normalizeAnalysisBpmRangeId,
   type AnalysisBpmRangePresetId
 } from '@shared/analysisBpmRange'
+import { t } from '@renderer/utils/translate'
 
 export {
+  collectFilesNeedingSelectedAnalysis,
   collectMissingAnalysisFilesFromSongs,
   hasRequiredAnalysis,
   resolveMissingAnalysisReasons,
@@ -63,24 +66,100 @@ export const scanSongListsForMissingAnalysisFiles = async (
 export const queueManualKeyAnalysisBatch = async (
   filePaths: string[],
   titleKey: string,
-  analysisBpmRangeId: AnalysisBpmRangePresetId
+  analysisBpmRangeId: AnalysisBpmRangePresetId,
+  options?: {
+    includeStructure?: boolean
+    analysisTargets?: {
+      key?: boolean
+      bpm?: boolean
+      waveform?: boolean
+      energy?: boolean
+      structure?: boolean
+    }
+  }
 ) =>
   await window.electron.ipcRenderer.invoke('key-analysis:queue-manual-batch', {
     analysisAuthority: 'frkb',
     filePaths,
     titleKey,
-    analysisBpmRangeId
+    analysisBpmRangeId,
+    includeStructure: options?.includeStructure,
+    analysisTargets: options?.analysisTargets
   })
 
 export const promptAndQueueManualKeyAnalysisBatch = async (
   filePaths: string[],
-  titleKey: string
+  titleKey: string,
+  options?: {
+    songs?: Array<
+      | {
+          filePath?: unknown
+          beatGridStatus?: unknown
+          beatGridMap?: unknown
+          key?: unknown
+          energyScore?: unknown
+          songStructure?: unknown
+          fileMissing?: boolean
+        }
+      | null
+      | undefined
+    >
+    missingWaveformFilePaths?: readonly string[]
+    shouldContinue?: () => boolean
+    filterQueueFiles?: (files: string[]) => Promise<string[]> | string[]
+  }
 ) => {
-  const selectedRangeId = await promptAnalysisBpmRangeForManualBatch(filePaths.length)
-  if (!selectedRangeId) {
+  const { promptTrackAnalysisSelection, filterFilesForSelectedMissingAnalysis } =
+    await import('@renderer/utils/trackReanalysis')
+  const prompted = await promptTrackAnalysisSelection({
+    filePaths,
+    songs: options?.songs,
+    purpose: 'missing'
+  })
+  if (!prompted) {
     return { batchId: '', queued: 0, canceled: true }
   }
-  return await queueManualKeyAnalysisBatch(filePaths, titleKey, selectedRangeId)
+  if (options?.shouldContinue && !options.shouldContinue()) {
+    return { batchId: '', queued: 0, canceled: false, aborted: true }
+  }
+  const files = filterFilesForSelectedMissingAnalysis(
+    prompted.files,
+    prompted.selection,
+    options?.songs,
+    options?.missingWaveformFilePaths
+  )
+  if (!files.length) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('tracks.noMissingAnalysisTracks')],
+      confirmShow: false
+    })
+    return { batchId: '', queued: 0, canceled: false, empty: true }
+  }
+  const queueFiles = options?.filterQueueFiles ? await options.filterQueueFiles(files) : files
+  if (!queueFiles.length) {
+    return { batchId: '', queued: 0, canceled: false, empty: true }
+  }
+  if (options?.shouldContinue && !options.shouldContinue()) {
+    return { batchId: '', queued: 0, canceled: false, aborted: true }
+  }
+  const rangeId = prompted.selection.beatGrid
+    ? normalizeAnalysisBpmRangeId(prompted.analysisBpmRangeId)
+    : normalizeAnalysisBpmRangeId(useRuntimeStore().setting.analysisBpmRange)
+  const queued = await queueManualKeyAnalysisBatch(queueFiles, titleKey, rangeId, {
+    includeStructure: prompted.selection.structure,
+    analysisTargets: {
+      key: prompted.selection.key,
+      bpm: prompted.selection.beatGrid,
+      waveform: prompted.selection.waveform,
+      energy: prompted.selection.energy,
+      structure: prompted.selection.structure
+    }
+  })
+  return {
+    ...queued,
+    selection: prompted.selection
+  }
 }
 
 export const promptAnalysisBpmRangeForManualBatch = async (count: number) => {

@@ -737,34 +737,56 @@ export async function updateSongCacheKey(
  * 清除歌曲的分析数据（Key、节拍网格、能量、段落等），用于重新分析。
  * 保留用户数据：playlistTrackNumber（序号）、hotCues、memoryCues、mixOrder 等。
  */
-export function stripSongCoreAnalysisFields(info: ISongInfo): ISongInfo {
+export type SongCoreAnalysisClearFields = {
+  key?: boolean
+  beatGrid?: boolean
+  energy?: boolean
+  structure?: boolean
+}
+
+export function stripSongCoreAnalysisFields(
+  info: ISongInfo,
+  fields?: SongCoreAnalysisClearFields
+): ISongInfo {
+  const clearAll = !fields
+  const shouldClear = (name: keyof SongCoreAnalysisClearFields) =>
+    clearAll || fields?.[name] === true
   const next = { ...info }
-  delete next.key
-  delete next.keyAnalysisAlgorithmVersion
-  delete next.bpm
-  delete next.firstBeatMs
-  delete next.downbeatBeatOffset
-  delete (next as Record<string, unknown>).barBeatOffset
-  delete next.beatGridSource
-  delete next.beatGridStatus
-  delete next.beatGridMap
-  delete next.beatGridAlgorithmVersion
-  delete next.timeBasisOffsetMs
-  delete next.timeBasisOffsetAlgorithmVersion
-  delete next.energyScore
-  delete next.energyAlgorithmVersion
-  delete next.songStructure
+  if (shouldClear('key')) {
+    delete next.key
+    delete next.keyAnalysisAlgorithmVersion
+  }
+  if (shouldClear('beatGrid')) {
+    delete next.bpm
+    delete next.firstBeatMs
+    delete next.downbeatBeatOffset
+    delete (next as Record<string, unknown>).barBeatOffset
+    delete next.beatGridSource
+    delete next.beatGridStatus
+    delete next.beatGridMap
+    delete next.beatGridAlgorithmVersion
+    delete next.timeBasisOffsetMs
+    delete next.timeBasisOffsetAlgorithmVersion
+  }
+  if (shouldClear('energy')) {
+    delete next.energyScore
+    delete next.energyAlgorithmVersion
+  }
+  if (shouldClear('structure')) {
+    delete next.songStructure
+  }
   return next
 }
 
 export async function clearSongCacheAnalysisFields(
   listRoot: string,
-  filePath: string
+  filePath: string,
+  fields?: SongCoreAnalysisClearFields
 ): Promise<boolean> {
   try {
     const entry = await loadSongCacheEntry(listRoot, filePath)
     if (!entry) return false
-    entry.info = stripSongCoreAnalysisFields(entry.info)
+    entry.info = stripSongCoreAnalysisFields(entry.info, fields)
     return await upsertSongCacheEntry(listRoot, filePath, entry)
   } catch (error) {
     log.error('[sqlite] song cache analysis fields clear failed', error)

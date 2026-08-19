@@ -6,6 +6,7 @@ import type {
   KeyAnalysisSource
 } from './types'
 import type { AnalysisBpmRangePresetId } from '../../../shared/analysisBpmRange'
+import { mergeKeyAnalysisTargets } from './analysisTargets'
 
 export type KeyAnalysisEnqueueOptions = KeyAnalysisRequestFlags & {
   urgent?: boolean
@@ -68,6 +69,9 @@ export const applyKeyAnalysisRequestFlags = (
   flags: KeyAnalysisRequestFlags
 ) => {
   if (flags.forceAnalysis === true) job.forceAnalysis = true
+  if (flags.analysisTargets) {
+    job.analysisTargets = mergeKeyAnalysisTargets(job.analysisTargets, flags.analysisTargets)
+  }
 }
 
 export const normalizeManualBatchIds = (options: {

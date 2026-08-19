@@ -67,7 +67,6 @@ export function useWaveformPreview(params: {
   actualVisibleEndIndex: Ref<number>
   getAnalysisProgress?: (filePath: string) => number | null
   isSongNeedsAnalysis?: (filePath: string) => boolean
-  queueMissingAnalysis?: Ref<boolean>
 }) {
   const {
     visibleSongsWithIndex,
@@ -80,8 +79,7 @@ export function useWaveformPreview(params: {
     actualVisibleStartIndex,
     actualVisibleEndIndex,
     getAnalysisProgress,
-    isSongNeedsAnalysis,
-    queueMissingAnalysis
+    isSongNeedsAnalysis
   } = params
   const runtime = useRuntimeStore()
   const waveformColumn = computed(() =>
@@ -105,7 +103,6 @@ export function useWaveformPreview(params: {
   const rgbMetricsCache = markRaw(new Map<string, SongListWaveformRgbMetricsCacheEntry>())
   const waveformDataVersionMap = markRaw(new Map<string, number>())
   const inflight = new Set<string>()
-  const queuedMissing = new Set<string>()
   const MAX_CACHE_ENTRIES = 200
   let loadTimer: ReturnType<typeof setTimeout> | null = null
   let drawRaf = 0
@@ -121,7 +118,6 @@ export function useWaveformPreview(params: {
   const pioneerStreamFilePathMap = markRaw(new Map<string, string[]>())
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
   const resolveExternalRootPath = () => String(externalWaveformRootPath.value || '').trim()
-  const shouldQueueMissingAnalysis = () => queueMissingAnalysis?.value !== false
   const touchPlaceholderState = () => (placeholderVersion.value += 1)
   let waveformPreviewRetry: ReturnType<typeof createWaveformPreviewRetry> | null = null
   const ensureWaveformWorker = () => {
@@ -424,7 +420,6 @@ export function useWaveformPreview(params: {
     }
     dataMap.delete(filePath)
     rgbMetricsCache.delete(filePath)
-    queuedMissing.delete(filePath)
     inflight.delete(filePath)
     syncWaveformDataToWorker(filePath, null)
     if (canUseAsyncWaveformWorker) {
@@ -444,7 +439,6 @@ export function useWaveformPreview(params: {
       if (oldest) {
         dataMap.delete(oldest)
         rgbMetricsCache.delete(oldest)
-        queuedMissing.delete(oldest)
         placeholderStateMap.delete(oldest)
         placeholderReasonMap.delete(oldest)
         waveformPreviewRetry?.clear(oldest)
@@ -631,7 +625,7 @@ export function useWaveformPreview(params: {
           window.electron.ipcRenderer.invoke('waveform-list-preview-cache:batch', {
             listRoot,
             filePaths: groupedFilePaths,
-            queueIfMissing: shouldQueueMissingAnalysis()
+            queueIfMissing: false
           })
         )
       )
@@ -667,26 +661,14 @@ export function useWaveformPreview(params: {
       )
       if (data) {
         setWaveformPlaceholderReady(filePath)
-        queuedMissing.delete(filePath)
       } else {
         missing.push(filePath)
       }
       inflight.delete(filePath)
     }
     if (missing.length) {
-      if (!shouldQueueMissingAnalysis()) {
-        for (const filePath of missing) {
-          queuedMissing.delete(filePath)
-          setWaveformPlaceholderUnavailable(filePath)
-        }
-        scheduleDrawForFilePaths(filePaths)
-        return
-      }
-      const toQueue = missing.filter((filePath) => !queuedMissing.has(filePath))
-      if (toQueue.length) {
-        for (const filePath of toQueue) {
-          queuedMissing.add(filePath)
-        }
+      for (const filePath of missing) {
+        setWaveformPlaceholderUnavailable(filePath)
       }
       missing
         .filter((filePath) => getAnalysisProgress?.(filePath) === null)
@@ -917,7 +899,6 @@ export function useWaveformPreview(params: {
       dataMap.clear()
       inflight.clear()
       rgbMetricsCache.clear()
-      queuedMissing.clear()
       placeholderStateMap.clear()
       placeholderReasonMap.clear()
       waveformPreviewRetry?.clearAll()

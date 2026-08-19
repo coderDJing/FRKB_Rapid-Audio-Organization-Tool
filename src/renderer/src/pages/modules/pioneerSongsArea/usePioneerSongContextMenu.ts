@@ -10,6 +10,7 @@ import {
   openNeteaseSearch
 } from '@renderer/utils/neteaseSearch'
 import { t } from '@renderer/utils/translate'
+import { promptAndStartTrackReanalysis } from '@renderer/utils/trackReanalysis'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IMenu, ISongInfo } from '../../../../../types/globals'
 import type { PioneerTransferTarget } from './usePioneerTrackCopyDialog'
@@ -164,9 +165,9 @@ export const usePioneerSongContextMenu = (params: UsePioneerSongContextMenuParam
           await showSelectedMissingHint()
           return
         }
-        await window.electron.ipcRenderer.invoke(
-          'track:cache:clear:batch',
-          existingTracks.map((item) => item.filePath)
+        await promptAndStartTrackReanalysis(
+          existingTracks.map((item) => item.filePath),
+          existingTracks
         )
         return
       case 'similarTracks.menu': {

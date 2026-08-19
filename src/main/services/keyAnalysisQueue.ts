@@ -303,6 +303,7 @@ export function enqueueManualKeyAnalysisBatch(
   options?: {
     titleKey?: string
     analysisBpmRangeId?: AnalysisBpmRangePresetId
+    includeStructure?: boolean
   } & KeyAnalysisRequestFlags
 ) {
   if (isLibraryMergeMutationLocked()) return { batchId: '', queued: 0 }
@@ -344,8 +345,9 @@ export function enqueueManualKeyAnalysisBatch(
     category: 'manual-batch',
     manualBatchId: batchId,
     forceAnalysis: options?.forceAnalysis,
+    analysisTargets: options?.analysisTargets,
     analysisBpmRangeId: options?.analysisBpmRangeId,
-    includeStructure: true
+    includeStructure: options?.includeStructure ?? true
   })
   reevaluateConcurrency()
   scheduleCooldownReevaluation()
@@ -361,7 +363,7 @@ export async function cancelManualKeyAnalysisBatch(batchId: string) {
   return { canceled: true }
 }
 
-/** Cancel every key-analysis queue item (manual/visible/playing/background) before library merge. */
+/** Cancel every key-analysis queue item (manual/playing/background) before library merge. */
 export async function cancelAllKeyAnalysisForLibraryMerge() {
   const batches = Array.from(manualBatches.values())
   for (const batch of batches) {
@@ -369,14 +371,6 @@ export async function cancelAllKeyAnalysisForLibraryMerge() {
   }
   if (!queue) return
   await queue.cancelAllWorkForLibraryMerge()
-}
-
-export function replaceVisibleKeyAnalysisList(
-  filePaths: string[],
-  options: { waveformOnly?: boolean } = {}
-) {
-  if (isLibraryMergeMutationLocked()) return
-  getQueue().replaceVisibleList(filePaths, options)
 }
 
 export function startKeyAnalysisBackground() {
@@ -393,6 +387,7 @@ export async function cancelKeyAnalysisForPaths(filePaths: string[] | string) {
   if (!queue) return
   const list = Array.isArray(filePaths) ? filePaths : [filePaths]
   await queue.cancelByPath(list)
+  pruneUntrackedManualBatchPaths()
 }
 
 export function getKeyAnalysisBackgroundStatus(): KeyAnalysisBackgroundStatus {

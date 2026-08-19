@@ -7,7 +7,6 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
-import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
 import { useRowAnalysisViewport } from './SongListRows/useRowAnalysisViewport'
 import { useKeyAnalysisProgress } from './composables/useKeyAnalysisProgress'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
@@ -95,10 +94,6 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
-  enableKeyAnalysisQueue: {
-    type: Boolean,
-    default: true
-  },
   analysisCompleteFilePaths: {
     type: Array as PropType<string[]>,
     default: () => []
@@ -144,9 +139,6 @@ const sourceSongListUUIDRef = toRef(props, 'sourceSongListUUID')
 const sourcePaneKeyRef = toRef(props, 'sourcePaneKey')
 const sourceLibraryNameRef = toRef(props, 'sourceLibraryName')
 const enableCoverThumbnailsRef = toRef(props, 'enableCoverThumbnails')
-const enableKeyAnalysisQueueRef = computed(
-  () => props.enableKeyAnalysisQueue && props.sourceLibraryName !== 'RecordingLibrary'
-)
 const visibleColumnsRef = toRef(props, 'visibleColumns')
 const runtime = useRuntimeStore()
 const requiresRuntimeAnalysis = computed(() => runtime.analysisRuntime.available === true)
@@ -346,18 +338,6 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
   enabled: enableCoverThumbnailsRef
 })
 
-const keyAnalysisQueueKey = computed(
-  () => `${props.sourceLibraryName}:${props.sourcePaneKey}:${props.sourceSongListUUID}`
-)
-
-useKeyAnalysisQueue({
-  visibleSongsWithIndex,
-  songs: songsRef,
-  enabled: enableKeyAnalysisQueueRef,
-  queueKey: keyAnalysisQueueKey,
-  requiresRuntimeAnalysis
-})
-
 const { listViewportWidth } = useRowAnalysisViewport({
   rowsRoot,
   viewportElement,
@@ -430,8 +410,7 @@ const {
   actualVisibleStartIndex: actualStartIndex,
   actualVisibleEndIndex: actualEndIndex,
   getAnalysisProgress,
-  isSongNeedsAnalysis,
-  queueMissingAnalysis: enableKeyAnalysisQueueRef
+  isSongNeedsAnalysis
 })
 
 const handleWaveformClick = async (song: ISongInfo, event: MouseEvent) => {

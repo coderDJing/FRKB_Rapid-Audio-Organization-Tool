@@ -9,6 +9,11 @@ import {
   resolveAnalysisBpmRange,
   type AnalysisBpmRangePresetId
 } from '../../../shared/analysisBpmRange'
+import {
+  hasAnyKeyAnalysisTarget,
+  hasUncoveredForcedReanalysisTarget,
+  normalizeKeyAnalysisTargets
+} from './analysisTargets'
 
 type DeferredRequestOptions = KeyAnalysisRequestFlags & {
   fastAnalysis?: boolean
@@ -52,12 +57,19 @@ export class KeyAnalysisDeferredQueue {
   }
 
   requiresFollowUp(active: KeyAnalysisJob, options: DeferredRequestOptions) {
+    const activeIsPartial =
+      hasAnyKeyAnalysisTarget(active.analysisTargets) && active.forceAnalysis !== true
+    const incomingIsUntargeted =
+      !hasAnyKeyAnalysisTarget(options.analysisTargets) && options.forceAnalysis !== true
+    // 分项任务不能被未指定分项的可见类请求升级成全量分析；闲时分析仍应在之后补全。
+    if (activeIsPartial && incomingIsUntargeted && options.category === 'visible') return false
     const requiresStructureUpgrade =
       options.includeStructure === true && active.includeStructure !== true
     const requiresFullAnalysisUpgrade =
       options.waveformOnly !== true && active.waveformOnly === true
     const requiresForcedAnalysisUpgrade =
-      options.forceAnalysis === true && active.forceAnalysis !== true
+      (options.forceAnalysis === true && active.forceAnalysis !== true) ||
+      hasUncoveredForcedReanalysisTarget(active, options)
     return requiresStructureUpgrade || requiresFullAnalysisUpgrade || requiresForcedAnalysisUpgrade
   }
 
@@ -103,6 +115,7 @@ export class KeyAnalysisDeferredQueue {
         active.analysisBpmRange?.id
       ),
       forceAnalysis: options.forceAnalysis === true,
+      analysisTargets: normalizeKeyAnalysisTargets(options.analysisTargets),
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
     helpers.addFocusSlotToJob(deferred, focusSlot)

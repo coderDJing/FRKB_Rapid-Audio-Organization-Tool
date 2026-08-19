@@ -4,9 +4,10 @@ import {
   hasUsableKeyAnalysis,
   resolveCanonicalSongBeatGridV2
 } from '../../../shared/songAnalysisCompleteness'
+import type { TrackReanalysisUserSelection } from '../../../shared/trackReanalysisSelection'
 
 export type AnalysisCandidate = {
-  filePath?: string
+  filePath?: unknown
   key?: unknown
   keyAnalysisAlgorithmVersion?: unknown
   bpm?: unknown
@@ -90,6 +91,52 @@ export const collectMissingAnalysisFilesFromSongs = (
     const key = normalizeFilePathKey(filePath)
     if (!filePath || seen.has(key)) continue
     if (hasRequiredAnalysis(song, requiresRuntimeAnalysis, resolvedOptions)) continue
+    seen.add(key)
+    files.push(filePath)
+  }
+  return files
+}
+
+export const songNeedsSelectedMissingAnalysis = (
+  song: AnalysisCandidate,
+  selection: TrackReanalysisUserSelection,
+  requiresRuntimeAnalysis: boolean,
+  options: MissingAnalysisOptions = {}
+) => {
+  const reasons = resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis, {
+    ...options,
+    includeSongStructure: selection.structure === true
+  })
+  if (selection.key && reasons.includes('missing-key')) return true
+  if (selection.energy && reasons.includes('missing-energy-score')) return true
+  if (selection.waveform && reasons.includes('missing-waveform')) return true
+  if (selection.beatGrid && reasons.includes('missing-bpm')) return true
+  if (selection.structure && reasons.includes('missing-song-structure')) return true
+  return false
+}
+
+export const collectFilesNeedingSelectedAnalysis = (
+  songs: AnalysisCandidate[],
+  selection: TrackReanalysisUserSelection,
+  requiresRuntimeAnalysis: boolean,
+  options: MissingAnalysisOptions = {}
+) => {
+  const files: string[] = []
+  const seen = new Set<string>()
+  const resolvedOptions: MissingAnalysisOptions = {
+    ...options,
+    missingWaveformFilePathKeys: resolveMissingWaveformFilePathKeys(options)
+  }
+  for (const song of songs) {
+    if (song.fileMissing) continue
+    const filePath = String(song.filePath || '').trim()
+    const key = normalizeFilePathKey(filePath)
+    if (!filePath || seen.has(key)) continue
+    if (
+      !songNeedsSelectedMissingAnalysis(song, selection, requiresRuntimeAnalysis, resolvedOptions)
+    ) {
+      continue
+    }
     seen.add(key)
     files.push(filePath)
   }

@@ -102,6 +102,27 @@ describe('KeyAnalysisDeferredQueue', () => {
     ).toBe(false)
   })
 
+  it('分项任务不会被未指定分项的可见队列升级成全量分析', () => {
+    const deferredQueue = new KeyAnalysisDeferredQueue()
+    const active = createActiveJob('D:/music/energy-only.mp3', {
+      includeStructure: false,
+      analysisTargets: { energy: true }
+    })
+    expect(
+      deferredQueue.requiresFollowUp(active, {
+        category: 'visible',
+        includeStructure: true,
+        preemptible: true
+      })
+    ).toBe(false)
+    expect(
+      deferredQueue.requiresFollowUp(active, {
+        includeStructure: true
+      })
+    ).toBe(true)
+    expect(deferredQueue.requiresFollowUp(active, { preemptible: true })).toBe(false)
+  })
+
   it('removes a deferred manual-only follow-up when its batch is canceled', () => {
     const deferredQueue = new KeyAnalysisDeferredQueue()
     const helpers = createHelpers()

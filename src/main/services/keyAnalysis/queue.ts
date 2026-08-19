@@ -20,6 +20,7 @@ import {
   removeManualBatchIdFromJob,
   type KeyAnalysisEnqueueOptions
 } from './queueJobOptions'
+import { normalizeKeyAnalysisTargets } from './analysisTargets'
 import { log } from '../../log'
 import store from '../../store'
 import { resolveAnalysisBpmRange } from '../../../shared/analysisBpmRange'
@@ -416,6 +417,7 @@ export class KeyAnalysisQueue {
         options.analysisBpmRangeId ?? store.settingConfig.analysisBpmRange
       ),
       forceAnalysis: options.forceAnalysis === true,
+      analysisTargets: normalizeKeyAnalysisTargets(options.analysisTargets),
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
     this.addFocusSlotToJob(job, focusSlot)
@@ -435,23 +437,6 @@ export class KeyAnalysisQueue {
     for (const filePath of filePaths) {
       this.enqueue(filePath, priority, options)
     }
-  }
-
-  replaceVisibleList(filePaths: string[], options: { waveformOnly?: boolean } = {}) {
-    for (const job of Array.from(this.pendingByPath.values())) {
-      if (job.category !== 'visible') continue
-      if (this.hasActiveFocusSlot(job)) continue
-      this.removePending(job)
-    }
-
-    this.enqueueList(filePaths, 'low', {
-      source: 'foreground',
-      preemptible: true,
-      category: 'visible',
-      waveformOnly: options.waveformOnly === true,
-      includeStructure: options.waveformOnly !== true
-    })
-    this.drain()
   }
 
   cancelBackgroundWork(pauseMs?: number) {
@@ -513,6 +498,10 @@ export class KeyAnalysisQueue {
     if (terminations.length > 0) {
       await Promise.allSettled(terminations)
       this.background.emitBackgroundStatus()
+    }
+    // worker exit 可能略晚于 terminate()；这里兜底清掉路径占用，避免紧接着重新入队被当成仍在队列里而跳过。
+    for (const normalizedPath of normalizedPaths) {
+      this.activeByPath.delete(normalizedPath)
     }
   }
 

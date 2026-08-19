@@ -17,6 +17,8 @@ import {
 } from '../mixtapeStemDb'
 import { cancelKeyAnalysisForPaths } from './keyAnalysisQueue'
 import { getCoreFsDirName } from '../coreLibraries'
+import { resolveCanonicalSongBeatGridV2 } from '../../shared/songAnalysisCompleteness'
+import type { TrackReanalysisPlan } from '../../shared/trackReanalysisSelection'
 
 const SET_CUSTODY_DIR_NAME = '__set_custody__'
 
@@ -406,15 +408,22 @@ export type TrackCoreAnalysisClearResult =
   | {
       status: 'skipped'
       filePath: string
-      reason: 'invalid-path' | 'unsupported-location' | 'missing-song-cache' | 'clear-failed'
+      reason:
+        | 'invalid-path'
+        | 'unsupported-location'
+        | 'missing-song-cache'
+        | 'clear-failed'
+        | 'nothing-to-clear'
     }
 
 /**
- * 用户主动完整重新分析时，仅清理核心五项：Key、Beat Grid、Waveform、Energy、Structure。
+ * 用户主动重新分析时，只清理勾选的核心项。
  * 封面、Stem、Mixtape 独立波形、Cue 和元数据必须保留。
+ * 单独重算段落时，只有这首歌已经有可用网格才会清段落。
  */
 export async function clearTrackCoreAnalysisForReanalysis(
-  filePath: string
+  filePath: string,
+  plan?: TrackReanalysisPlan
 ): Promise<TrackCoreAnalysisClearResult> {
   const normalizedFilePath = typeof filePath === 'string' ? filePath.trim() : ''
   if (!normalizedFilePath) {
@@ -439,26 +448,60 @@ export async function clearTrackCoreAnalysisForReanalysis(
     }
   }
 
-  await cancelKeyAnalysisForPaths(normalizedFilePath)
-
-  const analysisFieldsCleared = await LibraryCacheDb.clearSongCacheAnalysisFields(
-    listRoot,
-    normalizedFilePath
-  )
-  if (!analysisFieldsCleared) {
+  const clearKey = plan ? plan.key === true : true
+  const clearBeatGrid = plan ? plan.beatGrid === true : true
+  const clearEnergy = plan ? plan.energy === true : true
+  const clearWaveform = plan ? plan.waveform === true : true
+  const requestStructure = plan ? plan.structure === true : true
+  let cacheMatchesFile = false
+  try {
+    const stat = await fs.stat(normalizedFilePath)
+    cacheMatchesFile = isCacheStatMatch(existing, { size: stat.size, mtimeMs: stat.mtimeMs })
+  } catch {
+    cacheMatchesFile = false
+  }
+  const hasExistingGrid =
+    cacheMatchesFile && resolveCanonicalSongBeatGridV2(existing.info).kind === 'grid'
+  const clearStructure = requestStructure && (clearBeatGrid || hasExistingGrid)
+  const hasSongClear = clearKey || clearBeatGrid || clearEnergy || clearStructure
+  if (!hasSongClear && !clearWaveform) {
     return {
       status: 'skipped',
       filePath: normalizedFilePath,
-      reason: 'clear-failed'
+      reason: 'nothing-to-clear'
     }
   }
 
-  await Promise.all([
-    LibraryCacheDb.removeWaveformCacheEntry(listRoot, normalizedFilePath),
-    LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, normalizedFilePath),
-    LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, normalizedFilePath),
-    LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, normalizedFilePath)
-  ])
+  await cancelKeyAnalysisForPaths(normalizedFilePath)
+
+  if (hasSongClear) {
+    const analysisFieldsCleared = await LibraryCacheDb.clearSongCacheAnalysisFields(
+      listRoot,
+      normalizedFilePath,
+      {
+        key: clearKey,
+        beatGrid: clearBeatGrid,
+        energy: clearEnergy,
+        structure: clearStructure
+      }
+    )
+    if (!analysisFieldsCleared) {
+      return {
+        status: 'skipped',
+        filePath: normalizedFilePath,
+        reason: 'clear-failed'
+      }
+    }
+  }
+
+  if (clearWaveform) {
+    await Promise.all([
+      LibraryCacheDb.removeWaveformCacheEntry(listRoot, normalizedFilePath),
+      LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, normalizedFilePath),
+      LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, normalizedFilePath),
+      LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, normalizedFilePath)
+    ])
+  }
 
   return { status: 'cleared', filePath: normalizedFilePath, listRoot }
 }

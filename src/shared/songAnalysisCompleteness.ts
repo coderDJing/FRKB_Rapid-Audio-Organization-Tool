@@ -51,6 +51,10 @@ export const hasUsableSongBeatGridAnalysis = (
   info: SongAnalysisCompletenessInfo | null | undefined
 ) => resolveUsableSongBeatGrid(info).kind !== 'missing'
 
+export const hasExistingBeatGridForStructure = (
+  info: SongAnalysisCompletenessInfo | null | undefined
+) => resolveCanonicalSongBeatGridV2(info).kind === 'grid'
+
 export const hasUsableNoBpmBeatGridResult = (
   info: SongAnalysisCompletenessInfo | null | undefined
 ) => resolveUsableSongBeatGrid(info).kind === 'no-bpm'

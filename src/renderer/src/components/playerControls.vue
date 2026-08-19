@@ -26,6 +26,7 @@ import { hasEffectiveAcoustIdKey } from '@renderer/utils/acoustid'
 import { openRekordboxDesktopPlaylistForSelectedTracks } from '@renderer/utils/rekordboxDesktopPlaylist'
 import { openRekordboxXmlExportForSelectedTracks } from '@renderer/utils/rekordboxXmlExport'
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
+import { promptAndStartTrackReanalysis } from '@renderer/utils/trackReanalysis'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import {
@@ -468,7 +469,10 @@ const handleClearTrackCache = async () => {
   const filePath = runtime.playingData.playingSong?.filePath
   if (!filePath) return
   closeMoreMenu()
-  await window.electron.ipcRenderer.invoke('track:cache:clear:batch', [filePath])
+  await promptAndStartTrackReanalysis(
+    [filePath],
+    runtime.playingData.playingSong ? [runtime.playingData.playingSong] : []
+  )
 }
 
 const handleRekordboxDesktopPlaylist = async () => {

@@ -1,5 +1,6 @@
 import type { IPlayerGlobalShortcuts, ISettingConfig } from 'src/types/globals'
 import { normalizeAnalysisBpmRangeId } from '@shared/analysisBpmRange'
+import { normalizeTrackReanalysisSelection } from '@shared/trackReanalysisSelection'
 import {
   DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   normalizeBrowserPlayerRightTrackInfo
@@ -29,6 +30,12 @@ export const ensurePlayerGlobalShortcuts = (
 
 export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime) => {
   runtime.setting.analysisBpmRange = normalizeAnalysisBpmRangeId(runtime.setting.analysisBpmRange)
+  runtime.setting.trackAnalysisSelection = normalizeTrackReanalysisSelection(
+    runtime.setting.trackAnalysisSelection
+  )
+  runtime.setting.trackReanalysisSelection = normalizeTrackReanalysisSelection(
+    runtime.setting.trackReanalysisSelection
+  )
   if (runtime.setting.enablePlaybackRange === undefined) {
     runtime.setting.enablePlaybackRange = false
   }

@@ -6,6 +6,7 @@ import url from '../url'
 import mainWindow from '../window/mainWindow'
 import type { IPlayerGlobalShortcuts, ISettingConfig } from '../../types/globals'
 import { persistSettingConfigSync } from '../settingsPersistence'
+import { normalizeTrackReanalysisSelection } from '../../shared/trackReanalysisSelection'
 import {
   DEFAULT_ANALYSIS_BPM_RANGE_ID,
   LEGACY_ANALYSIS_BPM_RANGE,
@@ -83,6 +84,20 @@ const defaultSettings = {
   browserPlayerRightTrackInfo: DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   showIdleAnalysisStatus: false,
   analysisBpmRange: DEFAULT_ANALYSIS_BPM_RANGE_ID,
+  trackAnalysisSelection: {
+    key: true,
+    beatGrid: true,
+    waveform: true,
+    energy: true,
+    structure: true
+  },
+  trackReanalysisSelection: {
+    key: true,
+    beatGrid: true,
+    waveform: true,
+    energy: true,
+    structure: true
+  },
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,
@@ -181,6 +196,12 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   finalSettings.analysisBpmRange = normalizeAnalysisBpmRangeId(
     loadedSettings.analysisBpmRange,
     settingFileExisted ? LEGACY_ANALYSIS_BPM_RANGE.id : DEFAULT_ANALYSIS_BPM_RANGE_ID
+  )
+  finalSettings.trackAnalysisSelection = normalizeTrackReanalysisSelection(
+    loadedSettings.trackAnalysisSelection
+  )
+  finalSettings.trackReanalysisSelection = normalizeTrackReanalysisSelection(
+    loadedSettings.trackReanalysisSelection
   )
 
   if (process.platform === 'win32') {

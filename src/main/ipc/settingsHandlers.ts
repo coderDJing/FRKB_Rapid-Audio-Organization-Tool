@@ -21,6 +21,7 @@ import {
 } from '../curatedArtistLibrary'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
+import { normalizeTrackReanalysisSelection } from '../../shared/trackReanalysisSelection'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -44,7 +45,13 @@ export function registerSettingsHandlers(deps: Dependencies) {
         const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
         const normalizedSetting = {
           ...setting,
-          analysisBpmRange: normalizeAnalysisBpmRangeId(setting?.analysisBpmRange)
+          analysisBpmRange: normalizeAnalysisBpmRangeId(setting?.analysisBpmRange),
+          trackAnalysisSelection: normalizeTrackReanalysisSelection(
+            setting?.trackAnalysisSelection
+          ),
+          trackReanalysisSelection: normalizeTrackReanalysisSelection(
+            setting?.trackReanalysisSelection
+          )
         }
         store.settingConfig = normalizedSetting
         await persistSettingConfig(normalizedSetting)

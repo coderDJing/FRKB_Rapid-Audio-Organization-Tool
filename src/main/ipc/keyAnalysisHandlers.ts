@@ -7,7 +7,6 @@ import {
   enqueueManualKeyAnalysisBatch,
   getManualKeyAnalysisPendingFilePaths,
   isKeyAnalysisPathQueued,
-  replaceVisibleKeyAnalysisList,
   getKeyAnalysisBackgroundStatus
 } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
@@ -19,7 +18,7 @@ type VisibleQueuePayload = {
   analysisAuthority?: 'frkb'
   filePaths?: string[]
   waveformOnly?: boolean
-  scope?: 'list' | 'waveform-preview'
+  scope?: 'waveform-preview'
 }
 
 type ManualBatchPayload = {
@@ -27,6 +26,14 @@ type ManualBatchPayload = {
   filePaths?: string[]
   titleKey?: string
   analysisBpmRangeId?: string
+  includeStructure?: boolean
+  analysisTargets?: {
+    key?: boolean
+    bpm?: boolean
+    waveform?: boolean
+    energy?: boolean
+    structure?: boolean
+  }
 }
 
 type PlaybackQueuePayload = {
@@ -47,36 +54,28 @@ export function registerKeyAnalysisHandlers() {
     const normalized = paths
       .map((p) => (typeof p === 'string' ? p.trim() : ''))
       .filter((p) => p.length > 0)
-    if (payload?.scope === 'waveform-preview') {
-      const waveformOnly = payload?.waveformOnly === true
-      const normalPaths = normalized.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
-      const recordingPaths = normalized.filter((filePath) => isInRecordingLibraryAbsPath(filePath))
-      if (normalPaths.length > 0) {
-        enqueueKeyAnalysisList(normalPaths, 'low', {
-          source: 'foreground',
-          preemptible: true,
-          category: 'waveform-preview',
-          waveformOnly,
-          includeStructure: false
-        })
-      }
-      if (recordingPaths.length > 0) {
-        enqueueKeyAnalysisList(recordingPaths, 'low', {
-          source: 'foreground',
-          preemptible: true,
-          category: 'waveform-preview',
-          waveformOnly: true,
-          includeStructure: false
-        })
-      }
-      return
+    if (payload?.scope !== 'waveform-preview') return
+    const waveformOnly = payload?.waveformOnly === true
+    const normalPaths = normalized.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
+    const recordingPaths = normalized.filter((filePath) => isInRecordingLibraryAbsPath(filePath))
+    if (normalPaths.length > 0) {
+      enqueueKeyAnalysisList(normalPaths, 'low', {
+        source: 'foreground',
+        preemptible: true,
+        category: 'waveform-preview',
+        waveformOnly,
+        includeStructure: false
+      })
     }
-    replaceVisibleKeyAnalysisList(
-      normalized.filter((filePath) => !isInRecordingLibraryAbsPath(filePath)),
-      {
-        waveformOnly: payload?.waveformOnly === true
-      }
-    )
+    if (recordingPaths.length > 0) {
+      enqueueKeyAnalysisList(recordingPaths, 'low', {
+        source: 'foreground',
+        preemptible: true,
+        category: 'waveform-preview',
+        waveformOnly: true,
+        includeStructure: false
+      })
+    }
   })
 
   ipcMain.on('key-analysis:queue-playing', (_e, payload: PlaybackQueuePayload) => {
@@ -92,7 +91,7 @@ export function registerKeyAnalysisHandlers() {
       urgent: true,
       source: 'foreground',
       focusSlot: payload?.focusSlot,
-      includeStructure: true
+      includeStructure: payload?.onlyIfQueued !== true
     })
   })
 
@@ -126,7 +125,9 @@ export function registerKeyAnalysisHandlers() {
       .filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
     return enqueueManualKeyAnalysisBatch(normalized, {
       titleKey: typeof payload?.titleKey === 'string' ? payload.titleKey : undefined,
-      analysisBpmRangeId: normalizeAnalysisBpmRangeId(payload?.analysisBpmRangeId)
+      analysisBpmRangeId: normalizeAnalysisBpmRangeId(payload?.analysisBpmRangeId),
+      includeStructure: payload?.includeStructure,
+      analysisTargets: payload?.analysisTargets
     })
   })
 

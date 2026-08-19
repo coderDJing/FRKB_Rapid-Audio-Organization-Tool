@@ -324,7 +324,8 @@ export function useSongLoader(params: {
     tracePlayerWaveform('loader', 'formal-cache:query-start', filePath)
     try {
       response = await window.electron.ipcRenderer.invoke('waveform-global-overview-cache:batch', {
-        filePaths: [filePath]
+        filePaths: [filePath],
+        queueIfMissing: false
       })
     } catch {
       response = null

@@ -11,6 +11,10 @@ const props = defineProps({
   id: {
     type: String,
     default: null
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -37,7 +41,7 @@ function handleChange() {
 }
 </script>
 <template>
-  <div class="checkBoxContainer">
+  <div class="checkBoxContainer" :class="{ 'is-disabled': props.disabled }">
     <div class="checkBox">
       <input
         :id="inputId"
@@ -45,6 +49,7 @@ function handleChange() {
         class="sure"
         type="checkbox"
         :value="true"
+        :disabled="props.disabled"
         @change="handleChange"
       />
       <label class="box" :for="inputId"></label>
@@ -63,6 +68,11 @@ input[type='checkbox'] {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.checkBoxContainer.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .checkBox {

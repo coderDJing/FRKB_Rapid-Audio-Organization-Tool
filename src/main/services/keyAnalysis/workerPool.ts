@@ -102,6 +102,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         includeStructure: job.includeStructure,
         analysisBpmRangeId: job.analysisBpmRange?.id,
         forceAnalysis: job.forceAnalysis,
+        analysisTargets: job.analysisTargets,
         manualBatchIds: job.manualBatchIds
       }
     )

@@ -7,6 +7,7 @@ import type { SongStructureAnalysis } from '../shared/songStructure'
 import type { SongBeatGridMapV2 } from '../shared/songBeatGridMapV2'
 import type { PlaybackRangeMode, PlaybackRangeSectionMatchMode } from '../shared/playbackRange'
 import type { AnalysisBpmRangePresetId } from '../shared/analysisBpmRange'
+import type { TrackReanalysisUserSelection } from '../shared/trackReanalysisSelection'
 import type { BrowserPlayerRightTrackInfoField } from '../shared/browserPlayerRightTrackInfo'
 
 interface IDir {
@@ -654,6 +655,10 @@ interface ISettingConfig {
   showIdleAnalysisStatus?: boolean
   // Beat This BPM 候选范围；用户选择的范围决定半速/倍速解释。
   analysisBpmRange?: AnalysisBpmRangePresetId
+  // 首次/补缺分析弹窗勾选（Key、网格、波形、能量、段落）。
+  trackAnalysisSelection?: TrackReanalysisUserSelection
+  // 重新分析弹窗勾选（Key、网格、波形、能量、段落）。
+  trackReanalysisSelection?: TrackReanalysisUserSelection
   autoPlayNextSong: boolean
   startPlayPercent: number
   endPlayPercent: number

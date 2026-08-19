@@ -10,8 +10,17 @@ import type { AnalysisBpmRange } from '../../../shared/analysisBpmRange'
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
 export type KeyAnalysisQueueCategory = 'visible' | 'waveform-preview' | 'manual-batch'
+export type KeyAnalysisTargets = {
+  key?: boolean
+  bpm?: boolean
+  waveform?: boolean
+  energy?: boolean
+  structure?: boolean
+}
+
 export type KeyAnalysisRequestFlags = {
   forceAnalysis?: boolean
+  analysisTargets?: KeyAnalysisTargets
 }
 type KeyAnalysisProgressStage =
   | 'job-received'
@@ -98,6 +107,7 @@ export type KeyAnalysisJob = {
   includeStructure?: boolean
   analysisBpmRange?: AnalysisBpmRange
   forceAnalysis?: boolean
+  analysisTargets?: KeyAnalysisTargets
   focusSlots?: string[]
   manualBatchIds?: string[]
   needsKey?: boolean

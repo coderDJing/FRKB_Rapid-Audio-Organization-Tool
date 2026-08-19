@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { createSongBeatGridMapV2FromFixedGrid } from '../../../shared/songBeatGridMapV2'
 import { CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION } from '../../../shared/songStructure'
 import {
+  collectFilesNeedingSelectedAnalysis,
   collectMissingAnalysisFilesFromSongs,
-  resolveMissingAnalysisReasons
+  resolveMissingAnalysisReasons,
+  songNeedsSelectedMissingAnalysis
 } from './manualKeyAnalysisCompleteness'
 
 const FIXED_GRID_V2 = createSongBeatGridMapV2FromFixedGrid({
@@ -125,6 +127,66 @@ describe('manual key analysis completeness', () => {
         missingWaveformFilePaths: [filePath]
       })
     ).toEqual([filePath])
+  })
+
+  it('只勾选 Key 时，已有 Key 但缺波形的曲目不再算待分析', () => {
+    const filePath = 'D:\\music\\has-key-missing-waveform.wav'
+    const song = {
+      filePath,
+      key: '8A',
+      energyScore: 72,
+      beatGridMap: FIXED_GRID_V2 ?? undefined
+    }
+    expect(
+      songNeedsSelectedMissingAnalysis(
+        song,
+        {
+          key: true,
+          beatGrid: false,
+          waveform: false,
+          energy: false,
+          structure: false
+        },
+        true,
+        { missingWaveformFilePaths: [filePath] }
+      )
+    ).toBe(false)
+    expect(
+      songNeedsSelectedMissingAnalysis(
+        song,
+        {
+          key: false,
+          beatGrid: false,
+          waveform: true,
+          energy: false,
+          structure: false
+        },
+        true,
+        { missingWaveformFilePaths: [filePath] }
+      )
+    ).toBe(true)
+  })
+
+  it('只勾选 Key 时，路径斜杠不同也仍能按曲目匹配待分析项', () => {
+    const song = {
+      filePath: 'D:\\music\\slash-key.wav',
+      key: undefined,
+      energyScore: 72,
+      beatGridMap: FIXED_GRID_V2 ?? undefined
+    }
+    expect(
+      collectFilesNeedingSelectedAnalysis(
+        [song],
+        {
+          key: true,
+          beatGrid: false,
+          waveform: false,
+          energy: false,
+          structure: false
+        },
+        true
+      )
+    ).toEqual(['D:\\music\\slash-key.wav'])
   })
 
   it('accepts a canonical v2 manual grid without requiring structure by default', () => {

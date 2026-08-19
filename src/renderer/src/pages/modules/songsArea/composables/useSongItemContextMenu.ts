@@ -18,6 +18,7 @@ import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import { hasEffectiveAcoustIdKey } from '@renderer/utils/acoustid'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
+import { promptAndStartTrackReanalysis } from '@renderer/utils/trackReanalysis'
 import choiceDialog from '@renderer/components/choiceDialog'
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -1065,7 +1066,7 @@ export function useSongItemContextMenu(
       }
       case 'tracks.clearTrackCache': {
         const files = resolveSelectedFilePaths()
-        await window.electron.ipcRenderer.invoke('track:cache:clear:batch', files)
+        await promptAndStartTrackReanalysis(files, resolveSelectedSongs())
         break
       }
     }

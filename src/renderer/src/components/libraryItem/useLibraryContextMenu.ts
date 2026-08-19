@@ -20,6 +20,7 @@ import {
   promptAndQueueManualKeyAnalysisBatch,
   scanSongListsForMissingAnalysisFiles
 } from '@renderer/utils/manualKeyAnalysis'
+import { promptAndStartTrackReanalysis } from '@renderer/utils/trackReanalysis'
 import {
   clearSongsAreaPaneBySongListUUID,
   showSongListInPane
@@ -1001,12 +1002,9 @@ export function useLibraryContextMenu({
           })
           return
         }
-        runtime.isProgressing = true
-        try {
-          await window.electron.ipcRenderer.invoke('track:cache:clear:batch', files)
-        } finally {
-          runtime.isProgressing = false
-        }
+        const songs = await collectSongsForSimilarBatch(operateUuids)
+        const result = await promptAndStartTrackReanalysis(files, songs)
+        if (result?.canceled) return
         try {
           emitter.emit('playlistContentChanged', { uuids: refreshUuids })
         } catch {}
