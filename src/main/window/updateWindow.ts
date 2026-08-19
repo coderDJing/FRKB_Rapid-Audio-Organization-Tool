@@ -18,6 +18,7 @@ import {
   logIfUnexpectedUpdateError,
   type UpdateErrorKind
 } from '../services/updateError'
+import { isLibraryMergeActive } from '../services/libraryMerge'
 import { openSafeExternalUrl, restrictExternalNavigation } from './externalNavigation'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 const autoUpdater = electronUpdater.autoUpdater
@@ -355,6 +356,16 @@ const handleOpenApplicationsFolder = () => {
   })
 }
 
+let quittingForManualMacUpdate = false
+const handleQuitApp = () => {
+  if (process.platform !== 'darwin') return
+  if (quittingForManualMacUpdate) return
+  // 合并进行中不能退出，避免中断写库。
+  if (isLibraryMergeActive()) return
+  quittingForManualMacUpdate = true
+  app.quit()
+}
+
 const startCachedDownload = () => {
   if (!isDownloadInProgress() && lastUpdateInfo) {
     sendToUpdateWindow('newVersion', lastUpdateInfo)
@@ -449,6 +460,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
   ipcMain.on('updateWindow-open-downloaded-file', handleOpenDownloadedFile)
   ipcMain.on('updateWindow-open-download-folder', handleOpenDownloadFolder)
   ipcMain.on('updateWindow-open-applications-folder', handleOpenApplicationsFolder)
+  ipcMain.on('updateWindow-quit-app', handleQuitApp)
 
   updateWindow.on('closed', () => {
     ipcMain.removeListener('updateWindow-startDownload', handleStartDownload)
@@ -458,6 +470,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
     ipcMain.removeListener('updateWindow-open-downloaded-file', handleOpenDownloadedFile)
     ipcMain.removeListener('updateWindow-open-download-folder', handleOpenDownloadFolder)
     ipcMain.removeListener('updateWindow-open-applications-folder', handleOpenApplicationsFolder)
+    ipcMain.removeListener('updateWindow-quit-app', handleQuitApp)
     updateWindow = null
   })
 }

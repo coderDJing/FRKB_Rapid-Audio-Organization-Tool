@@ -114,6 +114,7 @@ const exactSendChannels = new Set([
   'updateWindow-open-download-folder',
   'updateWindow-open-downloaded-file',
   'updateWindow-open-manual-download',
+  'updateWindow-quit-app',
   'updateWindow-startDownload',
   'updateWindow-toggle-close',
   'updateWindow-toggle-minimize',

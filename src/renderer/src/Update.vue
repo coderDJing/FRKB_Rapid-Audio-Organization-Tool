@@ -270,6 +270,10 @@ const openDownloadFolder = () => {
 const openApplicationsFolder = () => {
   window.electron.ipcRenderer.send('updateWindow-open-applications-folder')
 }
+
+const quitApp = () => {
+  window.electron.ipcRenderer.send('updateWindow-quit-app')
+}
 </script>
 <template>
   <div
@@ -495,9 +499,14 @@ const openApplicationsFolder = () => {
             background: color-mix(in srgb, var(--accent) 14%, var(--bg));
             border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
           "
         >
-          {{ t('update.manualCloseWarning') }}
+          <div>{{ t('update.manualCloseWarning') }}</div>
+          <div class="button primary" @click="quitApp()">{{ t('update.quitApp') }}</div>
         </div>
         <div
           style="
@@ -547,6 +556,16 @@ const openApplicationsFolder = () => {
   &:hover {
     color: #ffffff;
     background-color: var(--accent);
+  }
+
+  &.primary {
+    color: #ffffff;
+    background-color: var(--accent);
+
+    &:hover {
+      color: #ffffff;
+      background-color: color-mix(in srgb, var(--accent) 82%, #000000);
+    }
   }
 }
 
