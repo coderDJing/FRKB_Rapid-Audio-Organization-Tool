@@ -708,6 +708,16 @@ const {
   assignSongToDeck
 })
 
+const handleSharedGridBatchUpdated = (
+  payloads: Array<{
+    filePath?: string
+    timeBasisOffsetMs?: number
+    beatGridMap?: ISongInfo['beatGridMap'] | null
+  }>
+) => {
+  handleSongGridBatchUpdated(undefined, payloads)
+}
+
 watch(
   () => deckSyncState.leaderDeck,
   (leaderDeck) => {
@@ -768,6 +778,7 @@ onMounted(() => {
   emitter.on(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   emitter.on('songsRemoved', handleSongsRemoved)
+  emitter.on('horizontalBrowse/shared-grid-batch-updated', handleSharedGridBatchUpdated)
   window.electron.ipcRenderer.on('song-grid-batch-updated', handleSongGridBatchUpdated)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
@@ -796,6 +807,7 @@ onUnmounted(() => {
   emitter.off(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   emitter.off('songsRemoved', handleSongsRemoved)
+  emitter.off('horizontalBrowse/shared-grid-batch-updated', handleSharedGridBatchUpdated)
   window.electron.ipcRenderer.removeListener('song-grid-batch-updated', handleSongGridBatchUpdated)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)

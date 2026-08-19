@@ -27,6 +27,11 @@ type SharedSongGridPayload = {
   filePath?: string
   timeBasisOffsetMs?: number
   beatGridMap?: ISongInfo['beatGridMap'] | null
+  rekordboxGridEntries?: ISongInfo['rekordboxGridEntries']
+  hotCues?: ISongInfo['hotCues']
+  memoryCues?: ISongInfo['memoryCues']
+  bpm?: number
+  fileMissing?: boolean
 } | null
 
 type SongStructurePayload = {
@@ -68,6 +73,13 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     } else {
       delete song.songStructure
     }
+    if (nextSong.rekordboxGridEntries) {
+      song.rekordboxGridEntries = nextSong.rekordboxGridEntries
+    }
+    if (nextSong.hotCues) song.hotCues = nextSong.hotCues
+    if (nextSong.memoryCues) song.memoryCues = nextSong.memoryCues
+    if (nextSong.bpm !== undefined) song.bpm = nextSong.bpm
+    if (nextSong.fileMissing === true) song.fileMissing = true
     return true
   }
 

@@ -1,7 +1,7 @@
 import path from 'node:path'
-import { enrichPioneerTracksWithCueData } from './cues'
+import { normalizePioneerCueDump } from './cues'
 import { reconcileDeviceLibraryPlaylistTracks } from './deviceLibraryTrackReconciliation'
-import { markMissingFiles } from '../fileExistenceCheck'
+import { applyMissingFileFlags, markMissingFiles } from '../fileExistenceCheck'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
 import {
   OneLibraryPlaylistNotFoundError,
@@ -10,11 +10,15 @@ import {
 } from './oneLibraryDb'
 import {
   readPioneerBeatGridsInWorker,
+  readPioneerPlaylistAnlzInWorker,
   readPioneerPlaylistTracksInWorker,
   readPioneerPlaylistTreeInWorker
 } from './workerPool'
 import { createSongBeatGridMapV2FromRekordboxEntries } from '../../../shared/songBeatGridMapV2'
-import { resolveAudioTimeBasisOffsetMsForFile } from '../audioTimeBasisOffset'
+import {
+  resolveAudioTimeBasisOffsetMsForFile,
+  resolveAudioTimeBasisOffsetMsForFiles
+} from '../audioTimeBasisOffset'
 import { log } from '../../log'
 import type { IPioneerPlaylistTrack, IPioneerPlaylistTreeNode } from '../../../types/globals'
 import type {
@@ -126,6 +130,12 @@ type RustPioneerBeatGridDump = {
 type WorkerBeatGridItem = {
   analyzeFilePath?: string
   dump?: RustPioneerBeatGridDump | null
+}
+
+type WorkerPlaylistAnlzItem = {
+  analyzeFilePath?: string
+  beatGrid?: RustPioneerBeatGridDump | null
+  cues?: Parameters<typeof normalizePioneerCueDump>[0]
 }
 
 const resolvePioneerDatabasePath = (
@@ -314,10 +324,23 @@ const deriveFileFormat = (fileName: string, filePath: string) => {
   return ext.trim().toUpperCase()
 }
 
+const isTrueAbsolutePath = (value: string) => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return false
+  if (process.platform === 'win32') {
+    return /^[a-zA-Z]:[\\/]/.test(normalized) || /^\\\\[^\\]/.test(normalized)
+  }
+  return normalized.startsWith('/')
+}
+
 const resolvePioneerDevicePath = (rootPath: string, devicePath: string) => {
   const normalizedRoot = String(rootPath || '').trim()
   const normalizedDevicePath = String(devicePath || '').trim()
-  if (!normalizedRoot || !normalizedDevicePath) return ''
+  if (!normalizedDevicePath) return ''
+  if (isTrueAbsolutePath(normalizedDevicePath)) {
+    return path.normalize(normalizedDevicePath)
+  }
+  if (!normalizedRoot) return ''
   const sanitized = normalizedDevicePath.replace(/^[/\\]+/, '')
   return path.join(normalizedRoot, sanitized)
 }
@@ -347,7 +370,12 @@ const normalizePioneerBeatGridEntries = (value: RustPioneerBeatGridEntry[] | und
   return entries
 }
 
-const attachPioneerRuntimeBeatGrids = async (rootPath: string, tracks: IPioneerPlaylistTrack[]) => {
+export async function attachPioneerAnlzRuntime(
+  rootPath: string,
+  tracks: IPioneerPlaylistTrack[],
+  options?: { includeCues?: boolean }
+): Promise<IPioneerPlaylistTrack[]> {
+  const includeCues = options?.includeCues === true
   const absoluteAnalyzePathToTrack = new Map<string, IPioneerPlaylistTrack>()
   for (const track of tracks) {
     const analyzePath = String(track.analyzePath || '').trim()
@@ -360,44 +388,88 @@ const attachPioneerRuntimeBeatGrids = async (rootPath: string, tracks: IPioneerP
     IPioneerPlaylistTrack,
     ReturnType<typeof normalizePioneerBeatGridEntries>
   >()
-  await readPioneerBeatGridsInWorker<{ total?: number }>(
-    Array.from(absoluteAnalyzePathToTrack.keys()),
-    (progress) => {
+  const cueDataByTrack = new Map<
+    IPioneerPlaylistTrack,
+    ReturnType<typeof normalizePioneerCueDump>
+  >()
+  const analyzePaths = Array.from(absoluteAnalyzePathToTrack.keys())
+
+  if (includeCues) {
+    await readPioneerPlaylistAnlzInWorker<{ total?: number }>(analyzePaths, (progress) => {
+      const item = progress as WorkerPlaylistAnlzItem | null
+      const absoluteAnalyzePath = String(item?.analyzeFilePath || '').trim()
+      const track = absoluteAnalyzePathToTrack.get(absoluteAnalyzePath)
+      if (!track) return
+      if (!item?.beatGrid?.error) {
+        const entries = normalizePioneerBeatGridEntries(item?.beatGrid?.entries)
+        if (entries.length) entriesByTrack.set(track, entries)
+      }
+      const cueData = normalizePioneerCueDump(item?.cues || null)
+      if (cueData.hotCues || cueData.memoryCues) {
+        cueDataByTrack.set(track, cueData)
+      }
+    })
+  } else {
+    await readPioneerBeatGridsInWorker<{ total?: number }>(analyzePaths, (progress) => {
       const item = progress as WorkerBeatGridItem | null
       const absoluteAnalyzePath = String(item?.analyzeFilePath || '').trim()
       const track = absoluteAnalyzePathToTrack.get(absoluteAnalyzePath)
       const dump = item?.dump
-      if (!track) return
-      if (dump?.error) {
-        return
-      }
+      if (!track || dump?.error) return
       const entries = normalizePioneerBeatGridEntries(dump?.entries)
-      if (entries.length) {
-        entriesByTrack.set(track, entries)
+      if (entries.length) entriesByTrack.set(track, entries)
+    })
+  }
+
+  const probePaths = tracks
+    .filter((track) => Boolean(entriesByTrack.get(track)?.length))
+    .map((track) => track.filePath)
+  await resolveAudioTimeBasisOffsetMsForFiles(probePaths)
+
+  const results = [...tracks]
+  for (let index = 0; index < tracks.length; index += 1) {
+    const track = tracks[index]
+    const entries = entriesByTrack.get(track)
+    const cueData = cueDataByTrack.get(track)
+    const beatGridMap = entries?.length
+      ? createSongBeatGridMapV2FromRekordboxEntries(entries)
+      : undefined
+    let timeBasisOffsetMs: number | undefined
+    if (beatGridMap) {
+      try {
+        timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(track.filePath)
+      } catch {
+        timeBasisOffsetMs = undefined
       }
     }
-  )
+    if (!entries?.length && !cueData && timeBasisOffsetMs === undefined) continue
+    results[index] = {
+      ...track,
+      ...(entries?.length ? { rekordboxGridEntries: entries } : {}),
+      ...(beatGridMap
+        ? {
+            beatGridMap,
+            bpm: beatGridMap.clips[0]?.bpm || track.bpm,
+            ...(timeBasisOffsetMs !== undefined ? { timeBasisOffsetMs } : {})
+          }
+        : {}),
+      ...(cueData?.hotCues ? { hotCues: cueData.hotCues } : {}),
+      ...(cueData?.memoryCues ? { memoryCues: cueData.memoryCues } : {})
+    }
+  }
+  return results
+}
 
-  return await Promise.all(
-    tracks.map(async (track) => {
-      const entries = entriesByTrack.get(track)
-      if (!entries?.length) return track
-      const beatGridMap = createSongBeatGridMapV2FromRekordboxEntries(entries)
-      if (!beatGridMap) return track
-      try {
-        const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(track.filePath)
-        return {
-          ...track,
-          rekordboxGridEntries: entries,
-          beatGridMap,
-          timeBasisOffsetMs,
-          bpm: beatGridMap.clips[0]?.bpm || track.bpm
-        }
-      } catch {
-        return track
-      }
-    })
-  )
+export async function attachPioneerPlaylistRuntime(
+  rootPath: string,
+  tracks: IPioneerPlaylistTrack[],
+  options?: { includeCues?: boolean }
+): Promise<IPioneerPlaylistTrack[]> {
+  if (!tracks.length) return tracks
+  const existencePromise = markMissingFiles(tracks)
+  const tracksWithRuntime = await attachPioneerAnlzRuntime(rootPath, tracks, options)
+  await existencePromise
+  return applyMissingFileFlags(tracksWithRuntime, tracks)
 }
 
 const deriveArtistFromFileName = (fileName: string) => {
@@ -443,7 +515,8 @@ const resolvePioneerArtistText = (params: {
 export async function loadPioneerPlaylistTracksByDrivePath(
   rootPath: string,
   playlistId: number,
-  libraryType: PioneerLibraryKind = 'deviceLibrary'
+  libraryType: PioneerLibraryKind = 'deviceLibrary',
+  options?: { includeRuntime?: boolean }
 ): Promise<{
   drivePath: string
   libraryType: PioneerLibraryKind
@@ -555,9 +628,10 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     }
   })
 
-  const tracksWithRuntimeGrid = await attachPioneerRuntimeBeatGrids(rootPath, tracks)
-  const tracksWithCues = await enrichPioneerTracksWithCueData(rootPath, tracksWithRuntimeGrid)
-  await markMissingFiles(tracksWithCues)
+  const tracksWithRuntime =
+    options?.includeRuntime === false
+      ? tracks
+      : await attachPioneerPlaylistRuntime(rootPath, tracks, { includeCues: true })
 
   return {
     drivePath: rootPath,
@@ -565,7 +639,7 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     databasePath: loaded.databasePath,
     playlistId: Number(loaded.playlistId) || safePlaylistId,
     playlistName,
-    trackTotal: Number(loaded.trackTotal) || tracks.length,
-    tracks: tracksWithCues
+    trackTotal: Number(loaded.trackTotal) || tracksWithRuntime.length,
+    tracks: tracksWithRuntime
   }
 }

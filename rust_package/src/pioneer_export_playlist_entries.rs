@@ -32,21 +32,20 @@ fn row_is_present(row_presence_flags: u16, row_index: usize) -> bool {
   row_index < PDB_ROW_GROUP_ENTRY_COUNT && row_presence_flags & (1u16 << row_index) != 0
 }
 
-pub(super) fn collect_raw_playlist_entries(
+pub(super) fn collect_raw_playlist_entries_by_playlist(
   pdb_path: &Path,
-  playlist_id: u32,
-) -> Vec<RawPlaylistEntry> {
+) -> HashMap<u32, Vec<RawPlaylistEntry>> {
   let bytes = match fs::read(pdb_path) {
     Ok(bytes) => bytes,
-    Err(_) => return Vec::new(),
+    Err(_) => return HashMap::new(),
   };
   let page_size = match read_u32_le(&bytes, 4).and_then(|value| usize::try_from(value).ok()) {
     Some(value) if value >= PDB_PAGE_HEADER_SIZE => value,
-    _ => return Vec::new(),
+    _ => return HashMap::new(),
   };
   let table_count = match read_u32_le(&bytes, 8).and_then(|value| usize::try_from(value).ok()) {
     Some(value) => value,
-    None => return Vec::new(),
+    None => return HashMap::new(),
   };
 
   let mut playlist_entries_table = None;
@@ -56,7 +55,7 @@ pub(super) fn collect_raw_playlist_entries(
       .and_then(|offset| PDB_HEADER_SIZE.checked_add(offset))
     {
       Some(offset) => offset,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
     if read_u32_le(&bytes, table_offset) != Some(PDB_PLAYLIST_ENTRIES_PAGE_TYPE) {
       continue;
@@ -69,48 +68,48 @@ pub(super) fn collect_raw_playlist_entries(
   }
 
   let Some((Some(mut page_index), Some(last_page_index))) = playlist_entries_table else {
-    return Vec::new();
+    return HashMap::new();
   };
   let mut seen_pages = HashSet::new();
-  let mut entries = Vec::new();
+  let mut entries_by_playlist: HashMap<u32, Vec<RawPlaylistEntry>> = HashMap::new();
 
   loop {
     if !seen_pages.insert(page_index) {
-      return Vec::new();
+      return HashMap::new();
     }
     let page_offset = match usize::try_from(page_index)
       .ok()
       .and_then(|index| index.checked_mul(page_size))
     {
       Some(offset) => offset,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
     let data_start = match page_offset.checked_add(PDB_PAGE_HEADER_SIZE) {
       Some(offset) => offset,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
     if read_u32_le(&bytes, page_offset + 8) != Some(PDB_PLAYLIST_ENTRIES_PAGE_TYPE) {
-      return Vec::new();
+      return HashMap::new();
     }
     let next_page_index = match read_u32_le(&bytes, page_offset + 12) {
       Some(value) => value,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
     let used_size = match read_u16_le(&bytes, page_offset + 30).map(usize::from) {
       Some(value) => value,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
     let data_end = match data_start
       .checked_add(used_size)
       .filter(|end| *end <= page_offset.saturating_add(page_size))
     {
       Some(offset) => offset,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
 
     let page_end = match page_offset.checked_add(page_size) {
       Some(offset) => offset,
-      None => return Vec::new(),
+      None => return HashMap::new(),
     };
     let row_group_count = page_end.saturating_sub(data_end) / PDB_ROW_GROUP_SIZE;
     for row_group_index in 0..row_group_count {
@@ -119,14 +118,14 @@ pub(super) fn collect_raw_playlist_entries(
         .and_then(|offset| page_end.checked_sub(offset))
       {
         Some(offset) => offset,
-        None => return Vec::new(),
+        None => return HashMap::new(),
       };
       let row_presence_flags = match row_group_end
         .checked_sub(4)
         .and_then(|offset| read_u16_le(&bytes, offset))
       {
         Some(value) => value,
-        None => return Vec::new(),
+        None => return HashMap::new(),
       };
       for row_index in 0..PDB_ROW_GROUP_ENTRY_COUNT {
         if !row_is_present(row_presence_flags, row_index) {
@@ -138,7 +137,7 @@ pub(super) fn collect_raw_playlist_entries(
           .and_then(|offset| row_group_end.checked_sub(4 + offset))
         {
           Some(offset) => offset,
-          None => return Vec::new(),
+          None => return HashMap::new(),
         };
         let record_offset = match read_u16_le(&bytes, row_offset_field)
           .map(usize::from)
@@ -150,12 +149,15 @@ pub(super) fn collect_raw_playlist_entries(
         let entry_index = read_u32_le(&bytes, record_offset).unwrap_or(0);
         let track_id = read_u32_le(&bytes, record_offset + 4).unwrap_or(0);
         let entry_playlist_id = read_u32_le(&bytes, record_offset + 8).unwrap_or(0);
-        if entry_playlist_id == playlist_id && entry_index > 0 && track_id > 0 {
-          entries.push(RawPlaylistEntry {
-            entry_index,
-            track_id,
-            location: record_offset,
-          });
+        if entry_playlist_id > 0 && entry_index > 0 && track_id > 0 {
+          entries_by_playlist
+            .entry(entry_playlist_id)
+            .or_default()
+            .push(RawPlaylistEntry {
+              entry_index,
+              track_id,
+              location: record_offset,
+            });
         }
       }
     }
@@ -165,7 +167,7 @@ pub(super) fn collect_raw_playlist_entries(
     page_index = next_page_index;
   }
 
-  entries
+  entries_by_playlist
 }
 
 pub(super) fn recover_complete_raw_playlist_entries(

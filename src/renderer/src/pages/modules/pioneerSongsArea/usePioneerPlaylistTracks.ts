@@ -1,5 +1,7 @@
 import type { ComputedRef, Ref, ShallowRef } from 'vue'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import emitter from '@renderer/utils/mitt'
 import type {
   IPioneerPlaylistTrack,
   IRekordboxSourceKind,
@@ -29,8 +31,153 @@ type FetchPlaylistTracksParams = {
   libraryType: string
 }
 
+const normalizePath = (value: unknown) =>
+  String(value || '')
+    .replace(/\//g, '\\')
+    .toLowerCase()
+
+const mergeRuntimeTrack = (
+  current: IPioneerPlaylistTrack,
+  next: IPioneerPlaylistTrack
+): IPioneerPlaylistTrack => ({
+  ...current,
+  bpm: next.bpm ?? current.bpm,
+  rekordboxGridEntries: next.rekordboxGridEntries ?? current.rekordboxGridEntries,
+  beatGridMap: next.beatGridMap ?? current.beatGridMap,
+  timeBasisOffsetMs: next.timeBasisOffsetMs ?? current.timeBasisOffsetMs,
+  hotCues: next.hotCues ?? current.hotCues,
+  memoryCues: next.memoryCues ?? current.memoryCues,
+  fileMissing: next.fileMissing === true
+})
+
+const mergeRuntimeTracks = (
+  currentTracks: IPioneerPlaylistTrack[],
+  runtimeTracks: IPioneerPlaylistTrack[]
+) => {
+  if (!runtimeTracks.length) return currentTracks
+  const runtimeByRowKey = new Map(
+    runtimeTracks.map((track) => [String(track.rowKey || '').trim(), track] as const)
+  )
+  return currentTracks.map((track) => {
+    const next = runtimeByRowKey.get(String(track.rowKey || '').trim())
+    return next ? mergeRuntimeTrack(track, next) : track
+  })
+}
+
+const patchSongInfoRuntime = (song: ISongInfo, track: IPioneerPlaylistTrack): ISongInfo => ({
+  ...song,
+  bpm: track.bpm ?? song.bpm,
+  beatGridMap: track.beatGridMap ?? song.beatGridMap,
+  rekordboxGridEntries: track.rekordboxGridEntries
+    ? track.rekordboxGridEntries.map((entry) => ({ ...entry }))
+    : song.rekordboxGridEntries,
+  beatGridSource: track.beatGridMap ? 'rekordbox' : song.beatGridSource,
+  timeBasisOffsetMs: track.timeBasisOffsetMs ?? song.timeBasisOffsetMs,
+  hotCues: Array.isArray(track.hotCues) ? track.hotCues.map((cue) => ({ ...cue })) : song.hotCues,
+  memoryCues: Array.isArray(track.memoryCues)
+    ? track.memoryCues.map((cue) => ({ ...cue }))
+    : song.memoryCues,
+  fileMissing: track.fileMissing === true ? true : song.fileMissing
+})
+
+const matchRuntimeTrack = (
+  song: ISongInfo,
+  runtimeByRowKey: Map<string, IPioneerPlaylistTrack>,
+  runtimeByFilePath: Map<string, IPioneerPlaylistTrack>
+) => {
+  const rowKey = String(song.mixtapeItemId || '').trim()
+  if (rowKey) {
+    const matched = runtimeByRowKey.get(rowKey)
+    if (matched) return matched
+  }
+  const filePath = normalizePath(song.filePath)
+  return filePath ? runtimeByFilePath.get(filePath) : undefined
+}
+
+const buildRuntimeLookups = (runtimeTracks: IPioneerPlaylistTrack[]) => {
+  const runtimeByRowKey = new Map<string, IPioneerPlaylistTrack>()
+  const runtimeByFilePath = new Map<string, IPioneerPlaylistTrack>()
+  for (const track of runtimeTracks) {
+    const rowKey = String(track.rowKey || '').trim()
+    if (rowKey) runtimeByRowKey.set(rowKey, track)
+    const filePath = normalizePath(track.filePath)
+    if (filePath) runtimeByFilePath.set(filePath, track)
+  }
+  return { runtimeByRowKey, runtimeByFilePath }
+}
+
+const patchSongListRuntime = (songs: ISongInfo[], runtimeTracks: IPioneerPlaylistTrack[]) => {
+  if (!songs.length || !runtimeTracks.length) return songs
+  const { runtimeByRowKey, runtimeByFilePath } = buildRuntimeLookups(runtimeTracks)
+  let touched = false
+  const nextSongs = songs.map((song) => {
+    const track = matchRuntimeTrack(song, runtimeByRowKey, runtimeByFilePath)
+    if (!track) return song
+    touched = true
+    return patchSongInfoRuntime(song, track)
+  })
+  return touched ? nextSongs : songs
+}
+
 export const usePioneerPlaylistTracks = (params: UsePioneerPlaylistTracksParams) => {
+  const runtime = useRuntimeStore()
   let playlistTracksRequestToken = 0
+
+  const applyRuntimeTracks = (runtimeTracks: IPioneerPlaylistTrack[]) => {
+    params.originalTracks.value = mergeRuntimeTracks(params.originalTracks.value, runtimeTracks)
+    params.applyFiltersAndSorting('fetch-playlist-tracks-runtime')
+
+    const { runtimeByRowKey, runtimeByFilePath } = buildRuntimeLookups(runtimeTracks)
+    const playingSong = runtime.playingData.playingSong
+    if (playingSong) {
+      const matched = matchRuntimeTrack(playingSong, runtimeByRowKey, runtimeByFilePath)
+      if (matched) {
+        runtime.playingData.playingSong = patchSongInfoRuntime(playingSong, matched)
+      }
+    }
+    runtime.playingData.playingSongListData = patchSongListRuntime(
+      runtime.playingData.playingSongListData,
+      runtimeTracks
+    )
+    const topSong = runtime.horizontalBrowseDecks.topSong
+    if (topSong) {
+      const matched = matchRuntimeTrack(topSong, runtimeByRowKey, runtimeByFilePath)
+      if (matched) {
+        runtime.horizontalBrowseDecks.topSong = patchSongInfoRuntime(topSong, matched)
+      }
+    }
+    const bottomSong = runtime.horizontalBrowseDecks.bottomSong
+    if (bottomSong) {
+      const matched = matchRuntimeTrack(bottomSong, runtimeByRowKey, runtimeByFilePath)
+      if (matched) {
+        runtime.horizontalBrowseDecks.bottomSong = patchSongInfoRuntime(bottomSong, matched)
+      }
+    }
+    runtime.horizontalBrowseDecks.topSongListData = patchSongListRuntime(
+      runtime.horizontalBrowseDecks.topSongListData,
+      runtimeTracks
+    )
+    runtime.horizontalBrowseDecks.bottomSongListData = patchSongListRuntime(
+      runtime.horizontalBrowseDecks.bottomSongListData,
+      runtimeTracks
+    )
+
+    const gridPayloads = runtimeTracks
+      .filter((track) => track.beatGridMap || Number.isFinite(Number(track.timeBasisOffsetMs)))
+      .map((track) => ({
+        filePath: track.filePath,
+        beatGridMap: track.beatGridMap,
+        timeBasisOffsetMs: track.timeBasisOffsetMs,
+        rekordboxGridEntries: track.rekordboxGridEntries,
+        hotCues: track.hotCues,
+        memoryCues: track.memoryCues,
+        bpm: track.bpm,
+        fileMissing: track.fileMissing
+      }))
+    if (gridPayloads.length) {
+      emitter.emit('horizontalBrowse/shared-grid-batch-updated', gridPayloads)
+    }
+  }
 
   const fetchPlaylistTracks = async (fetchParams: FetchPlaylistTracksParams) => {
     const requestToken = ++playlistTracksRequestToken
@@ -41,18 +188,19 @@ export const usePioneerPlaylistTracks = (params: UsePioneerPlaylistTracksParams)
         requestToken,
         sourceCacheKey
       })
-      const result =
+      const result = (
         sourceKind === 'desktop'
           ? await window.electron.ipcRenderer.invoke(
-              buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
+              buildRekordboxSourceChannel('desktop', 'load-playlist-tracks-meta'),
               playlistId
             )
           : await window.electron.ipcRenderer.invoke(
-              buildRekordboxSourceChannel('usb', 'load-playlist-tracks'),
+              buildRekordboxSourceChannel('usb', 'load-playlist-tracks-meta'),
               rootPath,
               playlistId,
               libraryType
             )
+      ) as { tracks?: IPioneerPlaylistTrack[] }
       const tracks = Array.isArray(result?.tracks) ? result.tracks : []
       params.emitPioneerSongsAreaLog('fetch-playlist-tracks-success', {
         requestToken,
@@ -69,6 +217,41 @@ export const usePioneerPlaylistTracks = (params: UsePioneerPlaylistTracksParams)
 
       params.originalTracks.value = tracks
       params.applyFiltersAndSorting('fetch-playlist-tracks-success')
+      params.loading.value = false
+
+      if (!tracks.length) return
+
+      try {
+        const runtimeResult = (
+          sourceKind === 'desktop'
+            ? await window.electron.ipcRenderer.invoke(
+                buildRekordboxSourceChannel('desktop', 'attach-playlist-tracks-runtime'),
+                tracks
+              )
+            : await window.electron.ipcRenderer.invoke(
+                buildRekordboxSourceChannel('usb', 'attach-playlist-tracks-runtime'),
+                rootPath,
+                tracks
+              )
+        ) as { tracks?: IPioneerPlaylistTrack[] }
+        if (!params.isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
+        if (requestToken !== playlistTracksRequestToken) return
+
+        const runtimeTracks = Array.isArray(runtimeResult?.tracks) ? runtimeResult.tracks : []
+        applyRuntimeTracks(runtimeTracks)
+        params.emitPioneerSongsAreaLog('fetch-playlist-tracks-runtime-success', {
+          requestToken,
+          runtimeTrackCount: runtimeTracks.length
+        })
+      } catch (runtimeError) {
+        if (!params.isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
+        if (requestToken !== playlistTracksRequestToken) return
+        console.error('[pioneerSongsArea] attach playlist runtime failed', runtimeError)
+        params.emitPioneerSongsAreaLog('fetch-playlist-tracks-runtime-failed', {
+          requestToken,
+          error: runtimeError
+        })
+      }
     } catch (error) {
       if (!params.isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
       if (requestToken !== playlistTracksRequestToken) return
@@ -78,8 +261,10 @@ export const usePioneerPlaylistTracks = (params: UsePioneerPlaylistTracksParams)
         requestToken,
         error
       })
-      params.originalTracks.value = []
-      params.visibleSongs.value = []
+      if (!params.originalTracks.value.length) {
+        params.originalTracks.value = []
+        params.visibleSongs.value = []
+      }
     } finally {
       if (
         params.isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId) &&

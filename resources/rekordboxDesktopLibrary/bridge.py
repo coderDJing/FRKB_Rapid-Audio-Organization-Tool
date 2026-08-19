@@ -4,11 +4,13 @@ import re
 import sys
 import time
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from uuid import uuid4
 
 PYREKORDBOX_IMPORT_ERROR: Optional[str] = None
+SELECTINLOAD = None
 
 try:
     from pyrekordbox import Rekordbox6Database, get_config, update_config
@@ -26,6 +28,11 @@ except Exception as exc:  # pragma: no cover
     read_rekordbox6_options = None  # type: ignore[assignment]
     tables = None  # type: ignore[assignment]
     get_rekordbox_pid = None  # type: ignore[assignment]
+
+try:
+    from sqlalchemy.orm import selectinload as SELECTINLOAD
+except Exception:
+    SELECTINLOAD = None
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -69,6 +76,18 @@ def _read_request() -> Dict[str, Any]:
     raw = sys.stdin.read()
     if not raw.strip():
         raise ValueError("empty request")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("request must be a JSON object")
+    return data
+
+
+def _read_request_line() -> Optional[Dict[str, Any]]:
+    raw = sys.stdin.readline()
+    if raw == "":
+        return None
+    if not raw.strip():
+        return {}
     data = json.loads(raw)
     if not isinstance(data, dict):
         raise ValueError("request must be a JSON object")
@@ -517,16 +536,19 @@ def _resolve_track_analyze_path(db: Any, content: Any, share_dir: str) -> str:
     return ""
 
 
-def _resolve_track_grid_payload(db: Any, content: Any, share_dir: str) -> Dict[str, Any]:
-    if db is None or content is None or AnlzFile is None:
-        return {}
+def _resolve_dat_anlz_abs_path(db: Any, content: Any, share_dir: str) -> str:
+    if db is None or content is None:
+        return ""
     analyze_path = None
     try:
         analyze_path = db.get_anlz_path(content, "DAT")
     except Exception:
         analyze_path = None
-    resolved_path = _resolve_candidate_path(analyze_path, (share_dir,))
-    if not resolved_path or not os.path.exists(resolved_path):
+    return _resolve_candidate_path(analyze_path, (share_dir,))
+
+
+def _parse_anlz_grid_file(resolved_path: str) -> Dict[str, Any]:
+    if not resolved_path or not os.path.exists(resolved_path) or AnlzFile is None:
         return {}
 
     try:
@@ -572,6 +594,58 @@ def _resolve_track_grid_payload(db: Any, content: Any, share_dir: str) -> Dict[s
         }
     except Exception:
         return {}
+
+
+def _resolve_track_grid_payload(db: Any, content: Any, share_dir: str) -> Dict[str, Any]:
+    return _parse_anlz_grid_file(_resolve_dat_anlz_abs_path(db, content, share_dir))
+
+
+def _apply_grid_payload(record: Dict[str, Any], grid_payload: Dict[str, Any]) -> None:
+    record["rekordboxGridEntries"] = grid_payload.get("rekordboxGridEntries")
+    record["gridBpm"] = grid_payload.get("gridBpm")
+    record["gridFirstBeatMs"] = grid_payload.get("gridFirstBeatMs")
+    record["gridFirstBeatLabel"] = grid_payload.get("gridFirstBeatLabel")
+    record["gridBarBeatOffset"] = grid_payload.get("gridBarBeatOffset")
+
+
+def _fill_grid_payloads_parallel(jobs: List[Tuple[Dict[str, Any], str]]) -> None:
+    pending = [(record, path) for record, path in jobs if path]
+    if not pending:
+        return
+
+    def parse_one(item: Tuple[Dict[str, Any], str]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        record, path = item
+        return record, _parse_anlz_grid_file(path)
+
+    workers = min(8, len(pending))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for record, payload in pool.map(parse_one, pending):
+            _apply_grid_payload(record, payload)
+
+
+def _with_content_eager_options(query: Any, from_playlist_song: bool) -> Any:
+    if SELECTINLOAD is None or tables is None or query is None:
+        return query
+    try:
+        if from_playlist_song:
+            return query.options(
+                SELECTINLOAD(tables.DjmdSongPlaylist.Content).selectinload(tables.DjmdContent.Artist),
+                SELECTINLOAD(tables.DjmdSongPlaylist.Content).selectinload(tables.DjmdContent.Album),
+                SELECTINLOAD(tables.DjmdSongPlaylist.Content).selectinload(tables.DjmdContent.Genre),
+                SELECTINLOAD(tables.DjmdSongPlaylist.Content).selectinload(tables.DjmdContent.Label),
+                SELECTINLOAD(tables.DjmdSongPlaylist.Content).selectinload(tables.DjmdContent.Key),
+                SELECTINLOAD(tables.DjmdSongPlaylist.Content).selectinload(tables.DjmdContent.Cues),
+            )
+        return query.options(
+            SELECTINLOAD(tables.DjmdContent.Artist),
+            SELECTINLOAD(tables.DjmdContent.Album),
+            SELECTINLOAD(tables.DjmdContent.Genre),
+            SELECTINLOAD(tables.DjmdContent.Label),
+            SELECTINLOAD(tables.DjmdContent.Key),
+            SELECTINLOAD(tables.DjmdContent.Cues),
+        )
+    except Exception:
+        return query
 
 
 def _resolve_artist_name(content: Any) -> str:
@@ -951,6 +1025,7 @@ def _build_track_record(
     share_dir: str,
     db_dir: str,
     row_key: Optional[str] = None,
+    parse_anlz_grid: bool = True,
 ) -> Dict[str, Any]:
     file_path = _normalize_path(getattr(content, "FolderPath", ""))
     file_name = _derive_file_name(file_path, getattr(content, "FileNameL", ""))
@@ -961,7 +1036,7 @@ def _build_track_record(
         (db_dir, share_dir),
     )
     cue_payload = _resolve_content_cues(content)
-    grid_payload = _resolve_track_grid_payload(db, content, share_dir)
+    grid_payload = _resolve_track_grid_payload(db, content, share_dir) if parse_anlz_grid else {}
 
     return {
         "rowKey": str(row_key or f"rekordbox-desktop:{playlist_id}:{entry_index}:{track_id}").strip(),
@@ -1011,6 +1086,7 @@ def _build_playlist_tracks_payload(request_payload: Dict[str, Any]) -> Dict[str,
     playlist_id = _parse_int(request_payload.get("playlistId"))
     if playlist_id <= 0:
         raise ValueError("playlistId 无效")
+    parse_anlz_grid = _parse_bool(request_payload.get("parseAnlzGrid"), True)
 
     db = None
     try:
@@ -1023,45 +1099,56 @@ def _build_playlist_tracks_payload(request_payload: Dict[str, Any]) -> Dict[str,
         share_dir = _normalize_path(config.get("shareDir"))
         db_dir = _normalize_path(config.get("dbDir"))
         tracks = []
+        deferred_grid_jobs: List[Tuple[Dict[str, Any], str]] = []
 
         if bool(getattr(playlist, "is_smart_playlist", False)):
-            contents = db.get_playlist_contents(playlist).all()
+            contents_query = _with_content_eager_options(db.get_playlist_contents(playlist), False)
+            contents = contents_query.all()
             for index, content in enumerate(contents, start=1):
-                tracks.append(
-                    _build_track_record(
-                        db,
-                        content,
-                        playlist_id,
-                        playlist_name,
-                        index,
-                        share_dir,
-                        db_dir,
-                    )
+                record = _build_track_record(
+                    db,
+                    content,
+                    playlist_id,
+                    playlist_name,
+                    index,
+                    share_dir,
+                    db_dir,
+                    parse_anlz_grid=False,
                 )
+                tracks.append(record)
+                if parse_anlz_grid:
+                    deferred_grid_jobs.append((record, _resolve_dat_anlz_abs_path(db, content, share_dir)))
         else:
-            entries = (
-                db.get_playlist_songs(PlaylistID=getattr(playlist, "ID", playlist_id))
-                .order_by(tables.DjmdSongPlaylist.TrackNo)
-                .all()
+            entries_query = _with_content_eager_options(
+                db.get_playlist_songs(PlaylistID=getattr(playlist, "ID", playlist_id)).order_by(
+                    tables.DjmdSongPlaylist.TrackNo
+                ),
+                True,
             )
+            entries = entries_query.all()
             for index, entry in enumerate(entries, start=1):
                 content = getattr(entry, "Content", None)
                 if content is None:
                     continue
                 entry_index = _parse_int(getattr(entry, "TrackNo", index), index)
-                tracks.append(
-                    _build_track_record(
-                        db,
-                        content,
-                        playlist_id,
-                        playlist_name,
-                        entry_index,
-                        share_dir,
-                        db_dir,
-                        row_key=str(_parse_int(getattr(entry, "ID", 0), 0) or "").strip()
-                        or None,
-                    )
+                record = _build_track_record(
+                    db,
+                    content,
+                    playlist_id,
+                    playlist_name,
+                    entry_index,
+                    share_dir,
+                    db_dir,
+                    row_key=str(_parse_int(getattr(entry, "ID", 0), 0) or "").strip()
+                    or None,
+                    parse_anlz_grid=False,
                 )
+                tracks.append(record)
+                if parse_anlz_grid:
+                    deferred_grid_jobs.append((record, _resolve_dat_anlz_abs_path(db, content, share_dir)))
+
+        if parse_anlz_grid:
+            _fill_grid_payloads_parallel(deferred_grid_jobs)
 
         return {
             "probe": config,
@@ -1965,34 +2052,66 @@ COMMANDS = {
 }
 
 
-def main() -> int:
-    try:
-        request = _read_request()
-        command = str(request.get("command") or "").strip()
-        payload = request.get("payload") or {}
-        if command not in COMMANDS:
-            _write_response(_error("HELPER_PROTOCOL_ERROR", f"unsupported command: {command}"))
-            return 1
-        if not isinstance(payload, dict):
-            _write_response(_error("HELPER_PROTOCOL_ERROR", "payload must be a JSON object"))
-            return 1
-        result = COMMANDS[command](payload)
-        _write_response(_ok(result))
-        return 0
-    except HelperCommandError as exc:
+def _execute_request(request: Dict[str, Any]) -> None:
+    command = str(request.get("command") or "").strip()
+    payload = request.get("payload") or {}
+    if command not in COMMANDS:
+        raise ValueError(f"unsupported command: {command}")
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a JSON object")
+    result = COMMANDS[command](payload)
+    _write_response(_ok(result))
+
+
+def _handle_request_failure(exc: Exception) -> None:
+    if isinstance(exc, HelperCommandError):
         _write_response(_error(exc.code, exc.message))
-        return 1
-    except ValueError as exc:
+        return
+    if isinstance(exc, ValueError):
         _write_response(_error("HELPER_PROTOCOL_ERROR", str(exc)))
-        return 1
-    except RuntimeError as exc:
+        return
+    if isinstance(exc, RuntimeError):
         message = str(exc).strip() or "运行 Rekordbox Desktop helper 失败。"
         code = "REKORDBOX_DB_BUSY" if ("busy" in message.lower() or "lock" in message.lower()) else "HELPER_RUNTIME_ERROR"
         _write_response(_error(code, message))
-        return 1
+        return
+    _write_response(_error("HELPER_RUNTIME_ERROR", str(exc).strip() or "unknown error"))
+
+
+def _run_oneshot() -> int:
+    try:
+        _execute_request(_read_request())
+        return 0
     except Exception as exc:
-        _write_response(_error("HELPER_RUNTIME_ERROR", str(exc).strip() or "unknown error"))
+        _handle_request_failure(exc)
         return 1
+
+
+def _run_persistent() -> int:
+    try:
+        sys.stdin.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+    while True:
+        try:
+            request = _read_request_line()
+        except Exception as exc:
+            _handle_request_failure(exc)
+            continue
+        if request is None:
+            return 0
+        if not request:
+            continue
+        try:
+            _execute_request(request)
+        except Exception as exc:
+            _handle_request_failure(exc)
+
+
+def main() -> int:
+    if "--persistent" in sys.argv:
+        return _run_persistent()
+    return _run_oneshot()
 
 
 if __name__ == "__main__":

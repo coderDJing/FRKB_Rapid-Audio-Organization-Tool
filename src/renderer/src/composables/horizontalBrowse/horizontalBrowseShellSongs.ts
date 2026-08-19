@@ -8,6 +8,11 @@ type SharedSongGridPayload = {
   filePath?: string
   timeBasisOffsetMs?: number
   beatGridMap?: ISongInfo['beatGridMap'] | null
+  rekordboxGridEntries?: ISongInfo['rekordboxGridEntries']
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
+  bpm?: number
+  fileMissing?: boolean
   songStructure?: SongStructureAnalysis
 } | null
 
@@ -81,6 +86,36 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
       delete nextSong.beatGridMap
       touched = true
     }
+  }
+  if (Array.isArray(payload.rekordboxGridEntries)) {
+    nextSong.rekordboxGridEntries = payload.rekordboxGridEntries.map((entry) => ({ ...entry }))
+    touched = true
+  }
+  if (Array.isArray(payload.hotCues)) {
+    const normalizedHotCues = normalizeSongHotCues(payload.hotCues)
+    if (!areSongHotCuesEqual(nextSong.hotCues, normalizedHotCues)) {
+      nextSong.hotCues = normalizedHotCues
+      touched = true
+    }
+  }
+  if (Array.isArray(payload.memoryCues)) {
+    const normalizedMemoryCues = normalizeSongMemoryCues(payload.memoryCues)
+    if (!areSongMemoryCuesEqual(nextSong.memoryCues, normalizedMemoryCues)) {
+      nextSong.memoryCues = normalizedMemoryCues
+      touched = true
+    }
+  }
+  if (
+    typeof payload.bpm === 'number' &&
+    Number.isFinite(payload.bpm) &&
+    nextSong.bpm !== payload.bpm
+  ) {
+    nextSong.bpm = payload.bpm
+    touched = true
+  }
+  if (payload.fileMissing === true && nextSong.fileMissing !== true) {
+    nextSong.fileMissing = true
+    touched = true
   }
   const songStructure = normalizeSongStructureAnalysis(payload.songStructure)
   if (songStructure) {

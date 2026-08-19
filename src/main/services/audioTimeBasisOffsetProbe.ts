@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
+import path from 'node:path'
 import { promisify } from 'node:util'
 
 const FFPROBE_TIMEOUT_MS = 5000
@@ -53,35 +54,41 @@ const shouldApplyLameGaplessSkipOffset = (stream: FfprobeAudioStream | undefined
   return encoder.startsWith('LAME')
 }
 
+const ZERO_TIME_BASIS_EXTENSIONS = new Set(['.wav', '.wave', '.aif', '.aiff', '.flac'])
+
+const buildFfprobeArgs = (filePath: string) => {
+  const extension = path.extname(filePath).toLowerCase()
+  const args = [
+    '-v',
+    'error',
+    '-print_format',
+    'json',
+    '-show_entries',
+    'stream=start_time,sample_rate:stream_tags=encoder:packet_side_data=side_data_type,skip_samples',
+    '-select_streams',
+    'a:0'
+  ]
+  if (extension === '.mp3') {
+    args.push('-show_packets', '-read_intervals', '%+#1')
+  }
+  args.push(filePath)
+  return args
+}
+
 export const probeAudioTimeBasisOffsetMs = async (
   ffprobePath: string,
   filePath: string
 ): Promise<AudioTimeBasisOffsetProbeResult> => {
   if (!ffprobePath || !existsSync(ffprobePath)) return { offsetMs: 0 }
+  const extension = path.extname(filePath).toLowerCase()
+  if (ZERO_TIME_BASIS_EXTENSIONS.has(extension)) return { offsetMs: 0 }
 
   try {
-    const { stdout } = await execFileAsync(
-      ffprobePath,
-      [
-        '-v',
-        'error',
-        '-print_format',
-        'json',
-        '-show_entries',
-        'stream=start_time,sample_rate:stream_tags=encoder:packet_side_data=side_data_type,skip_samples',
-        '-show_packets',
-        '-read_intervals',
-        '%+#1',
-        '-select_streams',
-        'a:0',
-        filePath
-      ],
-      {
-        windowsHide: true,
-        timeout: FFPROBE_TIMEOUT_MS,
-        maxBuffer: 256 * 1024
-      }
-    )
+    const { stdout } = await execFileAsync(ffprobePath, buildFfprobeArgs(filePath), {
+      windowsHide: true,
+      timeout: FFPROBE_TIMEOUT_MS,
+      maxBuffer: 256 * 1024
+    })
     const parsed = JSON.parse(String(stdout || '{}')) as FfprobeAudioPayload
     const stream = Array.isArray(parsed.streams) ? parsed.streams[0] : undefined
     const startTimeSec = parsePositiveNumber(stream?.start_time)

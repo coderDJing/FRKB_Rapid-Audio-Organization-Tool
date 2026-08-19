@@ -32,6 +32,11 @@ type WorkerRequest =
       type: 'read-cues'
       analyzeFilePaths: string[]
     }
+  | {
+      jobId: number
+      type: 'read-playlist-anlz'
+      analyzeFilePaths: string[]
+    }
 
 type WorkerResponse = {
   jobId: number
@@ -168,6 +173,35 @@ parentPort?.on('message', (request: WorkerRequest) => {
             progress: {
               analyzeFilePath,
               dump
+            }
+          })
+        }
+        respond({
+          jobId: request.jobId,
+          type: request.type,
+          result: {
+            total: request.analyzeFilePaths.length
+          }
+        })
+        return
+      }
+      case 'read-playlist-anlz': {
+        if (typeof rust.readPioneerBeatGrid !== 'function') {
+          throw new Error('rust_package.readPioneerBeatGrid 不可用')
+        }
+        if (typeof rust.readPioneerCues !== 'function') {
+          throw new Error('rust_package.readPioneerCues 不可用')
+        }
+        for (const analyzeFilePath of request.analyzeFilePaths) {
+          const beatGrid = rust.readPioneerBeatGrid(analyzeFilePath)
+          const cues = rust.readPioneerCues(analyzeFilePath)
+          respond({
+            jobId: request.jobId,
+            type: request.type,
+            progress: {
+              analyzeFilePath,
+              beatGrid,
+              cues
             }
           })
         }

@@ -19,6 +19,7 @@ import {
 import { loadRekordboxDesktopPlaylistTree } from '../services/rekordboxDesktopLibrary/tree'
 import {
   loadRekordboxDesktopPlaylistTracks,
+  attachRekordboxDesktopPlaylistRuntime,
   reorderRekordboxDesktopPlaylistTracks,
   removeRekordboxDesktopPlaylistTracks
 } from '../services/rekordboxDesktopLibrary/tracks'
@@ -58,6 +59,7 @@ import type {
 } from '../../shared/rekordboxDesktopPlaylist'
 import type { RekordboxDesktopCleanupCopiedTracksRequest } from '../../shared/rekordboxDesktopPlaylist'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
+import type { IPioneerPlaylistTrack } from '../../types/globals'
 
 export function registerRekordboxDesktopLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -98,6 +100,30 @@ export function registerRekordboxDesktopLibraryHandlers() {
         trackTotal: loaded.trackTotal,
         tracks: loaded.tracks
       }
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:load-playlist-tracks-meta',
+    async (_event, playlistId: number) => {
+      const loaded = await loadRekordboxDesktopPlaylistTracks(playlistId, { includeRuntime: false })
+      return {
+        ...loaded.probe,
+        playlistId: loaded.playlistId,
+        playlistName: loaded.playlistName,
+        trackTotal: loaded.trackTotal,
+        tracks: loaded.tracks
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:attach-playlist-tracks-runtime',
+    async (_event, tracks: unknown) => {
+      const nextTracks = await attachRekordboxDesktopPlaylistRuntime(
+        Array.isArray(tracks) ? (tracks as IPioneerPlaylistTrack[]) : []
+      )
+      return { tracks: nextTracks }
     }
   )
 
