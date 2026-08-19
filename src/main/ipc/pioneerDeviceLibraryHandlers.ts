@@ -9,13 +9,15 @@ import {
 import {
   buildPioneerPlaylistTree,
   loadPioneerPlaylistTracksByDrivePath,
-  loadPioneerPlaylistTreeByDrivePath
+  loadPioneerPlaylistTreeByDrivePath,
+  attachPioneerPlaylistRuntime
 } from '../services/pioneerDeviceLibrary/tree'
 import {
   loadPioneerPreviewWaveformsByDrivePath,
   streamPioneerPreviewWaveformsByDrivePath
 } from '../services/pioneerDeviceLibrary/waveform'
 import { loadPioneerDetailWaveformsByDrivePath } from '../services/pioneerDeviceLibrary/detailWaveform'
+import type { IPioneerPlaylistTrack } from '../../types/globals'
 
 export function registerPioneerDeviceLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -59,6 +61,27 @@ export function registerPioneerDeviceLibraryHandlers() {
     'pioneer-device-library:load-playlist-tracks',
     async (_event, rootPath: string, playlistId: number, libraryType?: PioneerLibraryKind) => {
       return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId, libraryType)
+    }
+  )
+
+  ipcMain.handle(
+    'pioneer-device-library:load-playlist-tracks-meta',
+    async (_event, rootPath: string, playlistId: number, libraryType?: PioneerLibraryKind) => {
+      return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId, libraryType, {
+        includeRuntime: false
+      })
+    }
+  )
+
+  ipcMain.handle(
+    'pioneer-device-library:attach-playlist-tracks-runtime',
+    async (_event, rootPath: string, tracks: unknown) => {
+      const nextTracks = await attachPioneerPlaylistRuntime(
+        String(rootPath || '').trim(),
+        Array.isArray(tracks) ? (tracks as IPioneerPlaylistTrack[]) : [],
+        { includeCues: true }
+      )
+      return { tracks: nextTracks }
     }
   )
 

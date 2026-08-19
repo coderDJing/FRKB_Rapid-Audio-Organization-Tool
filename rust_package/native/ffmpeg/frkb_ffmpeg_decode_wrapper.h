@@ -59,6 +59,21 @@ int frkb_ffmpeg_transport_decode(
  */
 void frkb_ffmpeg_transport_free_samples(int16_t *ptr);
 
+/**
+ * 只探测时间基，不解码整轨。
+ * start_time 与 ffprobe stream.start_time 对齐；skip_samples 来自首包 Skip Samples。
+ * read_skip_samples 非 0 时才读第一包（与现有 JS 仅对 mp3 读 packet 对齐）。
+ */
+int frkb_ffmpeg_probe_time_basis(
+    const char *file_path,
+    int read_skip_samples,
+    double *start_time_sec_out,
+    int *sample_rate_out,
+    int *skip_samples_out,
+    char *encoder_out,
+    int encoder_out_cap
+);
+
 #ifdef __cplusplus
 }
 #endif

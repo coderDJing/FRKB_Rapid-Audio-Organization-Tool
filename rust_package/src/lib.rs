@@ -47,6 +47,9 @@ extern crate napi_derive;
 mod analysis_utils;
 mod chromaprint_native;
 mod ffmpeg_decode;
+pub use crate::ffmpeg_decode::{
+  probe_audio_time_basis_offset_ms, probe_audio_time_basis_offset_ms_batch,
+};
 mod horizontal_browse_transport;
 mod mixxx_waveform;
 mod pioneer_anlz_raw;

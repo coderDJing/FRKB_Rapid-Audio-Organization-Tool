@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import childProcess from 'node:child_process'
 import { log } from '../../log'
-import { registerChildProcess } from '../childProcessRegistry'
+import { registerChildProcess, terminateChildProcess } from '../childProcessRegistry'
 import type {
   RekordboxDesktopHelperError,
   RekordboxDesktopHelperProgressPayload,
@@ -240,6 +240,242 @@ const createHelperError = (
   return error
 }
 
+const HELPER_IDLE_TIMEOUT_MS = 60_000
+
+type HelperWaiter<TResult> = {
+  command: RekordboxDesktopHelperCommand
+  onProgress?: (payload: RekordboxDesktopHelperProgressPayload) => void
+  resolve: (value: TResult) => void
+  reject: (error: Error) => void
+}
+
+class RekordboxDesktopHelperSession {
+  private child: childProcess.ChildProcessWithoutNullStreams | null = null
+  private stdoutBuffer = ''
+  private stderr = ''
+  private waiter: HelperWaiter<unknown> | null = null
+  private mutex = Promise.resolve()
+  private idleTimer: ReturnType<typeof setTimeout> | null = null
+  private unregisterChild: (() => void) | null = null
+
+  async run<TResult, TPayload extends Record<string, unknown>>(
+    command: RekordboxDesktopHelperCommand,
+    payload: TPayload,
+    options?: RunRekordboxDesktopHelperOptions
+  ): Promise<TResult> {
+    const previous = this.mutex
+    let releaseMutex = () => {}
+    this.mutex = new Promise<void>((resolve) => {
+      releaseMutex = resolve
+    })
+    await previous
+    this.clearIdle()
+    try {
+      return await this.runExclusive(command, payload, options)
+    } finally {
+      this.scheduleIdle()
+      releaseMutex()
+    }
+  }
+
+  private scheduleIdle() {
+    this.clearIdle()
+    this.idleTimer = setTimeout(() => {
+      if (this.waiter) return
+      this.destroyChild()
+    }, HELPER_IDLE_TIMEOUT_MS)
+    this.idleTimer.unref?.()
+  }
+
+  private clearIdle() {
+    if (!this.idleTimer) return
+    clearTimeout(this.idleTimer)
+    this.idleTimer = null
+  }
+
+  private destroyChild() {
+    const child = this.child
+    this.child = null
+    this.stdoutBuffer = ''
+    this.stderr = ''
+    this.unregisterChild?.()
+    this.unregisterChild = null
+    if (!child) return
+    terminateChildProcess(child, 'rekordbox-desktop:persistent')
+  }
+
+  private failWaiter(error: Error) {
+    const waiter = this.waiter
+    this.waiter = null
+    waiter?.reject(error)
+  }
+
+  private ensureChild() {
+    if (this.child && this.child.exitCode === null && !this.child.killed) {
+      return this.child
+    }
+
+    const pythonCommand = resolvePythonCommand()
+    if (!pythonCommand) {
+      throw createHelperError(
+        '未找到 Rekordbox Desktop Runtime 的 Python 运行时。',
+        'PYTHON_RUNTIME_MISSING'
+      )
+    }
+
+    const bridgePath = resolveBridgeScriptPath()
+    if (!bridgePath || !fs.existsSync(bridgePath)) {
+      throw createHelperError(
+        `未找到 Rekordbox Desktop bridge: ${bridgePath || '<empty>'}`,
+        'BRIDGE_SCRIPT_MISSING'
+      )
+    }
+
+    this.destroyChild()
+    const child = childProcess.spawn(
+      pythonCommand.command,
+      [...pythonCommand.args, bridgePath, '--persistent'],
+      {
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          PYTHONUTF8: '1',
+          PYTHONIOENCODING: 'utf-8',
+          PYTHONUNBUFFERED: '1'
+        }
+      }
+    )
+    this.child = child
+    this.unregisterChild = registerChildProcess(child, 'rekordbox-desktop:persistent')
+
+    child.stdout.on('data', (chunk) => {
+      this.stdoutBuffer += chunk.toString()
+      this.consumeStdoutBuffer()
+    })
+    child.stderr.on('data', (chunk) => {
+      this.stderr += chunk.toString()
+    })
+    child.stdin.on('error', () => {})
+    child.on('error', (error) => {
+      if (this.child !== child) return
+      this.child = null
+      this.failWaiter(
+        createHelperError(
+          `启动 Rekordbox Desktop helper 失败: ${error instanceof Error ? error.message : String(error || '')}`,
+          'HELPER_RUNTIME_ERROR'
+        )
+      )
+    })
+    child.on('close', (code) => {
+      if (this.child === child) {
+        this.child = null
+        this.unregisterChild = null
+      }
+      const sanitizedStderr = sanitizeHelperStderr(this.stderr.trim())
+      this.stderr = ''
+      this.stdoutBuffer = ''
+      if (!this.waiter) return
+      this.failWaiter(
+        createHelperError(
+          sanitizedStderr || `Rekordbox Desktop helper 意外退出（exit=${String(code ?? '')}）。`,
+          'HELPER_PROTOCOL_ERROR'
+        )
+      )
+    })
+    return child
+  }
+
+  private consumeStdoutBuffer() {
+    const normalizedBuffer = this.stdoutBuffer.replace(/\r\n/g, '\n')
+    const segments = normalizedBuffer.split('\n')
+    this.stdoutBuffer = segments.pop() || ''
+    for (const segment of segments) {
+      const trimmed = String(segment || '').trim()
+      if (!trimmed) continue
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        this.handleParsedStdoutObject(parsed, trimmed)
+      } catch {
+        this.stdoutBuffer = trimmed
+        return
+      }
+    }
+  }
+
+  private handleParsedStdoutObject(value: unknown, rawLine: string) {
+    if (!value || typeof value !== 'object') return
+    const waiter = this.waiter
+    const maybeEvent = value as RekordboxDesktopHelperProgressEvent
+    if (maybeEvent.event === 'progress' && maybeEvent.payload && waiter?.onProgress) {
+      try {
+        waiter.onProgress(maybeEvent.payload)
+      } catch (error) {
+        log.error('[rekordbox-desktop-library] helper progress callback failed', {
+          command: waiter.command,
+          error
+        })
+      }
+      return
+    }
+
+    const maybeResponse = value as RekordboxDesktopHelperResponse<unknown>
+    if (typeof maybeResponse.ok !== 'boolean') {
+      log.error('[rekordbox-desktop-library] helper returned unexpected event', {
+        command: waiter?.command,
+        stdout: rawLine
+      })
+      return
+    }
+    if (!waiter) return
+    this.waiter = null
+    if (!maybeResponse.ok) {
+      const helperError = maybeResponse.error
+      waiter.reject(
+        createHelperError(
+          helperError?.message ||
+            sanitizeHelperStderr(this.stderr.trim()) ||
+            'Rekordbox Desktop helper 执行失败。',
+          (helperError?.code || 'HELPER_RUNTIME_ERROR') as RekordboxDesktopLibraryErrorCode
+        )
+      )
+      return
+    }
+    waiter.resolve(maybeResponse.result)
+  }
+
+  private runExclusive<TResult, TPayload extends Record<string, unknown>>(
+    command: RekordboxDesktopHelperCommand,
+    payload: TPayload,
+    options?: RunRekordboxDesktopHelperOptions
+  ): Promise<TResult> {
+    const child = this.ensureChild()
+    this.stderr = ''
+    const request: RekordboxDesktopHelperRequest<TPayload> = { command, payload }
+    return new Promise<TResult>((resolve, reject) => {
+      this.waiter = {
+        command,
+        onProgress: options?.onProgress,
+        resolve: resolve as (value: unknown) => void,
+        reject
+      }
+      try {
+        child.stdin.write(`${JSON.stringify(request)}\n`)
+      } catch (error) {
+        this.waiter = null
+        reject(
+          createHelperError(
+            `写入 Rekordbox Desktop helper 失败: ${error instanceof Error ? error.message : String(error || '')}`,
+            'HELPER_RUNTIME_ERROR'
+          )
+        )
+      }
+    })
+  }
+}
+
+const helperSession = new RekordboxDesktopHelperSession()
+
 export async function runRekordboxDesktopHelper<TResult, TPayload extends Record<string, unknown>>(
   command: RekordboxDesktopHelperCommand,
   payload: TPayload,
@@ -248,190 +484,5 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
   if (process.platform !== 'win32' && process.platform !== 'darwin') {
     throw createHelperError('当前平台暂不支持 Rekordbox 本机库。', 'UNSUPPORTED_PLATFORM')
   }
-
-  const pythonCommand = resolvePythonCommand()
-  if (!pythonCommand) {
-    throw createHelperError(
-      '未找到 Rekordbox Desktop Runtime 的 Python 运行时。',
-      'PYTHON_RUNTIME_MISSING'
-    )
-  }
-
-  const bridgePath = resolveBridgeScriptPath()
-  if (!bridgePath || !fs.existsSync(bridgePath)) {
-    throw createHelperError(
-      `未找到 Rekordbox Desktop bridge: ${bridgePath || '<empty>'}`,
-      'BRIDGE_SCRIPT_MISSING'
-    )
-  }
-
-  const request: RekordboxDesktopHelperRequest<TPayload> = {
-    command,
-    payload
-  }
-
-  const spawnedArgs = [...pythonCommand.args, bridgePath]
-  const childEnv = {
-    ...process.env,
-    PYTHONUTF8: '1',
-    PYTHONIOENCODING: 'utf-8'
-  }
-
-  return await new Promise<TResult>((resolve, reject) => {
-    const child = childProcess.spawn(pythonCommand.command, spawnedArgs, {
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: childEnv
-    })
-    registerChildProcess(child, `rekordbox-desktop:${command}`)
-
-    let stdout = ''
-    let stderr = ''
-    let stdoutBuffer = ''
-    let settled = false
-    let response: RekordboxDesktopHelperResponse<TResult> | null = null
-
-    const finishReject = (error: unknown) => {
-      if (settled) return
-      settled = true
-      reject(error)
-    }
-
-    const finishResolve = (value: TResult) => {
-      if (settled) return
-      settled = true
-      resolve(value)
-    }
-
-    const handleParsedStdoutObject = (value: unknown) => {
-      if (!value || typeof value !== 'object') return false
-
-      const maybeEvent = value as RekordboxDesktopHelperProgressEvent
-      if (maybeEvent.event === 'progress' && maybeEvent.payload && options?.onProgress) {
-        try {
-          options.onProgress(maybeEvent.payload)
-        } catch (error) {
-          log.error('[rekordbox-desktop-library] helper progress callback failed', {
-            command,
-            error
-          })
-        }
-        return true
-      }
-
-      const maybeResponse = value as RekordboxDesktopHelperResponse<TResult>
-      if (typeof maybeResponse.ok === 'boolean') {
-        response = maybeResponse
-        return true
-      }
-
-      return false
-    }
-
-    const consumeStdoutBuffer = (flush = false) => {
-      const normalizedBuffer = flush ? stdoutBuffer : stdoutBuffer.replace(/\r\n/g, '\n')
-      const segments = normalizedBuffer.split('\n')
-      if (!flush) {
-        stdoutBuffer = segments.pop() || ''
-      } else {
-        stdoutBuffer = ''
-      }
-
-      for (const segment of segments) {
-        const trimmed = String(segment || '').trim()
-        if (!trimmed) continue
-        try {
-          const parsed = JSON.parse(trimmed) as unknown
-          if (!handleParsedStdoutObject(parsed)) {
-            log.error('[rekordbox-desktop-library] helper returned unexpected event', {
-              command,
-              stdout: trimmed
-            })
-          }
-        } catch {
-          if (!flush) {
-            stdoutBuffer = trimmed
-            return
-          }
-          log.error('[rekordbox-desktop-library] helper returned invalid JSON line', {
-            command,
-            stdout: trimmed
-          })
-        }
-      }
-    }
-
-    child.stdout.on('data', (chunk) => {
-      const text = chunk.toString()
-      stdout += text
-      stdoutBuffer += text
-      consumeStdoutBuffer(false)
-    })
-
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString()
-    })
-
-    child.once('error', (error) => {
-      finishReject(
-        createHelperError(
-          `启动 Rekordbox Desktop helper 失败: ${error instanceof Error ? error.message : String(error || '')}`,
-          'HELPER_RUNTIME_ERROR'
-        )
-      )
-    })
-
-    child.once('close', (code) => {
-      consumeStdoutBuffer(true)
-      const trimmedStdout = stdout.trim()
-      const trimmedStderr = stderr.trim()
-      const sanitizedStderr = sanitizeHelperStderr(trimmedStderr)
-      if (!trimmedStdout && !response) {
-        finishReject(
-          createHelperError(
-            sanitizedStderr ||
-              `Rekordbox Desktop helper 未返回结果（exit=${String(code ?? '')}）。`,
-            'HELPER_PROTOCOL_ERROR'
-          )
-        )
-        return
-      }
-
-      if (!response && trimmedStdout) {
-        try {
-          response = JSON.parse(trimmedStdout) as RekordboxDesktopHelperResponse<TResult>
-        } catch (error) {
-          log.error('[rekordbox-desktop-library] helper returned invalid JSON', {
-            command,
-            stdout: trimmedStdout,
-            stderr: sanitizedStderr
-          })
-          finishReject(
-            createHelperError(
-              `Rekordbox Desktop helper 返回了无效 JSON: ${error instanceof Error ? error.message : String(error || '')}`,
-              'HELPER_PROTOCOL_ERROR'
-            )
-          )
-          return
-        }
-      }
-
-      if (!response?.ok) {
-        const helperError = response?.error
-        finishReject(
-          createHelperError(
-            helperError?.message ||
-              sanitizedStderr ||
-              `Rekordbox Desktop helper 执行失败（exit=${String(code ?? '')}）。`,
-            (helperError?.code || 'HELPER_RUNTIME_ERROR') as RekordboxDesktopLibraryErrorCode
-          )
-        )
-        return
-      }
-      finishResolve(response.result)
-    })
-
-    child.stdin.on('error', () => {})
-    child.stdin.end(JSON.stringify(request))
-  })
+  return await helperSession.run(command, payload, options)
 }

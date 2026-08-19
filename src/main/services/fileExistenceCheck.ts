@@ -3,6 +3,22 @@ import { access } from 'node:fs/promises'
 
 const CHUNK_SIZE = 64
 
+export function applyMissingFileFlags<T extends { rowKey?: string; fileMissing?: boolean }>(
+  tracks: T[],
+  sourceTracks: Array<{ rowKey?: string; fileMissing?: boolean }>
+): T[] {
+  const missingKeys = new Set(
+    sourceTracks
+      .filter((track) => track.fileMissing)
+      .map((track) => String(track.rowKey || '').trim())
+      .filter(Boolean)
+  )
+  if (!missingKeys.size) return tracks
+  return tracks.map((track) =>
+    missingKeys.has(String(track.rowKey || '').trim()) ? { ...track, fileMissing: true } : track
+  )
+}
+
 export async function markMissingFiles(
   tracks: Array<{ filePath: string; fileMissing?: boolean }>
 ): Promise<void> {

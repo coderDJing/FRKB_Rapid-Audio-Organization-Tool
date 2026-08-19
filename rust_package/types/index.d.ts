@@ -432,5 +432,9 @@ export interface R3MasterTempoOfflineResult {
   zeroRetrieveCalls: number
 }
 export declare function processR3MasterTempoOffline(pcmData: Buffer, sampleRate: number, channels: number, tempo: number, mode?: string): R3MasterTempoOfflineResult
+/** 进程内探测单轨时间基偏移（毫秒） */
+export declare function probeAudioTimeBasisOffsetMs(filePath: string): Promise<number>
+/** 批量探测时间基偏移，顺序与输入路径一致 */
+export declare function probeAudioTimeBasisOffsetMsBatch(filePaths: Array<string>): Promise<Array<number>>
 
 export {}

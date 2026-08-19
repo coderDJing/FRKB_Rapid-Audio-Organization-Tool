@@ -11,6 +11,7 @@
 #include <libavformat/avformat.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/avutil.h>
+#include <libavutil/intreadwrite.h>
 #include <libavutil/opt.h>
 #include <libavutil/channel_layout.h>
 #include <libswresample/swresample.h>
@@ -577,4 +578,83 @@ finish_transport:
 void frkb_ffmpeg_transport_free_samples(int16_t *ptr)
 {
     free(ptr);
+}
+
+int frkb_ffmpeg_probe_time_basis(
+    const char *file_path,
+    int read_skip_samples,
+    double *start_time_sec_out,
+    int *sample_rate_out,
+    int *skip_samples_out,
+    char *encoder_out,
+    int encoder_out_cap)
+{
+    if (!file_path || !start_time_sec_out || !sample_rate_out || !skip_samples_out) {
+        return FRKB_ERR_INVALID_ARG;
+    }
+    if (encoder_out && encoder_out_cap > 0) {
+        encoder_out[0] = '\0';
+    }
+
+    AVFormatContext *fmt_ctx = NULL;
+    int ret = avformat_open_input(&fmt_ctx, file_path, NULL, NULL);
+    if (ret < 0) return FRKB_ERR_OPEN_INPUT;
+
+    ret = avformat_find_stream_info(fmt_ctx, NULL);
+    if (ret < 0) {
+        avformat_close_input(&fmt_ctx);
+        return FRKB_ERR_STREAM_INFO;
+    }
+
+    ret = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+    if (ret < 0) {
+        avformat_close_input(&fmt_ctx);
+        return FRKB_ERR_NO_AUDIO;
+    }
+
+    AVStream *stream = fmt_ctx->streams[ret];
+    *sample_rate_out = stream->codecpar ? stream->codecpar->sample_rate : 0;
+    *skip_samples_out = 0;
+    *start_time_sec_out = 0.0;
+    if (stream->start_time != AV_NOPTS_VALUE) {
+        *start_time_sec_out = (double)stream->start_time * av_q2d(stream->time_base);
+    }
+
+    if (encoder_out && encoder_out_cap > 1) {
+        AVDictionaryEntry *encoder = av_dict_get(stream->metadata, "encoder", NULL, 0);
+        if (!encoder) {
+            encoder = av_dict_get(fmt_ctx->metadata, "encoder", NULL, 0);
+        }
+        if (encoder && encoder->value) {
+            strncpy(encoder_out, encoder->value, (size_t)encoder_out_cap - 1);
+            encoder_out[encoder_out_cap - 1] = '\0';
+        }
+    }
+
+    if (*start_time_sec_out <= 0.0 || !read_skip_samples) {
+        avformat_close_input(&fmt_ctx);
+        return 0;
+    }
+
+    AVPacket *pkt = av_packet_alloc();
+    if (!pkt) {
+        avformat_close_input(&fmt_ctx);
+        return FRKB_ERR_ALLOC;
+    }
+    while (av_read_frame(fmt_ctx, pkt) >= 0) {
+        if (pkt->stream_index == ret) {
+            for (int i = 0; i < pkt->side_data_elems; i += 1) {
+                if (pkt->side_data[i].type == AV_PKT_DATA_SKIP_SAMPLES && pkt->side_data[i].size >= 4) {
+                    *skip_samples_out = (int)AV_RL32(pkt->side_data[i].data);
+                    break;
+                }
+            }
+            av_packet_unref(pkt);
+            break;
+        }
+        av_packet_unref(pkt);
+    }
+    av_packet_free(&pkt);
+    avformat_close_input(&fmt_ctx);
+    return 0;
 }

@@ -4,6 +4,8 @@ use std::path::Path;
 use std::result::Result as StdResult;
 use std::time::Instant;
 
+use rayon::prelude::*;
+
 extern "C" {
   fn frkb_ffmpeg_transport_decode(
     file_path: *const c_char,
@@ -20,6 +22,16 @@ extern "C" {
   ) -> c_int;
 
   fn frkb_ffmpeg_transport_free_samples(ptr: *mut i16);
+
+  fn frkb_ffmpeg_probe_time_basis(
+    file_path: *const c_char,
+    read_skip_samples: c_int,
+    start_time_sec_out: *mut c_double,
+    sample_rate_out: *mut c_int,
+    skip_samples_out: *mut c_int,
+    encoder_out: *mut c_char,
+    encoder_out_cap: c_int,
+  ) -> c_int;
 }
 
 #[derive(Debug)]
@@ -54,6 +66,8 @@ pub(crate) struct FfmpegTransportDecodeMetrics {
 pub(crate) const TRANSPORT_FFMPEG_SAMPLE_RATE: u32 = 44_100;
 pub(crate) const TRANSPORT_FFMPEG_CHANNELS: u16 = 2;
 const FRKB_ERR_CANCELLED: c_int = 11;
+const ZERO_TIME_BASIS_EXTENSIONS: &[&str] = &["wav", "wave", "aif", "aiff", "flac"];
+const ENCODER_BUFFER_SIZE: usize = 256;
 
 fn elapsed_ms(started_at: Instant) -> f64 {
   started_at.elapsed().as_secs_f64() * 1000.0
@@ -280,6 +294,112 @@ where
       read_iterations: 0.0,
     },
   }))
+}
+
+fn file_extension_lower(path: &Path) -> String {
+  path
+    .extension()
+    .and_then(|value| value.to_str())
+    .unwrap_or("")
+    .to_ascii_lowercase()
+}
+
+fn to_fixed_ms(value: f64) -> f64 {
+  (value * 1000.0).round() / 1000.0
+}
+
+fn probe_audio_time_basis_offset_ms_native(file_path: &str) -> StdResult<f64, String> {
+  let trimmed = file_path.trim();
+  if trimmed.is_empty() {
+    return Ok(0.0);
+  }
+  let path = Path::new(trimmed);
+  let extension = file_extension_lower(path);
+  if ZERO_TIME_BASIS_EXTENSIONS
+    .iter()
+    .any(|item| *item == extension)
+  {
+    return Ok(0.0);
+  }
+
+  let c_path = CString::new(trimmed).map_err(|_| "音频路径包含无效的 NUL 字符".to_string())?;
+  let read_skip_samples = if extension == "mp3" { 1 } else { 0 };
+  let mut start_time_sec: c_double = 0.0;
+  let mut sample_rate: c_int = 0;
+  let mut skip_samples: c_int = 0;
+  let mut encoder = [0 as c_char; ENCODER_BUFFER_SIZE];
+
+  let rc = unsafe {
+    frkb_ffmpeg_probe_time_basis(
+      c_path.as_ptr(),
+      read_skip_samples,
+      &mut start_time_sec,
+      &mut sample_rate,
+      &mut skip_samples,
+      encoder.as_mut_ptr(),
+      ENCODER_BUFFER_SIZE as c_int,
+    )
+  };
+  if rc != 0 {
+    return Err(format!(
+      "FFmpeg native time basis probe 失败，错误码: {}",
+      rc
+    ));
+  }
+  if !(start_time_sec.is_finite() && start_time_sec > 0.0) {
+    return Ok(0.0);
+  }
+
+  let encoder_text = unsafe { std::ffi::CStr::from_ptr(encoder.as_ptr()) }
+    .to_string_lossy()
+    .trim()
+    .to_string();
+  let sample_rate = if sample_rate > 0 {
+    sample_rate as f64
+  } else {
+    0.0
+  };
+  let skip_samples = if skip_samples > 0 {
+    skip_samples as f64
+  } else {
+    0.0
+  };
+  let skip_samples_ms = if sample_rate > 0.0 {
+    (skip_samples / sample_rate) * 1000.0
+  } else {
+    0.0
+  };
+  let gapless_skip_offset_ms = if skip_samples_ms > 0.0 && encoder_text.starts_with("LAME") {
+    skip_samples_ms
+  } else {
+    0.0
+  };
+  Ok(to_fixed_ms(
+    start_time_sec * 1000.0 + gapless_skip_offset_ms,
+  ))
+}
+
+/// 进程内探测单轨时间基偏移（毫秒）。失败时返回 0。
+#[napi]
+pub async fn probe_audio_time_basis_offset_ms(file_path: String) -> f64 {
+  napi::tokio::task::spawn_blocking(move || {
+    probe_audio_time_basis_offset_ms_native(&file_path).unwrap_or(0.0)
+  })
+  .await
+  .unwrap_or(0.0)
+}
+
+/// 批量探测时间基偏移，顺序与输入路径一致。
+#[napi]
+pub async fn probe_audio_time_basis_offset_ms_batch(file_paths: Vec<String>) -> Vec<f64> {
+  napi::tokio::task::spawn_blocking(move || {
+    file_paths
+      .par_iter()
+      .map(|file_path| probe_audio_time_basis_offset_ms_native(file_path).unwrap_or(0.0))
+      .collect::<Vec<f64>>()
+  })
+  .await
+  .unwrap_or_default()
 }
 
 #[cfg(test)]

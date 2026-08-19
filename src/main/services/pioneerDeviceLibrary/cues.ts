@@ -121,7 +121,9 @@ const normalizeMemoryCueRecord = (record: RustPioneerMemoryCueRecord): ISongMemo
   }
 }
 
-const normalizeCueDump = (dump: RustPioneerCueDump | null | undefined): PioneerTrackCueData => {
+export const normalizePioneerCueDump = (
+  dump: RustPioneerCueDump | null | undefined
+): PioneerTrackCueData => {
   const hotCues = Array.isArray(dump?.hotCues)
     ? dump.hotCues
         .map((item) => normalizeHotCueRecord(item))
@@ -171,7 +173,7 @@ export async function enrichPioneerTracksWithCueData(
       if (!absoluteAnalyzePath) return
       const analyzePath = analyzePathByAbsolute.get(normalizeAbsolutePathKey(absoluteAnalyzePath))
       if (!analyzePath) return
-      cueDataByAnalyzePath.set(analyzePath, normalizeCueDump(item?.dump || null))
+      cueDataByAnalyzePath.set(analyzePath, normalizePioneerCueDump(item?.dump || null))
     })
   } catch (error) {
     log.error('[pioneer-device-library] read cue data failed', {

@@ -1,8 +1,5 @@
 import type { IPioneerPlaylistTrack } from '../../../types/globals'
-import { enrichPioneerTracksWithCueData } from '../pioneerDeviceLibrary/cues'
-import { markMissingFiles } from '../fileExistenceCheck'
-import { createSongBeatGridMapV2FromRekordboxEntries } from '../../../shared/songBeatGridMapV2'
-import { resolveAudioTimeBasisOffsetMsForFile } from '../audioTimeBasisOffset'
+import { attachPioneerPlaylistRuntime } from '../pioneerDeviceLibrary/tree'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
 import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import { runRekordboxDesktopHelper } from './helper'
@@ -49,11 +46,6 @@ const normalizeRekordboxGridEntries = (
     return []
   }
   return entries
-}
-
-const buildRekordboxRuntimeBeatGrid = (entries: IPioneerPlaylistTrack['rekordboxGridEntries']) => {
-  if (!entries?.length) return undefined
-  return createSongBeatGridMapV2FromRekordboxEntries(entries)
 }
 
 const normalizeTrack = (
@@ -105,24 +97,9 @@ const normalizeTrack = (
   }
 }
 
-const attachRekordboxRuntimeGrid = async (track: IPioneerPlaylistTrack) => {
-  const beatGridMap = buildRekordboxRuntimeBeatGrid(track.rekordboxGridEntries)
-  if (!beatGridMap) return track
-  try {
-    const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(track.filePath)
-    return {
-      ...track,
-      timeBasisOffsetMs,
-      beatGridMap,
-      bpm: beatGridMap.clips[0]?.bpm || track.bpm
-    }
-  } catch {
-    return track
-  }
-}
-
 export async function loadRekordboxDesktopPlaylistTracks(
-  playlistId: number
+  playlistId: number,
+  options?: { includeRuntime?: boolean }
 ): Promise<RekordboxDesktopLibraryTrackLoadResult> {
   const probe = await requireRekordboxDesktopLibraryProbe()
   const safePlaylistId = Number(playlistId) || 0
@@ -136,11 +113,13 @@ export async function loadRekordboxDesktopPlaylistTracks(
       dbPath: string
       dbDir: string
       playlistId: number
+      parseAnlzGrid: boolean
     }
   >('load-playlist-tracks', {
     dbPath: probe.dbPath,
     dbDir: probe.dbDir,
-    playlistId: safePlaylistId
+    playlistId: safePlaylistId,
+    parseAnlzGrid: false
   })
 
   const tracks = Array.isArray(payload?.tracks)
@@ -149,17 +128,26 @@ export async function loadRekordboxDesktopPlaylistTracks(
         .filter((track): track is IPioneerPlaylistTrack => Boolean(track))
     : []
 
-  const tracksWithCues = await enrichPioneerTracksWithCueData(probe.sourceRootPath, tracks)
-  await markMissingFiles(tracksWithCues)
-  const tracksWithRuntimeGrid = await Promise.all(tracksWithCues.map(attachRekordboxRuntimeGrid))
+  const tracksWithRuntime =
+    options?.includeRuntime === false
+      ? tracks
+      : await attachPioneerPlaylistRuntime(probe.sourceRootPath, tracks, { includeCues: false })
 
   return {
     probe,
     playlistId: Number(payload?.playlistId) || safePlaylistId,
     playlistName: String(payload?.playlistName || '').trim(),
-    trackTotal: Number(payload?.trackTotal) || tracksWithRuntimeGrid.length,
-    tracks: tracksWithRuntimeGrid
+    trackTotal: Number(payload?.trackTotal) || tracksWithRuntime.length,
+    tracks: tracksWithRuntime
   }
+}
+
+export async function attachRekordboxDesktopPlaylistRuntime(
+  tracks: IPioneerPlaylistTrack[]
+): Promise<IPioneerPlaylistTrack[]> {
+  if (!tracks.length) return tracks
+  const probe = await requireRekordboxDesktopLibraryProbe()
+  return await attachPioneerPlaylistRuntime(probe.sourceRootPath, tracks, { includeCues: false })
 }
 
 const getErrorMessage = (error: unknown, fallback: string) => {
