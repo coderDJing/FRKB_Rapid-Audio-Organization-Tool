@@ -742,6 +742,22 @@ interface ISettingConfig {
   autoFillSkipCompleted?: boolean
   // 当前版本启动阶段是否已经展示过分析运行时下载提示
   analysisRuntimeStartupPromptShownVersion?: string
+  // 用户指引身份：Rekordbox / 新用户 / FRKB 老用户；未选择时为 undefined
+  userGuideAudience?: 'rekordbox' | 'general' | 'veteran'
+  // 已经看过并关掉的分散指引段落
+  userGuideDismissedSteps?: Array<
+    | 'browser'
+    | 'songsSource'
+    | 'rekordboxUsb'
+    | 'songsList'
+    | 'filterCurated'
+    | 'setLibrary'
+    | 'mixtapeLibrary'
+    | 'recordingLibrary'
+    | 'horizontal'
+    | 'edit'
+    | 'mixtapeWindow'
+  >
 }
 
 interface IMenu {

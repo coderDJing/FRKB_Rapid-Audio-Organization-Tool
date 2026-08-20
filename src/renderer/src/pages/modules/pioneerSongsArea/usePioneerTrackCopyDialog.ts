@@ -4,6 +4,7 @@ import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { t } from '@renderer/utils/translate'
+import { notifyFilterLibraryReceivedSongs } from '@renderer/composables/userGuideBridge'
 import type { ISongInfo } from '../../../../../types/globals'
 import type { PioneerSongSnapshot } from './usePioneerSongsProjection'
 
@@ -164,6 +165,9 @@ export const usePioneerTrackCopyDialog = (params: UsePioneerTrackCopyDialogParam
         }))
       )
       emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+      if (targetLibraryName === 'FilterLibrary') {
+        notifyFilterLibraryReceivedSongs()
+      }
     } catch (error: unknown) {
       const messageCode = error instanceof Error ? error.message : String(error || '')
       if (messageCode === 'MIXTAPE_VAULT_UNAVAILABLE') {

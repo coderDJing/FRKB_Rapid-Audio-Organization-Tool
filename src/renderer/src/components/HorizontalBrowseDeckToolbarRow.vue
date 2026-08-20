@@ -113,37 +113,42 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
 <template>
   <div class="overview__toolbar-row">
     <div class="overview__toolbar-main">
-      <MixtapeBeatAlignGridAdjustToolbar
-        :disabled="props.disabled"
-        :bpm-input-disabled="props.bpmInputDisabled"
-        :grid-controls-disabled="props.gridControlsDisabled"
-        :show-grid-controls="props.showGridControls"
-        :bpm-input-value="props.bpmInputValue"
-        :bpm-step="props.bpmStep"
-        :bpm-min="props.bpmMin"
-        :bpm-max="props.bpmMax"
-        :bpm-input-title="props.bpmInputTitle"
-        :bpm-input-first="props.bpmInputFirst"
-        :show-tap-button="props.showTapButton === true"
-        :tap-bpm-title="props.tapBpmTitle"
-        :show-memory-button="props.showGridControls"
-        :show-split-after-playhead="props.showSplitAfterPlayhead"
-        :show-delete-boundary="props.showDeleteBoundary"
-        :grid-adjust-scope="props.gridAdjustScope"
-        :show-large-shift-buttons="props.showLargeShiftButtons"
-        @set-downbeat-line="emit('set-downbeat-line')"
-        @shift-left-large="emit('shift-left-large')"
-        @shift-left-small="emit('shift-left-small')"
-        @shift-right-small="emit('shift-right-small')"
-        @shift-right-large="emit('shift-right-large')"
-        @update-bpm-input="emit('update-bpm-input', $event)"
-        @blur-bpm-input="emit('blur-bpm-input')"
-        @tap-bpm="emit('tap-bpm')"
-        @memory-cue="emit('memory-cue')"
-        @select-whole-adjustment="emit('select-whole-adjustment')"
-        @split-after-playhead="emit('split-after-playhead')"
-        @delete-boundary="emit('delete-boundary')"
-      />
+      <div
+        class="overview__grid-guide-target"
+        :data-user-guide-target="props.showSplitAfterPlayhead ? 'edit-grid' : undefined"
+      >
+        <MixtapeBeatAlignGridAdjustToolbar
+          :disabled="props.disabled"
+          :bpm-input-disabled="props.bpmInputDisabled"
+          :grid-controls-disabled="props.gridControlsDisabled"
+          :show-grid-controls="props.showGridControls"
+          :bpm-input-value="props.bpmInputValue"
+          :bpm-step="props.bpmStep"
+          :bpm-min="props.bpmMin"
+          :bpm-max="props.bpmMax"
+          :bpm-input-title="props.bpmInputTitle"
+          :bpm-input-first="props.bpmInputFirst"
+          :show-tap-button="props.showTapButton === true"
+          :tap-bpm-title="props.tapBpmTitle"
+          :show-memory-button="props.showGridControls"
+          :show-split-after-playhead="props.showSplitAfterPlayhead"
+          :show-delete-boundary="props.showDeleteBoundary"
+          :grid-adjust-scope="props.gridAdjustScope"
+          :show-large-shift-buttons="props.showLargeShiftButtons"
+          @set-downbeat-line="emit('set-downbeat-line')"
+          @shift-left-large="emit('shift-left-large')"
+          @shift-left-small="emit('shift-left-small')"
+          @shift-right-small="emit('shift-right-small')"
+          @shift-right-large="emit('shift-right-large')"
+          @update-bpm-input="emit('update-bpm-input', $event)"
+          @blur-bpm-input="emit('blur-bpm-input')"
+          @tap-bpm="emit('tap-bpm')"
+          @memory-cue="emit('memory-cue')"
+          @select-whole-adjustment="emit('select-whole-adjustment')"
+          @split-after-playhead="emit('split-after-playhead')"
+          @delete-boundary="emit('delete-boundary')"
+        />
+      </div>
       <div class="overview__toolbar-group overview__loop-control">
         <bubbleBoxTrigger
           wrapper-tag="span"
@@ -318,6 +323,12 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
+}
+
+.overview__grid-guide-target {
+  display: flex;
+  align-items: center;
   min-width: 0;
 }
 

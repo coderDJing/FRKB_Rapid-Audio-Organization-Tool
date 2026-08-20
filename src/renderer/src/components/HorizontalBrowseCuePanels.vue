@@ -120,7 +120,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
 </script>
 
 <template>
-  <aside class="cue-panels">
+  <aside class="cue-panels" data-user-guide-target="horizontal-cues">
     <section
       v-for="panel in panels"
       :key="panel.deck"

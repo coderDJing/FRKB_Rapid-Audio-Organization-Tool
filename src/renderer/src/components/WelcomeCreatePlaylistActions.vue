@@ -7,6 +7,7 @@ import {
 } from '@renderer/utils/newSongsImport'
 import emitter from '@renderer/utils/mitt'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
+import { requestUserGuideStep } from '@renderer/composables/userGuideBridge'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 type WelcomePlaylistAction = {
@@ -101,8 +102,12 @@ const handleWelcomePlaylistCreated = (payload: unknown) => {
   requestAnimationFrame(findTargetInput)
 }
 
-const createPlaylistFromWelcome = (kind: WelcomePlaylistAction['kind'], event: MouseEvent) => {
+const createPlaylistFromWelcome = async (
+  kind: WelcomePlaylistAction['kind'],
+  event: MouseEvent
+) => {
   const origin = event.currentTarget
+  await requestUserGuideStep('songsSource')
   if (origin instanceof HTMLElement) {
     const originRect = origin.getBoundingClientRect()
     creationNudgeOrigin = {
@@ -116,6 +121,7 @@ const createPlaylistFromWelcome = (kind: WelcomePlaylistAction['kind'], event: M
 const importNewSongsFromWelcome = async () => {
   const libraryName = selectedImportLibrary.value
   if (!libraryName) return
+  await requestUserGuideStep('songsSource')
   await openNewSongsImport(libraryName, { openSongListAfterImport: true })
 }
 
@@ -133,6 +139,7 @@ onUnmounted(() => {
   <div
     v-if="welcomePlaylistActions.length"
     class="welcome-create-playlist-actions"
+    data-user-guide-target="songs-source"
     :class="{ 'welcome-create-playlist-actions--horizontal': props.horizontal }"
   >
     <div

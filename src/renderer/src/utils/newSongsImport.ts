@@ -2,6 +2,7 @@ import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import confirm from '@renderer/components/confirmDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
+import { requestUserGuideStep } from '@renderer/composables/userGuideBridge'
 
 export type NewSongsImportLibrary = 'FilterLibrary' | 'CuratedLibrary'
 type NewSongsImportOptions = {
@@ -27,6 +28,7 @@ export const openNewSongsImport = async (
     return
   }
 
+  await requestUserGuideStep('songsSource')
   await scanNewSongDialog({
     libraryName,
     songListUuid: '',

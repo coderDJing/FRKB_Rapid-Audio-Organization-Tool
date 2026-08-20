@@ -48,6 +48,9 @@ import { useMainWindowPlaybackHandoff } from '@renderer/composables/useMainWindo
 import { useMainWindowBrowseModeState } from '@renderer/composables/useMainWindowBrowseModeState'
 import { useDevSongListTrace } from '@renderer/composables/useDevSongListTrace'
 import { useCloudSyncEvents } from '@renderer/composables/useCloudSyncEvents'
+import { useUserGuide } from '@renderer/composables/useUserGuide'
+import UserGuideIdentityOverlay from '@renderer/components/userGuide/UserGuideIdentityOverlay.vue'
+import UserGuideCard from '@renderer/components/userGuide/UserGuideCard.vue'
 import type { MainWindowBrowseMode } from '@renderer/utils/mainWindowPlaybackHandoff'
 import {
   handleSongsRemovedForGlobalSearchUpdate,
@@ -171,6 +174,22 @@ const {
   confirmDialog: confirm,
   appVersion: String(pkg.version || '')
 })
+const {
+  identityVisible: userGuideIdentityVisible,
+  activeStep: userGuideActiveStep,
+  activeBeat: userGuideActiveBeat,
+  beatNumber: userGuideBeatNumber,
+  beatCount: userGuideBeatCount,
+  hasNextBeat: userGuideHasNextBeat,
+  isRekordboxUser: userGuideIsRekordboxUser,
+  chooseIdentity: chooseUserGuideIdentity,
+  dismissActiveStep: dismissUserGuideStep,
+  goNextBeat: goNextUserGuideBeat,
+  beginUserGuide,
+  waitForIdentity: waitForUserGuideIdentity,
+  waitForIdleGuide: waitForUserGuideIdle,
+  replayCurrentModeGuide
+} = useUserGuide()
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 type MixtapeItemsRemovedPayload = {
@@ -438,6 +457,10 @@ const openDialog = async (item: string) => {
   }
   if (item === 'menu.whatsNew') {
     window.electron.ipcRenderer.send('showWhatsNew')
+    return
+  }
+  if (item === 'menu.userGuide') {
+    replayCurrentModeGuide()
     return
   }
   if (item === 'menu.globalSongSearch') {
@@ -788,6 +811,9 @@ onMounted(() => {
   window.electron.ipcRenderer.on('cloudSync/error', handleCloudSyncError)
   window.electron.ipcRenderer.on('mainWindowBlur', handleMainWindowBlur)
   void (async () => {
+    await waitForUserGuideIdentity()
+    beginUserGuide()
+    await waitForUserGuideIdle()
     await refreshAnalysisRuntimeStatus()
     await promptAnalysisRuntimeDownload('startup')
   })()
@@ -866,7 +892,11 @@ onBeforeUnmount(() => {
     </div>
     <div :style="mainWindowTopGapStyle" class="mainWindowTopGap">
       <div class="topToolbarLeftActions">
-        <div ref="mainWindowBrowseModeMenuRef" class="topToolbarModeDropdown">
+        <div
+          ref="mainWindowBrowseModeMenuRef"
+          class="topToolbarModeDropdown"
+          data-user-guide-target="browse-mode"
+        >
           <bubbleBoxTrigger
             tag="button"
             class="topToolbarModeButton"
@@ -947,7 +977,11 @@ onBeforeUnmount(() => {
         <span class="topToolbarTime">{{ currentTime }}</span>
       </div>
     </div>
-    <div v-if="showHorizontalModeShell" :style="horizontalModeShellStyle">
+    <div
+      v-if="showHorizontalModeShell"
+      data-user-guide-target="horizontal-decks"
+      :style="horizontalModeShellStyle"
+    >
       <HorizontalBrowseModeShell :view-mode="horizontalModeShellViewMode" />
     </div>
     <div style="flex: 1 1 auto; min-height: 0">
@@ -1001,6 +1035,19 @@ onBeforeUnmount(() => {
     :failed-so-far="fileOpFailedSoFar"
     @resume="sendFileOpControl('resume')"
     @cancel="sendFileOpControl('cancel')"
+  />
+  <UserGuideIdentityOverlay v-if="userGuideIdentityVisible" @select="chooseUserGuideIdentity" />
+  <UserGuideCard
+    v-if="userGuideActiveStep && !runtime.confirmShow"
+    :key="userGuideActiveStep"
+    :step="userGuideActiveStep"
+    :beat="userGuideActiveBeat"
+    :rekordbox-user="userGuideIsRekordboxUser"
+    :beat-number="userGuideBeatNumber"
+    :beat-count="userGuideBeatCount"
+    :has-next="userGuideHasNextBeat"
+    @next="goNextUserGuideBeat"
+    @skip="dismissUserGuideStep"
   />
   <AnalysisRuntimeDownloadOverlay
     :visible="analysisRuntimeDownloadVisible"

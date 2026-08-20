@@ -121,7 +121,11 @@ defineExpose({
       </svg>
     </button>
 
-    <div v-if="props.expanded" class="fader-panel__sync-slot">
+    <div
+      v-if="props.expanded"
+      class="fader-panel__sync-slot"
+      data-user-guide-target="horizontal-link"
+    >
       <button
         class="fader-panel__sync-button"
         :class="{ 'is-active': props.transportSyncEnabled }"

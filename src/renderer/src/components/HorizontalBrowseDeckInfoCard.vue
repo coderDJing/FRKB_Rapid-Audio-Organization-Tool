@@ -17,6 +17,7 @@ const props = defineProps<{
   durationSeconds?: number
   hideSyncControls?: boolean
   showEnergy?: boolean
+  userGuideTarget?: string
 }>()
 
 const emit = defineEmits<{
@@ -231,7 +232,11 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="!props.hideSyncControls" class="deck-info-card__actions">
+    <div
+      v-if="!props.hideSyncControls"
+      class="deck-info-card__actions"
+      :data-user-guide-target="props.userGuideTarget"
+    >
       <button
         type="button"
         class="deck-info-action"

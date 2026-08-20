@@ -16,12 +16,19 @@ import {
   DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   normalizeBrowserPlayerRightTrackInfo
 } from '../../shared/browserPlayerRightTrackInfo'
+import {
+  DEV_USER_GUIDE_AS_NEW_USER_ENV,
+  isEnabledEnvFlag,
+  sanitizeUserGuideAudience,
+  sanitizeUserGuideDismissedSteps
+} from '../../shared/userGuide'
 import fs = require('fs-extra')
 
 const platform = process.platform
 
 type StoredSettings = Partial<ISettingConfig> & {
   migratedAudioExtAll?: boolean
+  isRekordboxUser?: boolean
 }
 
 type ExtendedSettingConfig = ISettingConfig & {
@@ -131,7 +138,8 @@ const defaultSettings = {
   lastRunAppVersion: '',
   acoustIdClientKey: '',
   autoFillSkipCompleted: true,
-  analysisRuntimeStartupPromptShownVersion: ''
+  analysisRuntimeStartupPromptShownVersion: '',
+  userGuideDismissedSteps: []
 } as ISettingConfig
 
 type LoadSettingsOptions = {
@@ -222,6 +230,20 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     finalSettings.analysisRuntimeStartupPromptShownVersion = ''
   }
 
+  const audience = sanitizeUserGuideAudience(
+    finalSettings.userGuideAudience,
+    loadedSettings.isRekordboxUser
+  )
+  if (audience === undefined) {
+    delete finalSettings.userGuideAudience
+  } else {
+    finalSettings.userGuideAudience = audience
+  }
+  delete (finalSettings as StoredSettings).isRekordboxUser
+  finalSettings.userGuideDismissedSteps = sanitizeUserGuideDismissedSteps(
+    finalSettings.userGuideDismissedSteps
+  )
+
   try {
     const migrated = loadedSettings.migratedAudioExtAll === true
     if (!migrated) {
@@ -246,6 +268,12 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
 
   store.settingConfig = finalSettings
   persistSettingConfigSync(finalSettings)
+
+  if (is.dev && isEnabledEnvFlag(process.env[DEV_USER_GUIDE_AS_NEW_USER_ENV])) {
+    delete finalSettings.userGuideAudience
+    finalSettings.userGuideDismissedSteps = []
+  }
+
   return finalSettings
 }
 

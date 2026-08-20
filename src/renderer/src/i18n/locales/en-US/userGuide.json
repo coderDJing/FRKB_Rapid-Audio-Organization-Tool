@@ -1,0 +1,426 @@
+{
+  "userGuide": {
+    "gotIt": "OK",
+    "next": "Next",
+    "skip": "Close",
+    "progress": "{current} / {total}",
+    "settingTitle": "User guide",
+    "settingHint": "Hidden if you already know FRKB. Rekordbox users see differences only. Can be changed anytime.",
+    "identity": {
+      "welcome": "Welcome to FRKB",
+      "title": "Select how you use FRKB",
+      "line1": "This controls whether the guide is shown and how it is worded.",
+      "line2": "You can change this in Settings.",
+      "rekordbox": "I use Rekordbox",
+      "rekordboxDesc": "Explain differences from Rekordbox. Shared concepts are not repeated.",
+      "general": "I do not use Rekordbox",
+      "generalDesc": "Explain browsing, playback, and import.",
+      "veteran": "I already know FRKB",
+      "veteranDesc": "Do not show the guide. You can turn it back on in Settings."
+    },
+    "browser": {
+      "browserSource": {
+        "rekordbox": {
+          "title": "Track source",
+          "line1": "Use Import or New playlist to add audio files to Filter.",
+          "line2": "Playlists are folders on disk.",
+          "hint": "Click Import or New playlist."
+        },
+        "general": {
+          "title": "Track source",
+          "line1": "Use Import to add audio files to Filter.",
+          "line2": "Playlists are folders on disk.",
+          "hint": "Click Import or New playlist."
+        }
+      },
+      "browserMode": {
+        "rekordbox": {
+          "title": "Browser mode",
+          "line1": "This corresponds to Rekordbox Browser.",
+          "hint": "Switch to Dual-Track Horizontal or Edit from this menu."
+        },
+        "general": {
+          "title": "Browser mode",
+          "line1": "Browse, play, and organize tracks. Double-click to play.",
+          "hint": "Switch to Dual-Track Horizontal or Edit from this menu."
+        }
+      },
+      "browserLibraries": {
+        "rekordbox": {
+          "title": "Libraries",
+          "line1": "Rekordbox does not have this sidebar.",
+          "line2": "It includes Filter, Curated, SET Library, Mixtape Auto-Recording, and Recycle Bin.",
+          "hint": "Click an icon to switch."
+        },
+        "general": {
+          "title": "Libraries",
+          "line1": "Includes Filter, Curated, SET Library, Mixtape Auto-Recording, and Recycle Bin.",
+          "hint": "Click an icon to switch."
+        }
+      },
+      "browserLibraryMenu": {
+        "rekordbox": {
+          "title": "Library context menu",
+          "line1": "Rekordbox does not have this entry.",
+          "line2": "Right-click an icon for library-wide actions such as auto-fill metadata, convert format, or find similar tracks.",
+          "hint": "Right-click a sidebar icon."
+        },
+        "general": {
+          "title": "Library context menu",
+          "line1": "Right-click a sidebar icon for library-wide actions.",
+          "line2": "Includes auto-fill metadata, convert format, and similar tracks. Recycle Bin can be emptied here.",
+          "hint": "Right-click a sidebar icon."
+        }
+      },
+      "browserTree": {
+        "rekordbox": {
+          "title": "Playlists",
+          "line1": "Similar to Rekordbox playlists, but each playlist is a folder on disk.",
+          "hint": "Search above the tree."
+        },
+        "general": {
+          "title": "Playlists",
+          "line1": "Click a playlist to list its tracks. Each playlist is a folder on disk.",
+          "hint": "Search above the tree."
+        }
+      },
+      "browserTreeMenu": {
+        "rekordbox": {
+          "title": "Playlist context menu",
+          "line1": "Right-click a playlist or empty area.",
+          "line2": "Import and export apply to folders on disk. You can open them in File Explorer.",
+          "hint": "Right-click a playlist or empty area."
+        },
+        "general": {
+          "title": "Playlist context menu",
+          "line1": "Right-click a playlist or empty area.",
+          "line2": "Create, import, export, rename, delete, and open the folder in File Explorer.",
+          "hint": "Right-click a playlist or empty area."
+        }
+      },
+      "browserPlayer": {
+        "rekordbox": {
+          "title": "Player bar",
+          "line1": "Shown during playback for preview.",
+          "hint": "Hidden when nothing is playing."
+        },
+        "general": {
+          "title": "Player bar",
+          "line1": "Shows cover, progress, and volume during playback.",
+          "hint": "Hidden when nothing is playing."
+        }
+      }
+    },
+    "songsSource": {
+      "rekordbox": {
+        "title": "Track source",
+        "line1": "Use Import or New playlist to add audio files to Filter.",
+        "line2": "Playlists are folders on disk.",
+        "hint": "Click Import or New playlist."
+      },
+      "general": {
+        "title": "Track source",
+        "line1": "Use Import to add audio files to Filter.",
+        "line2": "Playlists are folders on disk.",
+        "hint": "Click Import or New playlist."
+      }
+    },
+    "rekordboxUsb": {
+      "rekordboxUsbBody": {
+        "title": "Rekordbox Desktop and USB libraries",
+        "line1": "The Rekordbox Desktop Library and connected Pioneer USB libraries appear in the lower left.",
+        "line2": "You can browse and preview. Copy into Filter to organize; source libraries are not modified.",
+        "hint": "Click the corresponding icon to open."
+      },
+      "rekordboxUsbMenu": {
+        "title": "Desktop and USB context menu",
+        "line1": "Right-click an icon to import artists into Curated, scan fingerprints, or eject USB.",
+        "line2": "After opening, right-click a playlist or track to copy into Filter. Source libraries are not modified.",
+        "hint": "Right-click the corresponding icon."
+      }
+    },
+    "songsList": {
+      "songsListBody": {
+        "rekordbox": {
+          "title": "Track list",
+          "line1": "Select and double-click to play as in Rekordbox.",
+          "hint": "Click a column header to sort. Use the column filter icon to filter."
+        },
+        "general": {
+          "title": "Track list",
+          "line1": "Double-click to play.",
+          "hint": "Click a column header to sort. Use the column filter icon to filter."
+        }
+      },
+      "songsListReorder": {
+        "rekordbox": {
+          "title": "Index and drag",
+          "line1": "Unlike Rekordbox, drag-and-drop reordering works only when sorted by Index.",
+          "line2": "When sorted by another column, use Renumber by current order on the Index column to save the visible order as real track numbers.",
+          "hint": "Click the Index header to change sort."
+        },
+        "general": {
+          "title": "Index and drag",
+          "line1": "Drag-and-drop reordering works only when sorted by Index.",
+          "line2": "When sorted by another column, use Renumber by current order on the Index column to save the visible order as real track numbers.",
+          "hint": "Click the Index header to change sort."
+        }
+      },
+      "songsListTrackMenu": {
+        "rekordbox": {
+          "title": "Track context menu",
+          "line1": "Copy or move tracks into Filter or Curated to organize.",
+          "line2": "Export, metadata, convert, and stems are also here. Rekordbox source libraries are not modified.",
+          "hint": "Right-click a track."
+        },
+        "general": {
+          "title": "Track context menu",
+          "line1": "Copy or move to Filter or Curated, or add to a SET or Mixtape.",
+          "line2": "You can also export, edit metadata, convert format, or separate stems.",
+          "hint": "Right-click a track."
+        }
+      },
+      "songsListHeaderMenu": {
+        "rekordbox": {
+          "title": "List header",
+          "line1": "Right-click the header to show or hide columns.",
+          "hint": "Right-click the header."
+        },
+        "general": {
+          "title": "List header",
+          "line1": "Right-click the header to show or hide columns.",
+          "hint": "Right-click the header."
+        }
+      }
+    },
+    "filterCurated": {
+      "title": "Filter and Curated",
+      "line1": "Filter is for initial review. Curated stores selected tracks.",
+      "line2": "Both are folders on disk.",
+      "hint": "These two icons on the left."
+    },
+    "setLibrary": {
+      "rekordbox": {
+        "title": "SET Library",
+        "line1": "Like Rekordbox playlists, a SET stores references, not a folder of copies.",
+        "line2": "Remove from SET does not delete the source files.",
+        "hint": "Add tracks from the track context menu."
+      },
+      "general": {
+        "title": "SET Library",
+        "line1": "A SET stores track references, not copies of files.",
+        "line2": "Remove from SET does not delete the source files.",
+        "hint": "Add tracks from the track context menu."
+      }
+    },
+    "mixtapeLibrary": {
+      "rekordbox": {
+        "title": "Mixtape Auto-Recording",
+        "line1": "Rekordbox has no equivalent. Double-click a playlist to open a separate window.",
+        "line2": "Tracks need a BPM before they can be added.",
+        "hint": "Double-click a playlist on the left."
+      },
+      "general": {
+        "title": "Mixtape Auto-Recording",
+        "line1": "Double-click a playlist to open a separate auto-recording window.",
+        "line2": "Tracks need a BPM before they can be added.",
+        "hint": "Double-click a playlist on the left."
+      }
+    },
+    "recordingLibrary": {
+      "title": "Recordings",
+      "line1": "This library appears after a dual-track recording.",
+      "line2": "Recorded files are stored here. Source tracks are not changed.",
+      "hint": "Start recording from the dual-track title bar only."
+    },
+    "horizontal": {
+      "horizontalOverview": {
+        "rekordbox": {
+          "title": "Dual-Track Horizontal mode",
+          "line1": "Corresponds to Rekordbox Export.",
+          "hint": "Double-click loads the top deck. Shift+double-click loads the bottom deck."
+        },
+        "general": {
+          "title": "Dual-Track Horizontal mode",
+          "line1": "Compare two decks’ waveforms to judge a transition.",
+          "hint": "Double-click loads the top deck. Shift+double-click loads the bottom deck."
+        }
+      },
+      "horizontalWaveforms": {
+        "rekordbox": {
+          "title": "Waveforms",
+          "line1": "The center pair of horizontal waveforms is for comparing phrases.",
+          "hint": "Drag to seek. Scroll to zoom."
+        },
+        "general": {
+          "title": "Waveforms",
+          "line1": "The center pair of horizontal waveforms lets you compare phrases.",
+          "hint": "Drag to seek. Scroll to zoom."
+        }
+      },
+      "horizontalTransport": {
+        "rekordbox": {
+          "title": "Playback and faders",
+          "line1": "Play, volume, and the crossfader work as in Export.",
+          "line2": "The left CUE is playback cue. The CUE beside the fader is cue monitor.",
+          "hint": "EQ bands and cue monitor appear when the fader panel is expanded."
+        },
+        "general": {
+          "title": "Playback and faders",
+          "line1": "The left CUE is for playback position.",
+          "line2": "The CUE that appears when the fader panel is expanded is cue monitor, not seek.",
+          "hint": "EQ bands and cue monitor appear when the fader panel is expanded."
+        }
+      },
+      "horizontalLink": {
+        "rekordbox": {
+          "title": "Link",
+          "line1": "Rekordbox has no equivalent button.",
+          "line2": "When on, dragging or zooming either deck moves both together and aligns the grids.",
+          "hint": "Available after both decks are loaded. It does not rewrite either beat grid."
+        },
+        "general": {
+          "title": "Link",
+          "line1": "When on, dragging or zooming either deck moves both together and aligns the grids.",
+          "hint": "Available after both decks are loaded. It does not rewrite either beat grid."
+        }
+      },
+      "horizontalBeatSync": {
+        "rekordbox": {
+          "title": "Beat Sync and MASTER",
+          "line1": "These mean the same as in Rekordbox.",
+          "line2": "Unlike Link: Beat Sync only aligns tempo. It does not drag or zoom both decks as one.",
+          "hint": "MASTER chooses the reference deck. It is not the MT button on the toolbar."
+        },
+        "general": {
+          "title": "Beat Sync and MASTER",
+          "line1": "MASTER chooses the reference deck. Beat Sync aligns the current deck to that tempo.",
+          "line2": "Unlike Link: it only aligns tempo. It does not drag or zoom both decks as one.",
+          "hint": "MASTER is on the track info card, not the MT button on the toolbar."
+        }
+      },
+      "horizontalTools": {
+        "rekordbox": {
+          "title": "Loop and tempo",
+          "line1": "Loop and Quantize match Rekordbox.",
+          "line2": "BPM here is a temporary speed change. MT locks pitch while tempo changes; it is not MASTER.",
+          "hint": "Edit the grid in Edit mode. The metronome is not recorded."
+        },
+        "general": {
+          "title": "Loop and tempo",
+          "line1": "Use Loop, Quantize, and temporary tempo adjustments.",
+          "line2": "BPM here affects playback only. MT locks pitch while tempo changes; it is not MASTER.",
+          "hint": "The metronome is for listening only and is not recorded."
+        }
+      },
+      "horizontalCues": {
+        "rekordbox": {
+          "title": "Hot Cue and Memory Cue",
+          "line1": "These mean the same as in Rekordbox.",
+          "hint": "Switch cue types on the right."
+        },
+        "general": {
+          "title": "Hot Cue and Memory Cue",
+          "line1": "Set or jump to Hot Cues and Memory Cues on the right.",
+          "hint": "Use the buttons under the panel to switch types."
+        }
+      },
+      "horizontalRecording": {
+        "rekordbox": {
+          "title": "Recording",
+          "line1": "Recording is only available from the dual-track title bar. Rekordbox has no equivalent control here.",
+          "line2": "When finished, the Recordings library appears in the sidebar.",
+          "hint": "Click the record button in the title bar."
+        },
+        "general": {
+          "title": "Recording",
+          "line1": "Recording is only available from the dual-track title bar.",
+          "line2": "When finished, the Recordings library appears in the sidebar.",
+          "hint": "Click the record button in the title bar."
+        }
+      }
+    },
+    "edit": {
+      "editOverview": {
+        "rekordbox": {
+          "title": "Edit mode",
+          "line1": "Corresponds to Rekordbox Edit. Use it to edit the beat grid.",
+          "hint": "BPM here edits the grid, not a temporary pitch change."
+        },
+        "general": {
+          "title": "Edit mode",
+          "line1": "Edit the beat grid of the current track.",
+          "hint": "BPM here changes the analysis result, not playback speed immediately."
+        }
+      },
+      "editGrid": {
+        "rekordbox": {
+          "title": "Grid segments",
+          "line1": "After playhead only changes the grid to the right of the playhead.",
+          "line2": "Delete merges adjacent segments.",
+          "hint": "Use the range buttons on the toolbar."
+        },
+        "general": {
+          "title": "Grid segments",
+          "line1": "After playhead only changes the grid to the right of the playhead.",
+          "line2": "Delete merges adjacent segments.",
+          "hint": "Use the range buttons on the toolbar."
+        }
+      }
+    },
+    "mixtapeWindow": {
+      "mixtapeOverview": {
+        "rekordbox": {
+          "title": "Mixtape Auto-Recording",
+          "line1": "Rekordbox has no equivalent window. Tracks are arranged on a timeline and joined automatically.",
+          "hint": "Drag tracks from a playlist. A BPM is required first."
+        },
+        "general": {
+          "title": "Mixtape Auto-Recording",
+          "line1": "Tracks are arranged on a timeline and joined automatically.",
+          "hint": "Drag tracks from a playlist. A BPM is required first."
+        }
+      },
+      "mixtapeParams": {
+        "rekordbox": {
+          "title": "Automation",
+          "line1": "Switch a parameter, then edit its curve or position on the timeline.",
+          "line2": "In Position, Shift-drag also moves following tracks.",
+          "hint": "Use the tabs above."
+        },
+        "general": {
+          "title": "Automation",
+          "line1": "Switch a parameter, then edit its curve or position on the timeline.",
+          "line2": "In Position, Shift-drag also moves following tracks.",
+          "hint": "Use the tabs above."
+        }
+      },
+      "mixtapeBpm": {
+        "rekordbox": {
+          "title": "Tempo envelope",
+          "line1": "When on, you can edit BPM for the whole timeline.",
+          "line2": "This is not the MT button on the dual-track toolbar.",
+          "hint": "Click BPM to turn it on or off."
+        },
+        "general": {
+          "title": "Tempo envelope",
+          "line1": "When on, you can edit BPM for the whole timeline.",
+          "line2": "This is not the MT button on the dual-track toolbar.",
+          "hint": "Click BPM to turn it on or off."
+        }
+      },
+      "mixtapeStem": {
+        "rekordbox": {
+          "title": "Stems",
+          "line1": "Separated stems last only until you quit the app. Opening again requires a new separation.",
+          "hint": "Use Vocal / Inst and similar tabs on the timeline."
+        },
+        "general": {
+          "title": "Stems",
+          "line1": "Separated stems last only until you quit the app. Opening again requires a new separation.",
+          "hint": "Use Vocal / Inst and similar tabs on the timeline."
+        }
+      }
+    }
+  }
+}

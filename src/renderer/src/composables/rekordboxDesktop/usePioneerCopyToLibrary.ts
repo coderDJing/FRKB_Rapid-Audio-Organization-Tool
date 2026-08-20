@@ -2,6 +2,7 @@ import confirm from '@renderer/components/confirmDialog'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
+import { notifyFilterLibraryReceivedSongs } from '@renderer/composables/userGuideBridge'
 import {
   copySongCueDefinitionsToTargets,
   type SongCueCopyEntry,
@@ -404,6 +405,9 @@ export const copyPioneerNodeToLibrary = async ({
         ],
         confirmShow: false
       })
+      if (targetLibrary === 'FilterLibrary' && totalCopied > 0) {
+        notifyFilterLibraryReceivedSongs()
+      }
     } catch (error: unknown) {
       await confirm({
         title: t('common.error'),

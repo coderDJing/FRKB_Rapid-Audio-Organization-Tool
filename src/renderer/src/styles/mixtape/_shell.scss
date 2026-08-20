@@ -421,6 +421,14 @@
   overflow-x: auto;
 }
 
+.mixtape-param-bar__mix-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 .mixtape-param-bar__actions {
   flex: 0 0 auto;
   display: flex;

@@ -88,7 +88,8 @@ let settingConfig: ISettingConfig = {
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: '',
   lastRunAppVersion: '',
-  analysisRuntimeStartupPromptShownVersion: ''
+  analysisRuntimeStartupPromptShownVersion: '',
+  userGuideDismissedSteps: []
 } //设置config
 export default {
   songFingerprintList,

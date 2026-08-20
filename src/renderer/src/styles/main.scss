@@ -86,6 +86,8 @@ body,
   --accent: #0078d4;
   --scrollbar: rgba(255, 255, 255, 0.2);
   --songlist-icon-filter: invert(0%);
+  --user-guide-mask: rgba(0, 0, 0, 0.55);
+  --user-guide-panel: rgba(31, 31, 31, 0.88);
 }
 
 /* 主题变量：浅色（2a 方案）*/
@@ -110,6 +112,8 @@ body,
   --scrollbar: rgba(0, 0, 0, 0.2);
   /* 将白色图标通过 invert(88%) 映射为约 #1f1f1f */
   --songlist-icon-filter: invert(88%);
+  --user-guide-mask: rgba(15, 23, 42, 0.4);
+  --user-guide-panel: rgba(255, 255, 255, 0.9);
 }
 
 /* 侧边栏白色图标在浅色主题下再加深一些 */

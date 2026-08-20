@@ -138,6 +138,7 @@ const isTop = props.position === 'top'
         :duration-seconds="props.durationSeconds"
         :hide-sync-controls="props.hideSyncControls"
         :show-energy="props.showEnergy"
+        :user-guide-target="isTop ? 'horizontal-beat-sync' : undefined"
         @trigger-beat-sync="emit('trigger-beat-sync')"
         @toggle-master="emit('toggle-master')"
         @eject-song="emit('eject-song')"
@@ -158,6 +159,7 @@ const isTop = props.position === 'top'
       />
       <HorizontalBrowseDeckToolbarRow
         v-else-if="(isTop && regionId === 3) || (!isTop && regionId === 6)"
+        :data-user-guide-target="isTop ? 'horizontal-tools' : undefined"
         :disabled="props.toolbarState.disabled"
         :bpm-input-disabled="props.toolbarState.bpmInputDisabled"
         :show-grid-controls="props.toolbarState.showGridControls"

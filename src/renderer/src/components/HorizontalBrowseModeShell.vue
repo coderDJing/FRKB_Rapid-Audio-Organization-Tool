@@ -70,6 +70,10 @@ import { useHorizontalBrowseEditPlaybackRange } from '@renderer/composables/hori
 import { useHorizontalBrowseModeShellHotkeys } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseModeShellHotkeys'
 import { useHorizontalBrowseVolumeSync } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseVolumeSync'
 import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
+import {
+  userGuideSpotlightBeat,
+  userGuideSpotlightStep
+} from '@renderer/composables/userGuideBridge'
 import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationCoordinator'
 import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationShellBridge'
 import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailTypes'
@@ -120,6 +124,12 @@ const editDetailZoomState = ref<SharedDetailZoomState>(
 )
 const horizontalBrowseViewMode = computed<HorizontalBrowseViewMode>(() => props.viewMode)
 const isEditMode = computed(() => horizontalBrowseViewMode.value === 'edit')
+const userGuideExpandFader = computed(() => {
+  if (isEditMode.value) return false
+  if (userGuideSpotlightStep.value !== 'horizontal') return false
+  const beat = userGuideSpotlightBeat.value
+  return beat === 'horizontalTransport' || beat === 'horizontalLink'
+})
 const isLightTheme = computed(() =>
   resolveHorizontalBrowseLightThemeActive(runtime.setting?.themeMode || 'system')
 )
@@ -831,10 +841,14 @@ onUnmounted(() => {
     :class="{
       'is-edit-mode': isEditMode,
       'is-light-theme': isLightTheme,
-      'is-fader-controls-expanded': faderControlsExpanded && !isEditMode
+      'is-fader-controls-expanded': (faderControlsExpanded || userGuideExpandFader) && !isEditMode
     }"
   >
-    <div class="controls" :class="{ 'controls--edit': isEditMode }">
+    <div
+      class="controls"
+      :class="{ 'controls--edit': isEditMode }"
+      data-user-guide-target="horizontal-transport"
+    >
       <HorizontalBrowseEditDeckControls
         v-if="isEditMode"
         v-model:beat-step="editBeatStep"
@@ -853,7 +867,7 @@ onUnmounted(() => {
         :pending-play="deckPendingPlayVisible.top"
         :pending-cue="deckPendingCuePreviewOnLoad.top"
         :cue-active="topDeckCueActive"
-        :bands-visible="faderControlsExpanded && !isEditMode"
+        :bands-visible="(faderControlsExpanded || userGuideExpandFader) && !isEditMode"
         :bands="deckBandState.top"
         :song-present="!!topDeckSong"
         :cue-monitor-enabled="deckCueMonitorState.top"
@@ -867,13 +881,14 @@ onUnmounted(() => {
       <HorizontalBrowseFaderPanel
         v-if="!isEditMode"
         ref="faderPanelRef"
-        v-model:expanded="faderControlsExpanded"
+        :expanded="faderControlsExpanded || userGuideExpandFader"
         :native-transport="nativeTransport"
         :main-window-volume="mainWindowVolume"
         :transport-sync-enabled="dualTransportSyncEnabled || dualTransportSyncActivating"
         :transport-sync-disabled="
           !canUseDualTransportSync || dualTransportSyncActivating || dualTransportSyncDeactivating
         "
+        @update:expanded="faderControlsExpanded = $event"
         @toggle-transport-sync="handleDualTransportSyncToggle"
       />
 
@@ -885,7 +900,7 @@ onUnmounted(() => {
         :pending-play="deckPendingPlayVisible.bottom"
         :pending-cue="deckPendingCuePreviewOnLoad.bottom"
         :cue-active="bottomDeckCueActive"
-        :bands-visible="faderControlsExpanded"
+        :bands-visible="faderControlsExpanded || userGuideExpandFader"
         :bands="deckBandState.bottom"
         :song-present="!!bottomDeckSong"
         :cue-monitor-enabled="deckCueMonitorState.bottom"
@@ -955,7 +970,11 @@ onUnmounted(() => {
         @select-move-target="(target, actionMode) => openDeckMoveDialog('top', target, actionMode)"
       />
 
-      <section class="detail-pair" :class="{ 'detail-pair--edit': isEditMode }">
+      <section
+        class="detail-pair"
+        :class="{ 'detail-pair--edit': isEditMode }"
+        data-user-guide-target="horizontal-waveforms"
+      >
         <HorizontalBrowseDeckDetailLane
           ref="topDetailRef"
           :song="topDeckSong"

@@ -450,6 +450,7 @@ const handleIndexActionClick = () => {
     :key="draggableInstanceKey"
     v-draggable="vDraggableData"
     class="songListHeader songItem lightBackground"
+    data-user-guide-target="songs-header"
     :style="{
       position: 'sticky',
       top: '0',
@@ -465,6 +466,7 @@ const handleIndexActionClick = () => {
       :key="col.key"
       class="unselectable header-column"
       :class="['lightBackground', 'titleDiv']"
+      :data-user-guide-target="col.key === 'index' ? 'songs-index-col' : undefined"
       :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
       style="
         padding-left: 10px;

@@ -26,6 +26,7 @@ import type { Icon, IDir } from '../../../../types/globals'
 import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { requestUserGuideStep } from '@renderer/composables/userGuideBridge'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -164,6 +165,28 @@ const scheduleRecycleBinTrackCountRefresh = (delay = 0) => {
     recycleBinTrackCountRefreshTimer = null
     void refreshRecycleBinTrackCount(requestId)
   }, delay)
+}
+
+const resolveLibraryUserGuideTarget = (name: string) => {
+  if (name === 'FilterLibrary' || name === 'CuratedLibrary') return 'filter-curated'
+  if (name === 'SetLibrary') return 'set-library'
+  if (name === 'MixtapeLibrary') return 'mixtape-library'
+  if (name === 'RecordingLibrary') return 'recording-library'
+  return undefined
+}
+
+const requestLibraryUserGuide = (name: string) => {
+  if (name === 'SetLibrary') {
+    void requestUserGuideStep('setLibrary')
+    return
+  }
+  if (name === 'MixtapeLibrary') {
+    void requestUserGuideStep('mixtapeLibrary')
+    return
+  }
+  if (name === 'RecordingLibrary') {
+    void requestUserGuideStep('recordingLibrary')
+  }
 }
 
 const getIconTooltipTitle = (item: Icon) => {
@@ -403,7 +426,10 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
   libraryHandleClick(item)
 }
 
-const syncRecordingLibraryIcon = async (explicitHasRecordings?: boolean) => {
+const syncRecordingLibraryIcon = async (
+  explicitHasRecordings?: boolean,
+  options?: { announce?: boolean }
+) => {
   const nextHasRecordings =
     typeof explicitHasRecordings === 'boolean'
       ? explicitHasRecordings
@@ -422,6 +448,9 @@ const syncRecordingLibraryIcon = async (explicitHasRecordings?: boolean) => {
     }
     if (runtime.libraryAreaSelected === 'RecordingLibrary') {
       updateSelectedIcon(recordingIcon)
+    }
+    if (options?.announce) {
+      void requestUserGuideStep('recordingLibrary')
     }
     return
   }
@@ -442,7 +471,7 @@ const handleRecordingLibraryChanged = (
     (eventOrPayload && typeof eventOrPayload === 'object'
       ? (eventOrPayload as { hasRecordings?: boolean })
       : undefined)
-  void syncRecordingLibraryIcon(payload?.hasRecordings)
+  void syncRecordingLibraryIcon(payload?.hasRecordings, { announce: true })
 }
 
 watch(
@@ -526,14 +555,39 @@ watch(
   },
   { flush: 'post' }
 )
+
+watch(
+  () => ({
+    mode: runtime.mainWindowBrowseMode,
+    audience: runtime.setting.userGuideAudience,
+    hasDesktop: Boolean(desktopLibraryIcon.value),
+    usbCount: pioneerDriveGroups.value.length
+  }),
+  ({ mode, audience, hasDesktop, usbCount }) => {
+    if (mode !== 'browser') return
+    if (!audience || audience === 'veteran') return
+    if (!hasDesktop && usbCount <= 0) return
+    void requestUserGuideStep('rekordboxUsb')
+  },
+  { flush: 'post', immediate: true }
+)
+
+watch(
+  () => runtime.libraryAreaSelected,
+  (name) => {
+    requestLibraryUserGuide(name)
+  },
+  { flush: 'post', immediate: true }
+)
 </script>
 <template>
   <div class="librarySelectArea unselectable">
-    <div class="librarySelectAreaCore">
+    <div class="librarySelectAreaCore" data-user-guide-target="library-rail">
       <div
         v-for="item of coreIconArr"
         :key="item.name"
         class="iconBox"
+        :data-user-guide-target="resolveLibraryUserGuideTarget(item.name)"
         @click="clickIcon(item)"
         @contextmenu.stop.prevent="handleIconContextmenu($event, item)"
         @mouseover="iconMouseover(item)"
@@ -593,6 +647,7 @@ watch(
             :key="item.name"
             :ref="(el) => setScrollItemRef(item.name, el)"
             class="iconBox"
+            :data-user-guide-target="resolveLibraryUserGuideTarget(item.name)"
             @click="clickIcon(item)"
             @contextmenu.stop.prevent="handleIconContextmenu($event, item)"
             @mouseover="iconMouseover(item)"
@@ -625,6 +680,7 @@ watch(
             v-if="desktopLibraryIcon"
             :ref="(el) => setScrollItemRef(desktopLibraryIcon?.key || '', el)"
             class="iconBox iconBox--device"
+            data-user-guide-target="rekordbox-library"
             :class="{ 'is-importing': isImportingDesktopLibraryIcon }"
             @click="clickDesktopLibraryIcon()"
             @contextmenu.stop.prevent="handleDesktopLibraryContextmenu($event)"
@@ -672,6 +728,7 @@ watch(
                 <div
                   :ref="(el) => setScrollItemRef(item.key, el)"
                   class="iconBox iconBox--device iconBox--device-group"
+                  data-user-guide-target="usb-library"
                   :class="{
                     'is-ejecting': isEjectingPioneerDriveIcon(item),
                     'is-importing': isImportingPioneerDriveIcon(item)

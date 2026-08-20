@@ -11,6 +11,8 @@ import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBp
 import MixtapeTrackLoopOverlay from '@renderer/components/mixtape/MixtapeTrackLoopOverlay.vue'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { useMixtapePageUi } from '@renderer/composables/mixtape/useMixtapePageUi'
+import { useMixtapeWindowUserGuide } from '@renderer/composables/mixtape/useMixtapeWindowUserGuide'
+import UserGuideCard from '@renderer/components/userGuide/UserGuideCard.vue'
 
 const masterTempoLaneExpanded = ref(false)
 const transportToastVisible = ref(false)
@@ -152,6 +154,19 @@ const {
 } = mixtape
 
 const {
+  expandBpmLane,
+  activeStep: userGuideActiveStep,
+  activeBeat: userGuideActiveBeat,
+  beatNumber: userGuideBeatNumber,
+  beatCount: userGuideBeatCount,
+  hasNextBeat: userGuideHasNextBeat,
+  isRekordboxUser: userGuideIsRekordboxUser,
+  confirmShow: userGuideConfirmShow,
+  goNextBeat: goNextUserGuideBeat,
+  dismissActiveStep: dismissUserGuideStep
+} = useMixtapeWindowUserGuide(mixtapeItemsLoading)
+
+const {
   mixtapeWindowVolume,
   mixtapeWindowTitle,
   handleMixtapeWindowVolumeChange,
@@ -277,33 +292,44 @@ onBeforeUnmount(() => {
         <div class="mixtape-param-bar">
           <div class="mixtape-param-bar__title">{{ t('mixtape.mixPanelTitle') }}</div>
           <div class="mixtape-param-bar__tabs">
-            <bubbleBoxTrigger
-              v-for="item in mixParamOptions"
-              :key="item.id"
-              tag="button"
-              class="mixtape-param-bar__tab"
-              :class="[
-                `mixtape-param-bar__tab--${item.id}`,
-                { 'is-active': selectedMixParam === item.id }
-              ]"
-              type="button"
-              :title="
-                item.id === 'position'
-                  ? t('mixtape.positionModeActionHint')
-                  : item.id === 'loop'
-                    ? t('mixtape.loopEditHint')
+            <div class="mixtape-param-bar__mix-tabs" data-user-guide-target="mixtape-params">
+              <bubbleBoxTrigger
+                v-for="item in mixParamOptions"
+                :key="item.id"
+                tag="button"
+                class="mixtape-param-bar__tab"
+                :class="[
+                  `mixtape-param-bar__tab--${item.id}`,
+                  { 'is-active': selectedMixParam === item.id }
+                ]"
+                :data-user-guide-target="
+                  item.id === 'vocal' ||
+                  item.id === 'inst' ||
+                  item.id === 'bass' ||
+                  item.id === 'drums'
+                    ? 'mixtape-stem'
                     : undefined
-              "
-              @click="selectedMixParam = item.id"
-            >
-              {{ t(item.labelKey) }}
-            </bubbleBoxTrigger>
+                "
+                type="button"
+                :title="
+                  item.id === 'position'
+                    ? t('mixtape.positionModeActionHint')
+                    : item.id === 'loop'
+                      ? t('mixtape.loopEditHint')
+                      : undefined
+                "
+                @click="selectedMixParam = item.id"
+              >
+                {{ t(item.labelKey) }}
+              </bubbleBoxTrigger>
+            </div>
             <button
               class="mixtape-param-bar__tab mixtape-param-bar__tab--bpm"
-              :class="{ 'is-active': masterTempoLaneExpanded }"
+              :class="{ 'is-active': masterTempoLaneExpanded || expandBpmLane }"
+              data-user-guide-target="mixtape-bpm"
               type="button"
               :disabled="!tracks.length"
-              :aria-pressed="masterTempoLaneExpanded"
+              :aria-pressed="masterTempoLaneExpanded || expandBpmLane"
               @click="handleToggleMasterTempoLane"
             >
               <span class="mixtape-param-bar__toggle-dot" aria-hidden="true"></span>
@@ -311,7 +337,7 @@ onBeforeUnmount(() => {
               <span class="mixtape-param-bar__toggle-state">
                 {{
                   t(
-                    masterTempoLaneExpanded
+                    masterTempoLaneExpanded || expandBpmLane
                       ? 'mixtape.masterTempoLaneSwitchOn'
                       : 'mixtape.masterTempoLaneSwitchOff'
                   )
@@ -424,7 +450,12 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="mixtape-main">
-          <section ref="timelineRootRef" class="timeline" :style="timelineAdaptiveStyle">
+          <section
+            ref="timelineRootRef"
+            class="timeline"
+            data-user-guide-target="mixtape-timeline"
+            :style="timelineAdaptiveStyle"
+          >
             <div class="timeline-primary-zone">
               <div class="timeline-ruler-wrap">
                 <div class="timeline-ruler-stop-float">
@@ -525,7 +556,7 @@ onBeforeUnmount(() => {
                     </div>
                     <MixtapeGlobalBpmEditor
                       :visible="tracks.length > 0"
-                      :expanded="masterTempoLaneExpanded"
+                      :expanded="masterTempoLaneExpanded || expandBpmLane"
                       :playlist-id="mixtapePlaylistId"
                       :tracks="tracks"
                       :height-px="masterTempoLaneHeight"
@@ -1046,6 +1077,18 @@ onBeforeUnmount(() => {
         <div class="mixtape-transport-toast__message">{{ transportToastMessage }}</div>
       </div>
     </Transition>
+    <UserGuideCard
+      v-if="userGuideActiveStep && !userGuideConfirmShow"
+      :key="userGuideActiveStep"
+      :step="userGuideActiveStep"
+      :beat="userGuideActiveBeat"
+      :rekordbox-user="userGuideIsRekordboxUser"
+      :beat-number="userGuideBeatNumber"
+      :beat-count="userGuideBeatCount"
+      :has-next="userGuideHasNextBeat"
+      @next="goNextUserGuideBeat"
+      @skip="dismissUserGuideStep"
+    />
   </div>
 </template>
 

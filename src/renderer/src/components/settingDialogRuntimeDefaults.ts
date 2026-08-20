@@ -93,6 +93,9 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.analysisRuntimeStartupPromptShownVersion === undefined) {
     runtime.setting.analysisRuntimeStartupPromptShownVersion = ''
   }
+  if (!Array.isArray(runtime.setting.userGuideDismissedSteps)) {
+    runtime.setting.userGuideDismissedSteps = []
+  }
   if (runtime.setting.audioOutputDeviceId === undefined) {
     runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
   }

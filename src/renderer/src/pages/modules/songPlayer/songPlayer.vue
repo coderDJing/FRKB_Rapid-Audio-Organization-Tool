@@ -823,6 +823,7 @@ watch(
     <div
       v-show="waveformShow"
       class="playerArea"
+      data-user-guide-target="song-player"
       style="
         width: 100%;
         height: 100%;

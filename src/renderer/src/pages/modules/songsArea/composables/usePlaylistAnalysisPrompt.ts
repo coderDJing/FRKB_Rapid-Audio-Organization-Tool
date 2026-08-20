@@ -164,50 +164,57 @@ export function usePlaylistAnalysisPrompt({
     window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
   })
 
+  const analysisPromptPending = ref(false)
+
   const handleUserOpenedSongList = async (
     songListUUID: string,
     options?: OpenSongListAnalysisPromptOptions
   ) => {
-    if (shouldSkipAnalysisPrompt(songListUUID)) return
+    analysisPromptPending.value = true
+    try {
+      if (shouldSkipAnalysisPrompt(songListUUID)) return
 
-    const missingFilesForEvaluation = missingAnalysisFiles.value
-    if (!missingFilesForEvaluation.length) {
-      clearDismissedSongList(songListUUID)
-      return
-    }
-    const promptMissingResult = await filterManualBatchPendingFiles(missingFilesForEvaluation)
-    const missingFilesToPrompt = promptMissingResult.files
-    if (!missingFilesToPrompt.length) {
-      return
-    }
-    if (options?.forceAnalysisPrompt) {
-      clearDismissedSongList(songListUUID)
-    } else if (isDismissedSongList(songListUUID)) {
-      return
-    }
-
-    const result = (await promptAndQueueManualKeyAnalysisBatch(
-      missingFilesToPrompt,
-      'tracks.analyzingPlaylist',
-      {
-        songs: songsAreaState.songInfoArr,
-        missingWaveformFilePaths: songsAreaState.missingWaveformFilePaths,
-        shouldContinue: () => songsAreaState.songListUUID === songListUUID,
-        filterQueueFiles: async (files) => (await filterManualBatchPendingFiles(files)).files
+      const missingFilesForEvaluation = missingAnalysisFiles.value
+      if (!missingFilesForEvaluation.length) {
+        clearDismissedSongList(songListUUID)
+        return
       }
-    )) as QueueManualBatchResult
+      const promptMissingResult = await filterManualBatchPendingFiles(missingFilesForEvaluation)
+      const missingFilesToPrompt = promptMissingResult.files
+      if (!missingFilesToPrompt.length) {
+        return
+      }
+      if (options?.forceAnalysisPrompt) {
+        clearDismissedSongList(songListUUID)
+      } else if (isDismissedSongList(songListUUID)) {
+        return
+      }
 
-    if (result?.canceled) {
-      const stillMissingFiles = missingAnalysisFiles.value
-      if (stillMissingFiles.length) markDismissedSongList(songListUUID)
-      return
-    }
-    if (result?.aborted || result?.empty || !result?.batchId) {
-      return
-    }
+      const result = (await promptAndQueueManualKeyAnalysisBatch(
+        missingFilesToPrompt,
+        'tracks.analyzingPlaylist',
+        {
+          songs: songsAreaState.songInfoArr,
+          missingWaveformFilePaths: songsAreaState.missingWaveformFilePaths,
+          shouldContinue: () => songsAreaState.songListUUID === songListUUID,
+          filterQueueFiles: async (files) => (await filterManualBatchPendingFiles(files)).files
+        }
+      )) as QueueManualBatchResult
 
-    clearDismissedSongList(songListUUID)
-    rememberManualBatch(result, songListUUID)
+      if (result?.canceled) {
+        const stillMissingFiles = missingAnalysisFiles.value
+        if (stillMissingFiles.length) markDismissedSongList(songListUUID)
+        return
+      }
+      if (result?.aborted || result?.empty || !result?.batchId) {
+        return
+      }
+
+      clearDismissedSongList(songListUUID)
+      rememberManualBatch(result, songListUUID)
+    } finally {
+      analysisPromptPending.value = false
+    }
   }
 
   const playlistAnalysisActionVisible = computed(
@@ -261,6 +268,7 @@ export function usePlaylistAnalysisPrompt({
   return {
     playlistAnalysisActionVisible,
     playlistAnalysisActionPending: manualAnalyzePending,
+    analysisPromptPending,
     handleUserOpenedSongList,
     analyzeDismissedPlaylist
   }

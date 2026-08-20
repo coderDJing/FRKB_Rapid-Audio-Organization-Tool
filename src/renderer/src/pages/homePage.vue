@@ -711,6 +711,7 @@ const drop = async (e: DragEvent) => {
         <div
           v-show="!isLibraryPanelHidden"
           class="libraryPanel"
+          data-user-guide-target="library-tree"
           style="border-right: 1px solid var(--border); flex-shrink: 0"
           :class="{ librarySwitching }"
           :style="'width:' + runtime.layoutConfig.libraryAreaWidth + 'px'"

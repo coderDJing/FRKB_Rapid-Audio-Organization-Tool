@@ -18,6 +18,9 @@ import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { requestUserGuideStep } from '@renderer/composables/userGuideBridge'
+import { waitForUserGuideHole } from '@renderer/composables/userGuideTargets'
 import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
 import { queueMainPlayerPlayingAnalysis } from '@renderer/utils/playlistAnalysisGate'
 import type { MoveSongsLibraryName } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
@@ -108,6 +111,15 @@ const handleOverlayClick = (e: MouseEvent) => {
     // 清空歌单列表选中状态
     runtime.selectedPlaylistIds = []
   }
+}
+const handleEmptyOverlayClick = () => {
+  if (
+    songsAreaState.songListUUID === RECYCLE_BIN_UUID ||
+    songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
+  ) {
+    return
+  }
+  void requestUserGuideStep('songsSource')
 }
 const isMixtapeListView = computed(
   () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
@@ -292,6 +304,7 @@ const { loadingShow, isRequesting, openSongList, invalidatePendingSongListLoads 
 const {
   playlistAnalysisActionVisible,
   playlistAnalysisActionPending,
+  analysisPromptPending,
   handleUserOpenedSongList,
   analyzeDismissedPlaylist
 } = usePlaylistAnalysisPrompt({
@@ -299,6 +312,7 @@ const {
   songsAreaState,
   isMixtapeListView
 })
+let songsListGuideWaitToken = 0
 const {
   trackNumberMutationPending,
   canReorderPlaylistTracks,
@@ -479,6 +493,7 @@ watch(
 )
 
 onUnmounted(() => {
+  songsListGuideWaitToken += 1
   persistPaneScrollPosition()
   detachPaneScrollListener?.()
   detachPaneScrollListener = null
@@ -741,6 +756,52 @@ const viewState = computed<'welcome' | 'blank' | 'loading' | 'list'>(() => {
 })
 
 watch(
+  () => ({
+    mode: runtime.mainWindowBrowseMode,
+    audience: runtime.setting.userGuideAudience,
+    view: viewState.value,
+    uuid: songsAreaState.songListUUID,
+    trackCount: songsAreaState.songInfoArr.length,
+    requesting: isRequesting.value,
+    confirmShow: runtime.confirmShow,
+    analysisPromptPending: analysisPromptPending.value
+  }),
+  ({
+    mode,
+    audience,
+    view,
+    uuid,
+    trackCount,
+    requesting,
+    confirmShow,
+    analysisPromptPending: promptPending
+  }) => {
+    if (mode !== 'browser') return
+    if (!audience || audience === 'veteran') return
+    if (requesting || view !== 'list' || !uuid || trackCount <= 0) return
+    if (confirmShow || promptPending) return
+    const token = ++songsListGuideWaitToken
+    const isRekordbox = audience === 'rekordbox'
+    void waitForUserGuideHole('songsList', 'songsListBody', isRekordbox, {
+      shouldContinue: () =>
+        token === songsListGuideWaitToken &&
+        runtime.mainWindowBrowseMode === 'browser' &&
+        viewState.value === 'list' &&
+        songsAreaState.songListUUID === uuid &&
+        songsAreaState.songInfoArr.length > 0 &&
+        !isRequesting.value &&
+        !runtime.confirmShow &&
+        !analysisPromptPending.value
+    }).then((hole) => {
+      if (!hole || token !== songsListGuideWaitToken) return
+      if (runtime.confirmShow || analysisPromptPending.value) return
+      void requestUserGuideStep('songsList')
+    })
+  },
+  { flush: 'post' }
+)
+
+watch(
   () => [viewState.value, songsAreaState.songListUUID] as const,
   ([state]) => {
     if (state !== 'list') {
@@ -814,6 +875,7 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
 <template>
   <div
     class="songs-area-root"
+    data-user-guide-target="songs-list"
     :class="{
       'is-drop-target': paneDropHover,
       'is-drop-target-external': paneDropHoverMode === 'external'
@@ -835,7 +897,7 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
         <div class="loading"></div>
       </div>
 
-      <div v-else key="list" class="songs-area-shell">
+      <div v-else key="list" class="songs-area-shell" data-user-guide-target="songs-list-body">
         <OverlayScrollbarsComponent
           ref="songsAreaRef"
           :options="{
@@ -943,7 +1005,12 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
         </Transition>
 
         <!-- Empty State Overlay: 鐙珛浜庢粴鍔ㄥ唴瀹癸紝濮嬬粓灞呬腑鍦ㄥ彲瑙嗗尯鍩?-->
-        <div v-if="shouldShowEmptyState" class="songs-area-empty-overlay unselectable">
+        <div
+          v-if="shouldShowEmptyState"
+          class="songs-area-empty-overlay unselectable"
+          data-user-guide-target="songs-source"
+          @click.stop="handleEmptyOverlayClick"
+        >
           <div class="empty-box">
             <div class="title">
               {{ emptyTitleText }}

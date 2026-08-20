@@ -286,7 +286,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="isHorizontalMode" class="topToolbarRecordingArea">
+  <div
+    v-if="isHorizontalMode"
+    class="topToolbarRecordingArea"
+    data-user-guide-target="horizontal-recording"
+  >
     <bubbleBoxTrigger
       tag="button"
       class="topToolbarRecordButton"

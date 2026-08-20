@@ -142,6 +142,20 @@ const enableExplorerContextMenuModel = computed<boolean>({
   }
 })
 
+const rekordboxUserMode = computed({
+  get: () => runtime.setting.userGuideAudience || 'general',
+  set: (value: string) => {
+    if (value === 'rekordbox' || value === 'general' || value === 'veteran') {
+      runtime.setting.userGuideAudience = value
+    }
+  }
+})
+const rekordboxUserModeOptions = computed(() => [
+  { label: t('userGuide.identity.rekordbox'), value: 'rekordbox' },
+  { label: t('userGuide.identity.general'), value: 'general' },
+  { label: t('userGuide.identity.veteran'), value: 'veteran' }
+])
+
 const showTitleAudioVisualizerModel = computed<boolean>({
   get: () => runtime.setting.showTitleAudioVisualizer !== false,
   set: (value) => {
@@ -272,6 +286,18 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 :max-height="280"
                 @change="setSetting"
               />
+            </div>
+
+            <div class="setting-block">{{ t('userGuide.settingTitle') }}：</div>
+            <div class="setting-control">
+              <singleRadioGroup
+                v-model="rekordboxUserMode"
+                name="userGuideIdentity"
+                :options="rekordboxUserModeOptions"
+                :option-font-size="12"
+                @change="setSetting()"
+              />
+              <div class="setting-hint">{{ t('userGuide.settingHint') }}</div>
             </div>
 
             <div class="setting-block">{{ t('player.audioOutputDevice') }}：</div>

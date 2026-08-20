@@ -1,0 +1,426 @@
+{
+  "userGuide": {
+    "gotIt": "知道了",
+    "next": "下一步",
+    "skip": "关闭",
+    "progress": "{current} / {total}",
+    "settingTitle": "用户指引",
+    "settingHint": "熟悉 FRKB 则不显示。Rekordbox 用户按差异说明。可随时更改。",
+    "identity": {
+      "welcome": "欢迎使用 FRKB",
+      "title": "请选择使用方式",
+      "line1": "将决定是否显示指引，以及说明方式。",
+      "line2": "可在设置中更改。",
+      "rekordbox": "我是 Rekordbox 用户",
+      "rekordboxDesc": "按与 Rekordbox 的差异说明，不重复相同概念。",
+      "general": "我不是 Rekordbox 用户",
+      "generalDesc": "说明浏览、播放与导入等基本操作。",
+      "veteran": "我已熟悉 FRKB",
+      "veteranDesc": "不显示指引。可在设置中重新开启。"
+    },
+    "browser": {
+      "browserSource": {
+        "rekordbox": {
+          "title": "曲目来源",
+          "line1": "使用「导入」或新建歌单，将音频加入筛选库。",
+          "line2": "歌单对应磁盘文件夹。",
+          "hint": "点击导入或新建歌单。"
+        },
+        "general": {
+          "title": "曲目来源",
+          "line1": "使用「导入」将音频文件加入筛选库。",
+          "line2": "歌单对应磁盘文件夹。",
+          "hint": "点击导入或新建歌单。"
+        }
+      },
+      "browserMode": {
+        "rekordbox": {
+          "title": "浏览器模式",
+          "line1": "对应 Rekordbox 的浏览器。",
+          "hint": "可切换至双轨横推或编辑模式。"
+        },
+        "general": {
+          "title": "浏览器模式",
+          "line1": "用于浏览曲库、播放与整理。双击即可播放。",
+          "hint": "可切换至双轨横推或编辑模式。"
+        }
+      },
+      "browserLibraries": {
+        "rekordbox": {
+          "title": "资料库",
+          "line1": "Rekordbox 无此侧栏。",
+          "line2": "包括筛选库、精选库、SET 库、Mixtape 自动录制与回收站。",
+          "hint": "点击图标切换。"
+        },
+        "general": {
+          "title": "资料库",
+          "line1": "包括筛选库、精选库、SET 库、Mixtape 自动录制与回收站。",
+          "hint": "点击图标切换。"
+        }
+      },
+      "browserLibraryMenu": {
+        "rekordbox": {
+          "title": "资料库右键菜单",
+          "line1": "Rekordbox 无此入口。",
+          "line2": "右键图标可对该库批量处理，如自动填充元数据、转码、查找相似曲目。",
+          "hint": "右键侧栏图标。"
+        },
+        "general": {
+          "title": "资料库右键菜单",
+          "line1": "右键侧栏图标，可对该库批量操作。",
+          "line2": "包括自动填充元数据、转码、查找相似曲目；回收站可清空。",
+          "hint": "右键侧栏图标。"
+        }
+      },
+      "browserTree": {
+        "rekordbox": {
+          "title": "歌单",
+          "line1": "类似 Rekordbox 播放列表，但每个歌单对应磁盘文件夹。",
+          "hint": "可在上方搜索。"
+        },
+        "general": {
+          "title": "歌单",
+          "line1": "点击后，右侧显示其中曲目。歌单对应磁盘文件夹。",
+          "hint": "可在上方搜索。"
+        }
+      },
+      "browserTreeMenu": {
+        "rekordbox": {
+          "title": "歌单右键菜单",
+          "line1": "在歌单或空白处右键。",
+          "line2": "导入、导出针对磁盘文件夹。可在资源管理器中打开。",
+          "hint": "右键歌单或空白处。"
+        },
+        "general": {
+          "title": "歌单右键菜单",
+          "line1": "在歌单或空白处右键。",
+          "line2": "可新建、导入、导出、重命名、删除，并在资源管理器中打开对应文件夹。",
+          "hint": "右键歌单或空白处。"
+        }
+      },
+      "browserPlayer": {
+        "rekordbox": {
+          "title": "播放条",
+          "line1": "播放时显示，用于预听。",
+          "hint": "未播放时隐藏。"
+        },
+        "general": {
+          "title": "播放条",
+          "line1": "播放时显示封面、进度与音量。",
+          "hint": "未播放时隐藏。"
+        }
+      }
+    },
+    "songsSource": {
+      "rekordbox": {
+        "title": "曲目来源",
+        "line1": "使用「导入」或新建歌单，将音频加入筛选库。",
+        "line2": "歌单对应磁盘文件夹。",
+        "hint": "点击导入或新建歌单。"
+      },
+      "general": {
+        "title": "曲目来源",
+        "line1": "使用「导入」将音频文件加入筛选库。",
+        "line2": "歌单对应磁盘文件夹。",
+        "hint": "点击导入或新建歌单。"
+      }
+    },
+    "rekordboxUsb": {
+      "rekordboxUsbBody": {
+        "title": "Rekordbox 本机库与 U 盘库",
+        "line1": "左侧下方显示 Rekordbox 本机库，以及已接入的 Pioneer U 盘库。",
+        "line2": "可浏览、试听。整理请复制到筛选库，不会修改源库。",
+        "hint": "点击对应图标打开。"
+      },
+      "rekordboxUsbMenu": {
+        "title": "本机库与 U 盘右键菜单",
+        "line1": "右键图标可导入艺人到精选库、扫描指纹或弹出 U 盘。",
+        "line2": "打开后，在其歌单或曲目上右键，可复制到筛选库，不会修改源库。",
+        "hint": "右键对应图标。"
+      }
+    },
+    "songsList": {
+      "songsListBody": {
+        "rekordbox": {
+          "title": "曲目列表",
+          "line1": "选择、双击播放等操作与 Rekordbox 相同。",
+          "hint": "点击列标题排序；使用列上的筛选图标过滤。"
+        },
+        "general": {
+          "title": "曲目列表",
+          "line1": "双击播放。",
+          "hint": "点击列标题排序；使用列上的筛选图标过滤。"
+        }
+      },
+      "songsListReorder": {
+        "rekordbox": {
+          "title": "序号与拖拽",
+          "line1": "与 Rekordbox 不同：仅在按「序号」排序时，可拖拽调整顺序。",
+          "line2": "按其他列排序时，序号列上的「按当前顺序重排序号」会把当前显示顺序写回真实序号。",
+          "hint": "点击「序号」列标题切换排序。"
+        },
+        "general": {
+          "title": "序号与拖拽",
+          "line1": "仅在按「序号」排序时，可拖拽调整顺序。",
+          "line2": "按其他列排序时，序号列上的「按当前顺序重排序号」会把当前显示顺序保存为真实序号。",
+          "hint": "点击「序号」列标题切换排序。"
+        }
+      },
+      "songsListTrackMenu": {
+        "rekordbox": {
+          "title": "曲目右键菜单",
+          "line1": "整理请复制或移动到筛选库、精选库。",
+          "line2": "另有导出、元数据、转码、分轨等。不会修改 Rekordbox 源库。",
+          "hint": "右键曲目。"
+        },
+        "general": {
+          "title": "曲目右键菜单",
+          "line1": "可复制或移动到筛选库、精选库，或加入 SET、Mixtape。",
+          "line2": "也可导出、编辑元数据、转码、分轨。",
+          "hint": "右键曲目。"
+        }
+      },
+      "songsListHeaderMenu": {
+        "rekordbox": {
+          "title": "列表表头",
+          "line1": "右键表头可显示或隐藏列。",
+          "hint": "右键表头。"
+        },
+        "general": {
+          "title": "列表表头",
+          "line1": "右键表头可显示或隐藏列。",
+          "hint": "右键表头。"
+        }
+      }
+    },
+    "filterCurated": {
+      "title": "筛选库与精选库",
+      "line1": "筛选库用于初步筛选，精选库用于保留选定曲目。",
+      "line2": "两者均为磁盘文件夹。",
+      "hint": "对应左侧这两个图标。"
+    },
+    "setLibrary": {
+      "rekordbox": {
+        "title": "SET 库",
+        "line1": "与 Rekordbox 播放列表类似：SET 只存引用，不是磁盘文件夹。",
+        "line2": "「从 SET 移除」不删除源文件。",
+        "hint": "可从曲目右键加入。"
+      },
+      "general": {
+        "title": "SET 库",
+        "line1": "SET 只保存曲目引用，不是文件副本。",
+        "line2": "「从 SET 移除」不会删除源文件。",
+        "hint": "可从曲目右键加入。"
+      }
+    },
+    "mixtapeLibrary": {
+      "rekordbox": {
+        "title": "Mixtape 自动录制",
+        "line1": "Rekordbox 无此功能。双击歌单打开独立窗口。",
+        "line2": "加入前曲目需已有 BPM。",
+        "hint": "双击左侧歌单。"
+      },
+      "general": {
+        "title": "Mixtape 自动录制",
+        "line1": "双击歌单打开独立自动录制窗口。",
+        "line2": "加入前曲目需已有 BPM。",
+        "hint": "双击左侧歌单。"
+      }
+    },
+    "recordingLibrary": {
+      "title": "录音库",
+      "line1": "双轨录音完成后出现。录音文件保存在此。",
+      "line2": "可试听与整理，不会改写原曲。",
+      "hint": "仅双轨顶栏可开始录音。"
+    },
+    "horizontal": {
+      "horizontalOverview": {
+        "rekordbox": {
+          "title": "双轨横推模式",
+          "line1": "对应 Rekordbox 的 Export。",
+          "hint": "双击装载到上轨，Shift+双击装载到下轨。"
+        },
+        "general": {
+          "title": "双轨横推模式",
+          "line1": "上下两轨对照波形，用于判断衔接。",
+          "hint": "双击装载到上轨，Shift+双击装载到下轨。"
+        }
+      },
+      "horizontalWaveforms": {
+        "rekordbox": {
+          "title": "波形",
+          "line1": "中间两轨横向波形，用于对照乐句。",
+          "hint": "拖动定位；滚轮缩放。"
+        },
+        "general": {
+          "title": "波形",
+          "line1": "中间为两轨的横向波形，可对照乐句。",
+          "hint": "拖动定位；滚轮缩放。"
+        }
+      },
+      "horizontalTransport": {
+        "rekordbox": {
+          "title": "播放与推子",
+          "line1": "播放、音量与交叉推子的用法与 Export 相同。",
+          "line2": "左侧 CUE 为回放定位；推子旁 CUE 为该轨监听。",
+          "hint": "频段与监听 CUE 在推子展开后显示。"
+        },
+        "general": {
+          "title": "播放与推子",
+          "line1": "左侧 CUE 用于回放定位。",
+          "line2": "推子展开后的 CUE 是该轨监听，不是定位。",
+          "hint": "频段与监听 CUE 在推子展开后显示。"
+        }
+      },
+      "horizontalLink": {
+        "rekordbox": {
+          "title": "联结",
+          "line1": "Rekordbox 无此按钮。",
+          "line2": "开启后，拖动或缩放任一轨，两轨画面一起移动，网格对齐。",
+          "hint": "两轨都装载后可开启。不会改写各自的节拍网格。"
+        },
+        "general": {
+          "title": "联结",
+          "line1": "开启后，拖动或缩放任一轨，两轨作为整体一起移动，网格对齐。",
+          "hint": "两轨都装载后可开启。不会改写各自的节拍网格。"
+        }
+      },
+      "horizontalBeatSync": {
+        "rekordbox": {
+          "title": "Beat Sync 与 MASTER",
+          "line1": "含义与 Rekordbox 相同。",
+          "line2": "与联结不同：Beat Sync 只对齐节拍，不会把两轨当成整体拖拽或缩放。",
+          "hint": "MASTER 指定基准轨，不是工具栏上的 MT。"
+        },
+        "general": {
+          "title": "Beat Sync 与 MASTER",
+          "line1": "MASTER 指定基准轨。Beat Sync 把当前轨对齐到该轨的节拍。",
+          "line2": "与联结不同：只对齐节拍，不会把两轨当成整体拖拽或缩放。",
+          "hint": "MASTER 在曲目信息卡上，不是工具栏上的 MT。"
+        }
+      },
+      "horizontalTools": {
+        "rekordbox": {
+          "title": "循环与速度",
+          "line1": "Loop、Quantize 与 Rekordbox 同义。",
+          "line2": "此处 BPM 只临时变速。MT 变速时锁定音高，与 MASTER 不是同一功能。",
+          "hint": "改网格请用编辑模式。节拍器不进录音。"
+        },
+        "general": {
+          "title": "循环与速度",
+          "line1": "可开 Loop、Quantize，并临时调整速度。",
+          "line2": "此处 BPM 只影响当前播放。MT 变速时锁定音高，与 MASTER 不是同一功能。",
+          "hint": "节拍器仅供监听，不会进入录音。"
+        }
+      },
+      "horizontalCues": {
+        "rekordbox": {
+          "title": "Hot Cue 与 Memory Cue",
+          "line1": "含义与 Rekordbox 相同。",
+          "hint": "右侧可切换两种 Cue。"
+        },
+        "general": {
+          "title": "Hot Cue 与 Memory Cue",
+          "line1": "右侧可写入或跳转 Hot Cue、Memory Cue。",
+          "hint": "用面板下方按钮切换。"
+        }
+      },
+      "horizontalRecording": {
+        "rekordbox": {
+          "title": "录音",
+          "line1": "仅双轨顶栏可录音。Rekordbox 无此入口。",
+          "line2": "完成后，侧栏出现录音库。",
+          "hint": "点击顶栏录音按钮。"
+        },
+        "general": {
+          "title": "录音",
+          "line1": "仅双轨顶栏可录音。",
+          "line2": "完成后，侧栏出现录音库。",
+          "hint": "点击顶栏录音按钮。"
+        }
+      }
+    },
+    "edit": {
+      "editOverview": {
+        "rekordbox": {
+          "title": "编辑模式",
+          "line1": "对应 Rekordbox 的 Edit，用于修改节拍网格。",
+          "hint": "此处的 BPM 修改网格，不是临时变速。"
+        },
+        "general": {
+          "title": "编辑模式",
+          "line1": "用于修改当前曲目的节拍网格。",
+          "hint": "此处的 BPM 修改分析结果，不会立即改变播放速度。"
+        }
+      },
+      "editGrid": {
+        "rekordbox": {
+          "title": "网格分段",
+          "line1": "「从当前点之后」只修改播放头右侧的网格。",
+          "line2": "「删边界」合并相邻段。",
+          "hint": "使用工具栏上的范围按钮。"
+        },
+        "general": {
+          "title": "网格分段",
+          "line1": "「从当前点之后」只修改播放头右侧的网格。",
+          "line2": "「删边界」合并相邻段。",
+          "hint": "使用工具栏上的范围按钮。"
+        }
+      }
+    },
+    "mixtapeWindow": {
+      "mixtapeOverview": {
+        "rekordbox": {
+          "title": "Mixtape 自动录制",
+          "line1": "Rekordbox 无此窗口。曲目按时间线排列并自动衔接。",
+          "hint": "从歌单拖入。加入前需有 BPM。"
+        },
+        "general": {
+          "title": "Mixtape 自动录制",
+          "line1": "曲目按时间线排列并自动衔接。",
+          "hint": "从歌单拖入。加入前需有 BPM。"
+        }
+      },
+      "mixtapeParams": {
+        "rekordbox": {
+          "title": "自动化参数",
+          "line1": "切换参数后，在时间线上编辑对应曲线或位置。",
+          "line2": "「轨道位置」下，按住 Shift 拖动会带动后续曲目。",
+          "hint": "使用上方标签切换。"
+        },
+        "general": {
+          "title": "自动化参数",
+          "line1": "切换参数后，在时间线上编辑对应曲线或位置。",
+          "line2": "「轨道位置」下，按住 Shift 拖动会带动后续曲目。",
+          "hint": "使用上方标签切换。"
+        }
+      },
+      "mixtapeBpm": {
+        "rekordbox": {
+          "title": "速度包络",
+          "line1": "开启后，可编辑整条时间线的 BPM。",
+          "line2": "与双轨工具栏的 MT 不是同一处。",
+          "hint": "点击 BPM 开/关。"
+        },
+        "general": {
+          "title": "速度包络",
+          "line1": "开启后，可编辑整条时间线的 BPM。",
+          "line2": "与双轨工具栏的 MT 不是同一处。",
+          "hint": "点击 BPM 开/关。"
+        }
+      },
+      "mixtapeStem": {
+        "rekordbox": {
+          "title": "Stem",
+          "line1": "分离结果只保留到本次退出应用。再次打开需重新分离。",
+          "hint": "Vocal / Inst 等标签在时间线上开关。"
+        },
+        "general": {
+          "title": "Stem",
+          "line1": "分离结果只保留到本次退出应用。再次打开需重新分离。",
+          "hint": "Vocal / Inst 等标签在时间线上开关。"
+        }
+      }
+    }
+  }
+}
