@@ -82,6 +82,23 @@ const hasItems = computed(() => {
   return (props.summary?.items?.length || 0) > 0
 })
 
+const orderedItems = computed(() => {
+  const statusOrder: Record<IMetadataAutoFillItemResult['status'], number> = {
+    applied: 0,
+    'no-match': 1,
+    skipped: 2,
+    error: 3,
+    cancelled: 4
+  }
+  return (props.summary?.items || [])
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const orderDiff = statusOrder[a.item.status] - statusOrder[b.item.status]
+      return orderDiff || a.index - b.index
+    })
+    .map(({ item }) => item)
+})
+
 const statusClassMap: Record<IMetadataAutoFillItemResult['status'], string> = {
   applied: 'tag-good',
   'no-match': 'tag-neutral',
@@ -167,7 +184,7 @@ const resultLines = (item: IMetadataAutoFillItemResult): ResultLine[] => {
           <div v-if="hasItems" class="list-wrapper">
             <div class="list">
               <div
-                v-for="(item, index) in summary?.items"
+                v-for="(item, index) in orderedItems"
                 :key="`${item.filePath}-${index}`"
                 class="item"
               >
