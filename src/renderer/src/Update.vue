@@ -17,7 +17,7 @@ const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
 
 type UpdateErrorPayload = {
-  kind?: 'network' | 'signature' | 'install' | 'unknown'
+  kind?: 'network' | 'signature' | 'install' | 'gone' | 'unknown'
   message?: string
   manualUrl?: string
 }
@@ -62,9 +62,13 @@ watch(
 )
 
 const latestVersion = ref('')
-window.electron.ipcRenderer.once('isLatestVersion', (_event, version) => {
+window.electron.ipcRenderer.on('isLatestVersion', (_event, version) => {
   latestVersion.value = version
   state.value = 'isLatest'
+})
+
+window.electron.ipcRenderer.on('isRequesting', () => {
+  state.value = 'isRequesting'
 })
 
 const newVersionInfo = ref<UpdateInfo>({
@@ -144,6 +148,10 @@ const startDownload = () => {
   window.electron.ipcRenderer.send('updateWindow-startDownload')
   state.value = 'isUpdateProgress'
 }
+const checkNewVersion = () => {
+  window.electron.ipcRenderer.send('updateWindow-recheck')
+  state.value = 'isRequesting'
+}
 const progress = ref({
   percent: 0,
   bytesPerSecond: 0,
@@ -195,12 +203,18 @@ const errorHintText = computed(() => {
       return t('update.installIssue')
     case 'unknown':
       return t('update.unknownIssue')
+    case 'gone':
+      return t('update.goneIssue')
     default:
       return t('update.networkIssue')
   }
 })
 
 const hasManualDownload = computed(() => !!errorInfo.value.manualUrl)
+const canRetryDownload = computed(
+  () => errorInfo.value.kind === 'network' || errorInfo.value.kind === 'unknown'
+)
+const canCheckNewVersion = computed(() => errorInfo.value.kind === 'gone')
 const isManualMacUpdate = computed(
   () => runtime.setting.platform === 'darwin' && downloadedInfo.value.mode === 'manual'
 )
@@ -375,10 +389,18 @@ const quitApp = () => {
         {{ errorInfo.message }}
       </div>
       <div
-        v-if="hasManualDownload"
-        style="margin-top: 20px; display: flex; justify-content: center"
+        v-if="canRetryDownload || canCheckNewVersion || hasManualDownload"
+        style="margin-top: 20px; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px"
       >
-        <div class="button" @click="openManualDownload()">{{ t('update.manualDownload') }}</div>
+        <div v-if="canCheckNewVersion" class="button" @click="checkNewVersion()">
+          {{ t('update.checkNewVersion') }}
+        </div>
+        <div v-if="canRetryDownload" class="button" @click="startDownload()">
+          {{ t('update.retryDownload') }}
+        </div>
+        <div v-if="hasManualDownload" class="button" @click="openManualDownload()">
+          {{ t('update.manualDownload') }}
+        </div>
       </div>
     </div>
     <div v-else-if="state === 'isNewVersion'" class="update-state-content new-version-content">

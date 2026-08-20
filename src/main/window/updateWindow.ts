@@ -19,6 +19,7 @@ import {
   type UpdateErrorKind
 } from '../services/updateError'
 import { isLibraryMergeActive } from '../services/libraryMerge'
+import { installResumableAutoUpdaterDownload } from '../services/resumableAutoUpdaterDownload'
 import { openSafeExternalUrl, restrictExternalNavigation } from './externalNavigation'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 const autoUpdater = electronUpdater.autoUpdater
@@ -165,6 +166,13 @@ const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
       manualUrl: latestManualUpdateUrl
     }
   }
+  if (classified.kind === 'gone') {
+    return {
+      kind: classified.kind,
+      message: classified.message,
+      manualUrl: DEFAULT_MANUAL_UPDATE_URL
+    }
+  }
   if (classified.kind === 'network') {
     return {
       kind: classified.kind,
@@ -185,10 +193,30 @@ const reportUpdateErrorToWindow = (tag: string, error: unknown) => {
   return payload
 }
 
+const normalizeDownloadProgress = (progressObj: {
+  percent?: unknown
+  bytesPerSecond?: unknown
+  transferred?: unknown
+  transferredBytes?: unknown
+  total?: unknown
+  totalBytes?: unknown
+  fileName?: unknown
+}) => ({
+  percent: Number(progressObj?.percent) || 0,
+  bytesPerSecond: Number(progressObj?.bytesPerSecond) || 0,
+  transferredBytes: Math.max(
+    0,
+    Number(progressObj?.transferredBytes ?? progressObj?.transferred) || 0
+  ),
+  totalBytes: Math.max(0, Number(progressObj?.totalBytes ?? progressObj?.total) || 0),
+  fileName: typeof progressObj?.fileName === 'string' ? progressObj.fileName : ''
+})
+
 const registerAutoUpdaterListeners = () => {
   if (autoUpdaterListenersRegistered) return
   autoUpdaterListenersRegistered = true
   autoUpdater.logger = null
+  installResumableAutoUpdaterDownload(autoUpdater)
 
   autoUpdater.on('update-available', (info) => {
     const currentIsPrerelease = app.getVersion().includes('-')
@@ -224,7 +252,7 @@ const registerAutoUpdaterListeners = () => {
   })
 
   autoUpdater.on('download-progress', (progressObj) => {
-    sendToUpdateWindow('updateProgress', progressObj)
+    sendToUpdateWindow('updateProgress', normalizeDownloadProgress(progressObj))
   })
 
   autoUpdater.on('update-downloaded', () => {
@@ -249,14 +277,6 @@ const handleStartDownload = () => {
     }
 
     if (manualMacDownloadPromise) return
-
-    sendToUpdateWindow('updateProgress', {
-      percent: 0,
-      bytesPerSecond: 0,
-      transferredBytes: 0,
-      totalBytes: latestMacManualUpdateAsset.totalBytes,
-      fileName: latestMacManualUpdateAsset.fileName
-    })
 
     manualMacDownloadPromise = downloadManualMacUpdate(latestMacManualUpdateAsset, (progress) => {
       sendToUpdateWindow('updateProgress', progress)
@@ -292,13 +312,6 @@ const handleStartDownload = () => {
 
   if (autoDownloadInProgress) return
   autoDownloadInProgress = true
-  sendToUpdateWindow('updateProgress', {
-    percent: 0,
-    bytesPerSecond: 0,
-    transferredBytes: 0,
-    totalBytes: 0,
-    fileName: ''
-  })
   void autoUpdater.downloadUpdate().catch((error) => {
     autoDownloadInProgress = false
     reportUpdateErrorToWindow('[updateWindow] downloadUpdate failed', error)
@@ -306,6 +319,20 @@ const handleStartDownload = () => {
 }
 
 const isDownloadInProgress = () => autoDownloadInProgress || !!manualMacDownloadPromise
+
+const handleRecheck = () => {
+  if (isDownloadInProgress()) return
+  lastUpdateInfo = null
+  latestMacManualUpdateAsset = null
+  latestMacManualUpdateResult = null
+  lastReleaseNotesRange = null
+  lastReleaseNotesRangeSettled = false
+  latestManualUpdateUrl = DEFAULT_MANUAL_UPDATE_URL
+  sendToUpdateWindow('isRequesting')
+  void autoUpdater.checkForUpdates().catch((error) => {
+    reportUpdateErrorToWindow('[updateWindow] recheck failed', error)
+  })
+}
 
 const handleToggleClose = () => {
   updateWindow?.close()
@@ -454,6 +481,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
     })
   })
   ipcMain.on('updateWindow-startDownload', handleStartDownload)
+  ipcMain.on('updateWindow-recheck', handleRecheck)
   ipcMain.on('updateWindow-toggle-close', handleToggleClose)
   ipcMain.on('updateWindow-toggle-minimize', handleToggleMinimize)
   ipcMain.on('updateWindow-open-manual-download', handleOpenManualDownload)
@@ -464,6 +492,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
 
   updateWindow.on('closed', () => {
     ipcMain.removeListener('updateWindow-startDownload', handleStartDownload)
+    ipcMain.removeListener('updateWindow-recheck', handleRecheck)
     ipcMain.removeListener('updateWindow-toggle-close', handleToggleClose)
     ipcMain.removeListener('updateWindow-toggle-minimize', handleToggleMinimize)
     ipcMain.removeListener('updateWindow-open-manual-download', handleOpenManualDownload)

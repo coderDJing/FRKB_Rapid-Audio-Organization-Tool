@@ -1,16 +1,16 @@
 import { app } from 'electron'
 import type { ResolvedUpdateFileInfo, UpdateInfo } from 'electron-updater'
-import { once } from 'events'
-import { Readable } from 'stream'
-import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
-import { ProxyAgent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici'
 import fs = require('fs-extra')
 import path = require('path')
-import { getSystemProxy } from '../utils'
+import { fetchWithSystemProxy } from '../fetchWithSystemProxy'
+import {
+  downloadResumableFile,
+  downloadedFileMatchesChecksum,
+  type ResumableDownloadFetch,
+  type ResumableDownloadProgress
+} from './resumableHttpDownload'
 
 const MANUAL_UPDATE_DIR_NAME = 'FRKB Updates'
-let manualUpdateProxyDispatcher: ProxyAgent | undefined
-let manualUpdateProxyInitialized = false
 
 export type ManualMacUpdateAssetKind = 'dmg' | 'pkg' | 'zip' | 'other'
 
@@ -19,6 +19,7 @@ export type ManualMacUpdateAsset = {
   downloadUrl: string
   fileName: string
   totalBytes: number
+  sha512?: string
 }
 
 type ManualMacUpdateProgress = {
@@ -34,6 +35,19 @@ export type ManualMacUpdateResult = {
   filePath: string
   fileName: string
   downloadDir: string
+}
+
+const fetchManualUpdateAsset: ResumableDownloadFetch = async (url, init) => {
+  const response = await fetchWithSystemProxy(url, {
+    headers: init?.headers,
+    signal: init?.signal
+  })
+  return {
+    ok: response.ok,
+    status: response.status,
+    headers: response.headers,
+    body: response.body
+  }
 }
 
 const getAssetKind = (fileName: string): ManualMacUpdateAssetKind => {
@@ -80,26 +94,43 @@ const getUniqueTargetPath = async (downloadDir: string, fileName: string): Promi
   }
 }
 
-const ensureManualUpdateProxyInitialized = async () => {
-  if (manualUpdateProxyInitialized) return
-  manualUpdateProxyInitialized = true
+const readAssetSha512 = (value: unknown): string => {
+  const sha512 = typeof value === 'string' ? value.trim() : ''
+  return sha512
+}
 
-  const proxyUrl = await getSystemProxy()
-  if (proxyUrl) {
-    manualUpdateProxyDispatcher = new ProxyAgent(proxyUrl)
+const createManualAsset = (
+  downloadUrl: string,
+  fileName: string,
+  totalBytes: number,
+  sha512?: string
+): ManualMacUpdateAsset => ({
+  kind: getAssetKind(fileName),
+  downloadUrl,
+  fileName,
+  totalBytes: Math.max(0, totalBytes),
+  ...(sha512 ? { sha512 } : {})
+})
+
+const isReusableCompleteFile = async (filePath: string, asset: ManualMacUpdateAsset) => {
+  try {
+    const stat = await fs.stat(filePath)
+    if (!stat.isFile() || stat.size <= 0) return false
+    if (asset.totalBytes > 0 && stat.size !== asset.totalBytes) return false
+    if (!asset.sha512) return asset.totalBytes > 0
+    return await downloadedFileMatchesChecksum(filePath, { sha512: asset.sha512 })
+  } catch {
+    return false
   }
 }
 
-const fetchManualUpdateAsset = async (url: string, init?: UndiciRequestInit) => {
-  await ensureManualUpdateProxyInitialized()
-  const requestInit: UndiciRequestInit = {
-    ...init
-  }
-  if (manualUpdateProxyDispatcher) {
-    requestInit.dispatcher = manualUpdateProxyDispatcher
-  }
-  return await undiciFetch(url, requestInit)
-}
+const toManualProgress = (
+  payload: ResumableDownloadProgress,
+  fileName: string
+): ManualMacUpdateProgress => ({
+  ...payload,
+  fileName
+})
 
 export const pickManualMacUpdateAsset = (
   updateInfo: UpdateInfo,
@@ -109,13 +140,12 @@ export const pickManualMacUpdateAsset = (
     .map((entry) => {
       const href = entry?.url?.href
       if (!href) return null
-      const fileName = getSafeFileNameFromUrl(href)
-      return {
-        kind: getAssetKind(fileName),
-        downloadUrl: href,
-        fileName,
-        totalBytes: Math.max(0, Number(entry?.info?.size) || 0)
-      } satisfies ManualMacUpdateAsset
+      return createManualAsset(
+        href,
+        getSafeFileNameFromUrl(href),
+        Number(entry?.info?.size) || 0,
+        readAssetSha512(entry?.info?.sha512)
+      )
     })
     .filter((entry): entry is ManualMacUpdateAsset => !!entry)
     .sort((a, b) => getPreferredOrder(a.kind) - getPreferredOrder(b.kind))
@@ -129,13 +159,12 @@ export const pickManualMacUpdateAsset = (
       ? updateInfo.path
       : ''
   if (!legacyPath) return null
-  const fileName = getSafeFileNameFromUrl(legacyPath)
-  return {
-    kind: getAssetKind(fileName),
-    downloadUrl: legacyPath,
-    fileName,
-    totalBytes: Math.max(0, Number(updateInfo?.files?.[0]?.size) || 0)
-  }
+  return createManualAsset(
+    legacyPath,
+    getSafeFileNameFromUrl(legacyPath),
+    Number(updateInfo?.files?.[0]?.size) || 0,
+    readAssetSha512(updateInfo?.sha512 || updateInfo?.files?.[0]?.sha512)
+  )
 }
 
 export const downloadManualMacUpdate = async (
@@ -144,57 +173,51 @@ export const downloadManualMacUpdate = async (
 ): Promise<ManualMacUpdateResult> => {
   const downloadDir = getDownloadDir()
   await fs.ensureDir(downloadDir)
-  const targetPath = await getUniqueTargetPath(downloadDir, asset.fileName)
-  const tempPath = `${targetPath}.download`
-  await fs.remove(tempPath).catch(() => {})
+  const preferredTarget = path.join(downloadDir, asset.fileName)
+  const tempPath = `${preferredTarget}.download`
 
-  try {
-    const response = await fetchManualUpdateAsset(asset.downloadUrl)
-    if (!response.ok || !response.body) {
-      throw new Error(`download failed: HTTP ${response.status}`)
-    }
-
+  if (await isReusableCompleteFile(preferredTarget, asset)) {
     const totalBytes =
-      Math.max(0, Number(response.headers.get('content-length') || 0) || 0) || asset.totalBytes
-    const writer = fs.createWriteStream(tempPath)
-    let transferredBytes = 0
-    const startedAt = Date.now()
-
-    for await (const chunk of Readable.fromWeb(response.body as unknown as NodeReadableStream)) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      transferredBytes += buffer.byteLength
-      if (!writer.write(buffer)) {
-        await once(writer, 'drain')
-      }
-      const elapsedSeconds = Math.max(1, (Date.now() - startedAt) / 1000)
-      const percent =
-        totalBytes > 0 ? Math.max(0, Math.min(100, (transferredBytes / totalBytes) * 100)) : 0
-      onProgress?.({
-        percent,
-        bytesPerSecond: transferredBytes / elapsedSeconds,
-        transferredBytes,
-        totalBytes,
-        fileName: asset.fileName
-      })
-    }
-
-    writer.end()
-    await once(writer, 'finish')
-
-    const stat = await fs.stat(tempPath)
-    if (totalBytes > 0 && stat.size !== totalBytes) {
-      throw new Error(`download size mismatch: expected=${totalBytes} actual=${stat.size}`)
-    }
-
-    await fs.move(tempPath, targetPath, { overwrite: false })
+      asset.totalBytes > 0 ? asset.totalBytes : (await fs.stat(preferredTarget)).size
+    onProgress?.(
+      toManualProgress(
+        {
+          percent: 100,
+          bytesPerSecond: 0,
+          transferredBytes: totalBytes,
+          totalBytes
+        },
+        asset.fileName
+      )
+    )
     return {
       kind: asset.kind,
-      filePath: targetPath,
+      filePath: preferredTarget,
       fileName: asset.fileName,
       downloadDir
     }
-  } catch (error) {
-    await fs.remove(tempPath).catch(() => {})
-    throw error
+  }
+
+  await downloadResumableFile(
+    {
+      url: asset.downloadUrl,
+      destinationPath: tempPath,
+      expectedSize: asset.totalBytes > 0 ? asset.totalBytes : undefined,
+      sha512: asset.sha512,
+      onProgress: (payload) => onProgress?.(toManualProgress(payload, asset.fileName))
+    },
+    { fetch: fetchManualUpdateAsset }
+  )
+
+  let targetPath = preferredTarget
+  if (await fs.pathExists(targetPath)) {
+    targetPath = await getUniqueTargetPath(downloadDir, asset.fileName)
+  }
+  await fs.move(tempPath, targetPath, { overwrite: false })
+  return {
+    kind: asset.kind,
+    filePath: targetPath,
+    fileName: asset.fileName,
+    downloadDir
   }
 }

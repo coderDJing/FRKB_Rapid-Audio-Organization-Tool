@@ -73,10 +73,16 @@ describe('classifyUpdateError', () => {
     expect(isTransientUpdateNetworkError(new Error('Cannot download FRKB-Setup.exe'))).toBe(false)
   })
 
-  it('清单缺失或签名/安装失败仍视为真实错误', () => {
+  it('清单缺失视为安装包已下架，签名/安装失败仍视为真实错误', () => {
     expect(
       classifyUpdateError(Object.assign(new Error('Not Found'), { statusCode: 404 })).kind
-    ).toBe('unknown')
+    ).toBe('gone')
+    expect(classifyUpdateError(Object.assign(new Error('Gone'), { statusCode: 410 })).kind).toBe(
+      'gone'
+    )
+    expect(
+      isTransientUpdateNetworkError(Object.assign(new Error('Not Found'), { statusCode: 404 }))
+    ).toBe(false)
     expect(classifyUpdateError(new Error('Code signature did not pass validation')).kind).toBe(
       'signature'
     )

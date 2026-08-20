@@ -2,7 +2,7 @@ import { log } from '../log'
 
 // 自动更新失败分类：网络栈/GitHub 短暂不可用不当作程序错误落盘。
 
-export type UpdateErrorKind = 'network' | 'signature' | 'install' | 'unknown'
+export type UpdateErrorKind = 'network' | 'signature' | 'install' | 'gone' | 'unknown'
 
 export type UpdateNetworkReason =
   | 'connection-reset'
@@ -62,6 +62,8 @@ const TLS_CODES = new Set([
   'ERR_SSL_WRONG_VERSION_NUMBER',
   'ERR_SSL_PROTOCOL_ERROR'
 ])
+
+const HTTP_GONE_STATUS = new Set([404, 410])
 
 const HTTP_UNAVAILABLE_STATUS = new Set([
   408, 425, 429, 500, 502, 503, 504, 509, 521, 522, 523, 524, 525, 526
@@ -348,6 +350,15 @@ export const classifyUpdateError = (error: unknown): UpdateErrorClassification =
     }
   }
 
+  const goneStatus = parts.statusCodes.find((status) => HTTP_GONE_STATUS.has(status))
+  if (typeof goneStatus === 'number') {
+    return {
+      kind: 'gone',
+      code: `HTTP_${goneStatus}`,
+      message
+    }
+  }
+
   const unavailableStatus = parts.statusCodes.find((status) => HTTP_UNAVAILABLE_STATUS.has(status))
   if (typeof unavailableStatus === 'number') {
     return {
@@ -384,7 +395,7 @@ export const isTransientUpdateNetworkError = (error: unknown): boolean =>
 
 export const logIfUnexpectedUpdateError = (tag: string, error: unknown, extra?: unknown) => {
   const classified = classifyUpdateError(error)
-  if (classified.kind === 'network') return classified
+  if (classified.kind === 'network' || classified.kind === 'gone') return classified
   if (extra === undefined) {
     log.error(tag, classified, error)
   } else {

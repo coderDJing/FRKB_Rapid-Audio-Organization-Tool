@@ -5,6 +5,7 @@ import foundNewVersionWindow from '../window/foundNewVersionWindow'
 import store from '../store'
 import { fetchReleaseNotesRange } from '../services/releaseNotes'
 import { logIfUnexpectedUpdateError } from '../services/updateError'
+import { installResumableAutoUpdaterDownload } from '../services/resumableAutoUpdaterDownload'
 
 type AutoUpdaterWithExtras = typeof electronUpdater.autoUpdater & {
   allowPrerelease?: boolean
@@ -15,6 +16,7 @@ export function setupAutoUpdate() {
   const autoUpdater = electronUpdater.autoUpdater as AutoUpdaterWithExtras
   autoUpdater.autoDownload = false
   autoUpdater.logger = null
+  installResumableAutoUpdaterDownload(autoUpdater)
   const versionString = app.getVersion()
   const isPrerelease = versionString.includes('-')
 
