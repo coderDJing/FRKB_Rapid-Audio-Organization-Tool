@@ -9,6 +9,7 @@ import { log } from '../log'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 import { normalizePlaylistTrackNumber } from './playlistTrackNumbers'
+import { verifyPlaylistCacheOffMainThread } from './songListScanWorker'
 import { normalizeSongEnergyScore } from '../../shared/songEnergy'
 import {
   hasUsableSongStructureAnalysis,
@@ -91,8 +92,14 @@ type GlobalSongSearchQueryResult = {
 type PlaylistFastLoadResult = {
   hit: boolean
   items: ISongInfo[]
+  missingWaveformFilePaths: string[]
   tookMs: number
   snapshotAt: number
+}
+
+export type MarkGlobalSongSearchDirtyOptions = {
+  songListUUID?: string
+  songListUUIDs?: string[]
 }
 
 const SEARCH_MAX_LIMIT = 200
@@ -428,18 +435,32 @@ class GlobalSongSearchEngine {
   private knownPlaylists = new Set<string>()
 
   private dirty = true
+  private dirtyPlaylists = new Set<string>()
   private ready = false
   private lastBuiltAt = 0
   private buildingPromise: Promise<void> | null = null
 
-  markDirty(_reason?: string) {
+  markDirty(_reason?: string, options?: MarkGlobalSongSearchDirtyOptions) {
+    const uuids = [
+      ...(typeof options?.songListUUID === 'string' ? [options.songListUUID] : []),
+      ...(Array.isArray(options?.songListUUIDs) ? options.songListUUIDs : [])
+    ]
+      .map((uuid) => String(uuid || '').trim())
+      .filter(Boolean)
+
     this.dirty = true
+    if (uuids.length === 0) {
+      for (const uuid of this.knownPlaylists) this.dirtyPlaylists.add(uuid)
+      return
+    }
+    for (const uuid of uuids) this.dirtyPlaylists.add(uuid)
   }
 
   getStats() {
     return {
       ready: this.ready,
       dirty: this.dirty,
+      dirtyPlaylistCount: this.dirtyPlaylists.size,
       indexedCount: this.docs.length,
       playlistCount: this.playlistSongs.size,
       snapshotAt: this.lastBuiltAt
@@ -536,28 +557,43 @@ class GlobalSongSearchEngine {
   async getPlaylistFastLoad(songListUUID: string): Promise<PlaylistFastLoadResult> {
     const started = Date.now()
     const normalizedUuid = String(songListUUID || '').trim()
-    if (!normalizedUuid) {
-      return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
-    }
-    // 打开歌单属于高频交互，不能在点击链路里等待全库索引重建。
-    // 没现成快照就直接 miss，交给既有的 worker 扫描兜住首屏。
-    if (!this.ready) {
-      this.startBackgroundRebuild('playlist-fast-load-cold')
-      return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
-    }
-    if (this.dirty) {
-      this.startBackgroundRebuild('playlist-fast-load-dirty')
-      return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
-    }
-    if (!this.knownPlaylists.has(normalizedUuid)) {
-      return { hit: false, items: [], tookMs: Date.now() - started, snapshotAt: this.lastBuiltAt }
-    }
-    const items = this.playlistSongs.get(normalizedUuid) || []
-    return {
-      hit: true,
-      items,
+    const miss = (): PlaylistFastLoadResult => ({
+      hit: false,
+      items: [],
+      missingWaveformFilePaths: [],
       tookMs: Date.now() - started,
       snapshotAt: this.lastBuiltAt
+    })
+    if (!normalizedUuid) return miss()
+
+    // 打开歌单不能等全库索引重建；核对走 worker，搜歌索引在后台补。
+    if (!this.ready) this.startBackgroundRebuild('playlist-fast-load-cold')
+    else if (this.dirty) this.startBackgroundRebuild('playlist-fast-load-dirty')
+
+    const playlistMeta = this.findPlaylistMetaByUuid(normalizedUuid)
+    if (!playlistMeta?.absPath) return miss()
+
+    try {
+      const verified = await verifyPlaylistCacheOffMainThread({
+        scanPath: playlistMeta.absPath,
+        audioExt: store.settingConfig.audioExt || [],
+        songListUUID: normalizedUuid,
+        databaseDir: store.databaseDir
+      })
+      if (!verified?.cacheIdentityVerified) return miss()
+      this.dirtyPlaylists.delete(normalizedUuid)
+      this.playlistSongs.set(normalizedUuid, verified.scanData)
+      return {
+        hit: true,
+        items: verified.scanData,
+        missingWaveformFilePaths: Array.isArray(verified.missingWaveformFilePaths)
+          ? verified.missingWaveformFilePaths
+          : [],
+        tookMs: Date.now() - started,
+        snapshotAt: this.lastBuiltAt
+      }
+    } catch {
+      return miss()
     }
   }
 
@@ -624,6 +660,7 @@ class GlobalSongSearchEngine {
       this.lastBuiltAt = Date.now()
       this.ready = true
       this.dirty = false
+      this.dirtyPlaylists = new Set()
       return
     }
 
@@ -790,6 +827,7 @@ class GlobalSongSearchEngine {
     this.lastBuiltAt = Date.now()
     this.ready = true
     this.dirty = false
+    this.dirtyPlaylists = new Set()
   }
 
   private getIndexedCandidatesByToken(token: string) {
@@ -885,12 +923,23 @@ class GlobalSongSearchEngine {
     }
     return matched
   }
+
+  private findPlaylistMetaByUuid(uuid: string): PlaylistMeta | undefined {
+    const playlistInfo = this.buildPlaylistMeta()
+    for (const meta of playlistInfo.byAbsPath.values()) {
+      if (meta.uuid === uuid) return meta
+    }
+    return undefined
+  }
 }
 
 const globalSongSearchEngine = new GlobalSongSearchEngine()
 
-export const markGlobalSongSearchDirty = (reason?: string) => {
-  globalSongSearchEngine.markDirty(reason)
+export const markGlobalSongSearchDirty = (
+  reason?: string,
+  options?: MarkGlobalSongSearchDirtyOptions
+) => {
+  globalSongSearchEngine.markDirty(reason, options)
 }
 
 export default globalSongSearchEngine

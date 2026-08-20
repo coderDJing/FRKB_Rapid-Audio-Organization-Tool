@@ -3,6 +3,7 @@ import store from '../store'
 import { scanSongList } from '../services/scanSongs'
 
 type WorkerRequest = {
+  mode?: 'scan' | 'verify'
   scanPath: string | string[]
   audioExt: string[]
   songListUUID: string
@@ -12,12 +13,14 @@ type WorkerRequest = {
 parentPort?.on('message', async (payload: WorkerRequest) => {
   try {
     store.databaseDir = String(payload?.databaseDir || '').trim()
+    const verifiedOnly = payload?.mode === 'verify'
     const result = await scanSongList(
       payload?.scanPath || '',
       Array.isArray(payload?.audioExt) ? payload.audioExt : [],
       String(payload?.songListUUID || '').trim(),
       {
-        enablePostScanTasks: false
+        enablePostScanTasks: false,
+        verifiedOnly
       }
     )
     parentPort?.postMessage({ result })

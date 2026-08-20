@@ -25,9 +25,18 @@ export function registerSongSearchHandlers() {
     }
   )
 
-  ipcMain.handle('song-search:mark-dirty', async (_event, payload?: { reason?: string }) => {
-    const reason = typeof payload?.reason === 'string' ? payload.reason : undefined
-    markGlobalSongSearchDirty(reason)
-    return { success: true }
-  })
+  ipcMain.handle(
+    'song-search:mark-dirty',
+    async (
+      _event,
+      payload?: { reason?: string; songListUUID?: string; songListUUIDs?: string[] }
+    ) => {
+      const reason = typeof payload?.reason === 'string' ? payload.reason : undefined
+      markGlobalSongSearchDirty(reason, {
+        songListUUID: typeof payload?.songListUUID === 'string' ? payload.songListUUID : undefined,
+        songListUUIDs: Array.isArray(payload?.songListUUIDs) ? payload.songListUUIDs : undefined
+      })
+      return { success: true }
+    }
+  )
 }

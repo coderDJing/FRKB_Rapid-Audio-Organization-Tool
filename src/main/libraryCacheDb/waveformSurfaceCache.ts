@@ -440,14 +440,33 @@ export function loadWaveformSurfaceAvailabilityByMeta(
   const result = new Map<string, boolean>()
   const db = getLibraryDb()
   if (!db || !listRoot || !Array.isArray(entries) || entries.length === 0) return result
-  const stmt = db.prepare<WaveformSurfaceRow>(
-    `SELECT size, mtime_ms, cache_version,
+
+  const rootKeys = new Set<string>()
+  for (const entry of entries) {
+    const keys = resolveCacheKeys(listRoot, String(entry?.filePath || '').trim())
+    if (!keys) continue
+    rootKeys.add(keys.listRootKey)
+    if (keys.legacyListRoot) rootKeys.add(keys.legacyListRoot)
+  }
+
+  const rowByRootFile = new Map<string, WaveformSurfaceRow>()
+  const loadRootStmt = db.prepare<WaveformSurfaceRow>(
+    `SELECT list_root, file_path, size, mtime_ms, cache_version,
             list_preview_parameter_version, global_overview_parameter_version,
             duration, sample_rate, list_preview_frame_count, global_overview_frame_count,
             length(list_preview_payload) AS list_preview_payload_bytes,
             length(global_overview_payload) AS global_overview_payload_bytes
-       FROM ${TABLE} WHERE list_root = ? AND file_path = ? LIMIT 1`
+       FROM ${TABLE} WHERE list_root = ?`
   )
+  for (const root of rootKeys) {
+    const rows = loadRootStmt.all(root)
+    for (const row of rows) {
+      const cachedFilePath = String(row?.file_path || '').trim()
+      if (!cachedFilePath) continue
+      rowByRootFile.set(`${root}\0${cachedFilePath}`, row)
+    }
+  }
+
   for (const entry of entries) {
     const filePath = String(entry?.filePath || '').trim()
     if (!filePath) continue
@@ -456,7 +475,7 @@ export function loadWaveformSurfaceAvailabilityByMeta(
     if (candidates) {
       for (const [root, file] of candidates) {
         if (!root || !file) continue
-        const row = stmt.get(root, file)
+        const row = rowByRootFile.get(`${root}\0${file}`)
         if (!row) continue
         const meta = normalizeMeta(row)
         available = Boolean(

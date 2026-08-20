@@ -254,7 +254,7 @@ export function registerImportHandlers(
         })
       }
 
-      markGlobalSongSearchDirty('importSongs')
+      markGlobalSongSearchDirty('importSongs', { songListUUID: formData.songListUUID })
       getWindow()?.webContents.send(
         'importFinished',
         formData.songListUUID,

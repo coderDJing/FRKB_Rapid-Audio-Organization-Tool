@@ -5,6 +5,7 @@ import { resolveMainWorkerPath } from '../workerPath'
 type ScanSongListResult = Awaited<ReturnType<typeof scanSongList>>
 
 type WorkerRequest = {
+  mode?: 'scan' | 'verify'
   scanPath: string | string[]
   audioExt: string[]
   songListUUID: string
@@ -16,7 +17,7 @@ type WorkerResponse = {
   error?: string
 }
 
-export const scanSongListOffMainThread = (request: WorkerRequest): Promise<ScanSongListResult> =>
+const runSongListScanWorker = (request: WorkerRequest): Promise<ScanSongListResult> =>
   new Promise((resolve, reject) => {
     const workerPath = resolveMainWorkerPath(__dirname, 'songListScanWorker.js')
     const worker = new Worker(workerPath)
@@ -62,3 +63,11 @@ export const scanSongListOffMainThread = (request: WorkerRequest): Promise<ScanS
 
     worker.postMessage(request)
   })
+
+export const scanSongListOffMainThread = (
+  request: Omit<WorkerRequest, 'mode'>
+): Promise<ScanSongListResult> => runSongListScanWorker({ ...request, mode: 'scan' })
+
+export const verifyPlaylistCacheOffMainThread = (
+  request: Omit<WorkerRequest, 'mode'>
+): Promise<ScanSongListResult> => runSongListScanWorker({ ...request, mode: 'verify' })

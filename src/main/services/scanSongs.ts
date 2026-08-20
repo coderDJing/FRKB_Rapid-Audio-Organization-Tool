@@ -1,9 +1,13 @@
 import path = require('path')
-import fs = require('fs-extra')
-import { collectFilesWithExtensions, runWithConcurrency } from '../nodeTaskUtils'
+import { runWithConcurrency } from '../nodeTaskUtils'
 import { ISongInfo } from '../../types/globals'
-import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
+import {
+  listPlaylistAudioFiles,
+  normalizePlaylistPathKey,
+  resolvePlaylistCacheRoot,
+  statPlaylistAudioFiles
+} from './playlistScanPrepare'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
@@ -31,6 +35,30 @@ import {
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
+  /** 只做磁盘身份核对 + 缓存命中，不解析新文件。核对失败时返回空列表并标记 cacheIdentityVerified=false。 */
+  verifiedOnly?: boolean
+}
+
+export type ScanSongListResult = {
+  scanData: ISongInfo[]
+  missingWaveformFilePaths: string[]
+  songListUUID: string
+  playlistTrackNumbering: null | {
+    initialized: boolean
+    repaired: boolean
+  }
+  cacheIdentityVerified: boolean
+  perf: {
+    listFilesMs: number
+    cacheCheckMs: number
+    parseMetadataMs: number
+    totalMs: number
+    filesCount: number
+    successCount: number
+    failedCount: number
+    cacheHits: number
+    parsedCount: number
+  }
 }
 
 type CachedKeyInfo = Pick<ISongInfo, 'key' | 'keyAnalysisAlgorithmVersion'>
@@ -207,12 +235,7 @@ export const scheduleSongListPostScanTasks = async (
   scanData: ISongInfo[],
   options: { enableAutoAnalysis?: boolean; missingWaveformFilePaths?: string[] } = {}
 ) => {
-  const cacheBase =
-    typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
-  const cacheRoot =
-    cacheBase && (await fs.pathExists(cacheBase)) && (await fs.stat(cacheBase)).isDirectory()
-      ? cacheBase
-      : ''
+  const cacheRoot = await resolvePlaylistCacheRoot(scanPath)
 
   if (!cacheRoot || scanData.length === 0) return
 
@@ -249,96 +272,25 @@ export async function scanSongList(
   audioExt: string[],
   songListUUID: string,
   options: ScanSongListOptions = {}
-): Promise<{
-  scanData: ISongInfo[]
-  missingWaveformFilePaths: string[]
-  songListUUID: string
-  playlistTrackNumbering: null | {
-    initialized: boolean
-    repaired: boolean
-  }
-  perf: {
-    listFilesMs: number
-    cacheCheckMs: number
-    parseMetadataMs: number
-    totalMs: number
-    filesCount: number
-    successCount: number
-    failedCount: number
-    cacheHits: number
-    parsedCount: number
-  }
-}> {
+): Promise<ScanSongListResult> {
   const perfAllStart = Date.now()
   const perfListStart = Date.now()
-  const mm = await import('music-metadata')
   let songInfoArr: ISongInfo[] = []
-  let songFileUrls: string[] = []
-  const cleanedDirs = new Set<string>()
   let playlistTrackNumbering: {
     initialized: boolean
     repaired: boolean
   } | null = null
 
-  const cleanupConversionTempFiles = async (dir: string) => {
-    if (cleanedDirs.has(dir)) return
-    cleanedDirs.add(dir)
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isFile()) continue
-        const name = entry.name
-        // 只处理我们生成的隐藏临时文件：以 '.' 开头，包含 '.tmp.'，且以支持的格式结尾
-        if (!name.startsWith('.') || !name.includes('.tmp.')) continue
-        const matched = SUPPORTED_AUDIO_FORMATS.find((fmt) =>
-          name.toLowerCase().endsWith(`.${fmt}`)
-        )
-        if (!matched) continue
-        const fullPath = path.join(dir, name)
-        try {
-          await fs.remove(fullPath)
-        } catch {}
-      }
-    } catch {}
-  }
-
-  // 处理混合的文件和文件夹路径
-  const pathsToScan = Array.isArray(scanPath) ? scanPath : [scanPath]
-  for (const filePath of pathsToScan) {
-    const stats = await fs.stat(filePath)
-    if (stats.isFile()) {
-      // 单个文件
-      await cleanupConversionTempFiles(path.dirname(filePath))
-      const ext = path.extname(filePath).toLowerCase()
-      if (audioExt.includes(ext)) {
-        songFileUrls.push(filePath)
-      }
-    } else if (stats.isDirectory()) {
-      // 文件夹
-      await cleanupConversionTempFiles(filePath)
-      const files = await collectFilesWithExtensions(filePath, audioExt)
-      songFileUrls = songFileUrls.concat(files)
-    }
-  }
+  const songFileUrls = await listPlaylistAudioFiles(scanPath, audioExt)
   const perfListEnd = Date.now()
+  const normalizePathKey = normalizePlaylistPathKey
 
-  const normalizePathKey = (value: string): string => {
-    const resolved = path.resolve(value)
-    return process.platform === 'win32' ? resolved.toLowerCase() : resolved
-  }
-
-  // 缓存结构
   type CacheEntry = {
     size: number
     mtimeMs: number
     info: ISongInfo
   }
-  const cacheBase =
-    typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
-  const cacheRoot =
-    cacheBase && (await fs.pathExists(cacheBase)) && (await fs.stat(cacheBase)).isDirectory()
-      ? cacheBase
-      : ''
+  const cacheRoot = await resolvePlaylistCacheRoot(scanPath)
   let cacheMap = new Map<string, CacheEntry>()
   let cacheFromDb = false
   if (cacheRoot) {
@@ -358,15 +310,7 @@ export async function scanSongList(
   }
 
   const perfCacheCheckStart = Date.now()
-  const filesStatList: Array<{ file: string; key: string; size: number; mtimeMs: number }> = []
-  for (const file of songFileUrls) {
-    try {
-      const st = await fs.stat(file)
-      filesStatList.push({ file, key: normalizePathKey(file), size: st.size, mtimeMs: st.mtimeMs })
-    } catch {
-      // ignore stat error
-    }
-  }
+  const filesStatList = await statPlaylistAudioFiles(songFileUrls)
   const filesStatByKey = new Map(filesStatList.map((item) => [item.key, item]))
   const waveformAvailability = cacheRoot
     ? LibraryCacheDb.loadWaveformSurfaceAvailabilityByMeta(
@@ -444,7 +388,118 @@ export async function scanSongList(
     }
   }
 
-  if (cacheFromDb && cacheRoot && cacheMap.size > 0 && filesStatList.length > 0) {
+  const buildScanResult = (
+    scanData: ISongInfo[],
+    parseMetadataMs: number,
+    parsedCount: number,
+    failedCount: number,
+    cacheIdentityVerified: boolean
+  ): ScanSongListResult => {
+    const perfAllEnd = Date.now()
+    return {
+      scanData,
+      missingWaveformFilePaths,
+      songListUUID,
+      playlistTrackNumbering,
+      cacheIdentityVerified,
+      perf: {
+        listFilesMs: perfListEnd - perfListStart,
+        cacheCheckMs: perfCacheCheckEnd - perfCacheCheckStart,
+        parseMetadataMs,
+        totalMs: perfAllEnd - perfAllStart,
+        filesCount: songFileUrls.length,
+        successCount: scanData.length,
+        failedCount,
+        cacheHits: cachedInfos.length,
+        parsedCount
+      }
+    }
+  }
+
+  const writeSongCacheIfNeeded = async (songs: ISongInfo[]) => {
+    if (!cacheRoot || !cacheFromDb) return
+    try {
+      const infoMap = new Map<string, ISongInfo>()
+      for (const info of songs) {
+        infoMap.set(normalizePathKey(info.filePath), enrichSongInfo(info))
+      }
+      const newEntriesMap = new Map<string, CacheEntry>()
+      for (const st of filesStatList) {
+        const info = infoMap.get(st.key)
+        if (!info) continue
+        const nextInfo = { ...info }
+        const cached = cacheMap.get(st.key)
+        if (cached?.info) {
+          preserveCachedKeyAndBpm(nextInfo, cached.info)
+          const cachedStatMatches =
+            cached.size === st.size && Math.abs(cached.mtimeMs - st.mtimeMs) < 1
+          if (cachedStatMatches) {
+            preserveCachedGridAnalysisFields(nextInfo, cached.info)
+            preserveCachedEnergyAnalysisFields(nextInfo, cached.info)
+          }
+          if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
+            nextInfo.analysisOnly = true
+          }
+          const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(
+            cached.info.playlistTrackNumber
+          )
+          if (
+            normalizePlaylistTrackNumber(nextInfo.playlistTrackNumber) === undefined &&
+            cachedPlaylistTrackNumber !== undefined
+          ) {
+            nextInfo.playlistTrackNumber = cachedPlaylistTrackNumber
+          }
+        }
+        newEntriesMap.set(st.file, {
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+          info: enrichSongInfo(nextInfo)
+        })
+      }
+      await LibraryCacheDb.replaceSongCache(cacheRoot, newEntriesMap)
+    } catch {}
+  }
+
+  const finalizeVerifiedCacheHit = async () => {
+    let verifiedSongs = cachedInfos.map((info) => discardStaleAnalysisFields({ ...info }))
+    for (const info of verifiedSongs) {
+      const key = normalizePathKey(info.filePath)
+      const cached = cacheMap.get(key)
+      if (!cached?.info) continue
+      const cachedInfo = cached.info
+      const stat = filesStatByKey.get(key)
+      const cachedStatMatches =
+        !!stat && cached.size === stat.size && Math.abs(cached.mtimeMs - stat.mtimeMs) < 1
+      if (cachedStatMatches) {
+        preserveCachedAnalysisFields(info, cachedInfo)
+      }
+      const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(cachedInfo.playlistTrackNumber)
+      if (
+        normalizePlaylistTrackNumber(info.playlistTrackNumber) === undefined &&
+        cachedPlaylistTrackNumber !== undefined
+      ) {
+        info.playlistTrackNumber = cachedPlaylistTrackNumber
+      }
+    }
+    if (cacheRoot) {
+      const ensureResult = ensurePlaylistTrackNumbers(verifiedSongs, cacheRoot)
+      if (ensureResult.changed) {
+        playlistTrackNumbering = {
+          initialized: ensureResult.initialized,
+          repaired: ensureResult.repaired
+        }
+        await writeSongCacheIfNeeded(verifiedSongs)
+      }
+      verifiedSongs = sortSongsByPlaylistTrackNumber(verifiedSongs, cacheRoot)
+    }
+    if (options.enablePostScanTasks !== false) {
+      void scheduleSongListPostScanTasks(scanPath, verifiedSongs, { missingWaveformFilePaths })
+    }
+    return buildScanResult(verifiedSongs, 0, 0, 0, true)
+  }
+
+  const refreshMissingAnalysisFromOtherRoots = async () => {
+    if (!cacheFromDb || !cacheRoot || cacheMap.size === 0 || filesStatList.length === 0) return
     for (const st of filesStatList) {
       const entry = cacheMap.get(st.key)
       if (!entry || !entry.info) continue
@@ -463,6 +518,18 @@ export async function scanSongList(
     }
   }
 
+  // 磁盘身份与缓存完全一致：直接用缓存出列表，不再解析、不再全量写回。
+  if (filesToParse.length === 0) {
+    await refreshMissingAnalysisFromOtherRoots()
+    return await finalizeVerifiedCacheHit()
+  }
+  if (options.verifiedOnly) {
+    return buildScanResult([], 0, 0, 0, false)
+  }
+
+  await refreshMissingAnalysisFromOtherRoots()
+
+  const mm = await import('music-metadata')
   const perfParseStart = Date.now()
   const FALLBACK_ONLY_EXTS = new Set(['.ac3', '.dts', '.tak', '.tta'])
 
@@ -553,7 +620,7 @@ export async function scanSongList(
       } as ISongInfo
     }
   })
-  const { results, success, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
+  const { results, failed } = await runWithConcurrency(tasks, { concurrency: 8 })
   const parsedInfos: ISongInfo[] = results
     .filter((r) => r && !(r instanceof Error))
     .map((info) => enrichSongInfo(info as ISongInfo))
@@ -646,71 +713,17 @@ export async function scanSongList(
   }
 
   // 回写缓存
-  if (cacheRoot) {
-    try {
-      const infoMap = new Map<string, ISongInfo>()
-      for (const info of songInfoArr) {
-        infoMap.set(normalizePathKey(info.filePath), enrichSongInfo(info))
-      }
-      const newEntriesMap = new Map<string, CacheEntry>()
-      for (const st of filesStatList) {
-        const info = infoMap.get(st.key)
-        if (!info) continue
-        const nextInfo = { ...info }
-        const cached = cacheMap.get(st.key)
-        if (cached?.info) {
-          preserveCachedKeyAndBpm(nextInfo, cached.info)
-          const cachedStatMatches =
-            cached.size === st.size && Math.abs(cached.mtimeMs - st.mtimeMs) < 1
-          if (cachedStatMatches) {
-            preserveCachedGridAnalysisFields(nextInfo, cached.info)
-            preserveCachedEnergyAnalysisFields(nextInfo, cached.info)
-          }
-          if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
-            nextInfo.analysisOnly = true
-          }
-          const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(
-            cached.info.playlistTrackNumber
-          )
-          if (
-            normalizePlaylistTrackNumber(nextInfo.playlistTrackNumber) === undefined &&
-            cachedPlaylistTrackNumber !== undefined
-          ) {
-            nextInfo.playlistTrackNumber = cachedPlaylistTrackNumber
-          }
-        }
-        newEntriesMap.set(st.file, {
-          size: st.size,
-          mtimeMs: st.mtimeMs,
-          info: enrichSongInfo(nextInfo)
-        })
-      }
-      if (cacheFromDb) {
-        await LibraryCacheDb.replaceSongCache(cacheRoot, newEntriesMap)
-      }
-    } catch {}
-  }
+  await writeSongCacheIfNeeded(songInfoArr)
 
   if (options.enablePostScanTasks !== false) {
     void scheduleSongListPostScanTasks(scanPath, songInfoArr, { missingWaveformFilePaths })
   }
 
-  const perfAllEnd = Date.now()
-  return {
-    scanData: songInfoArr,
-    missingWaveformFilePaths,
-    songListUUID,
-    playlistTrackNumbering,
-    perf: {
-      listFilesMs: perfListEnd - perfListStart,
-      cacheCheckMs: perfCacheCheckEnd - perfCacheCheckStart,
-      parseMetadataMs: perfParseEnd - perfParseStart,
-      totalMs: perfAllEnd - perfAllStart,
-      filesCount: songFileUrls.length,
-      successCount: success,
-      failedCount: failed,
-      cacheHits: cachedInfos.length,
-      parsedCount: parsedInfos.length
-    }
-  }
+  return buildScanResult(
+    songInfoArr,
+    perfParseEnd - perfParseStart,
+    parsedInfos.length,
+    failed,
+    false
+  )
 }

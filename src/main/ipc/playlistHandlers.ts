@@ -232,15 +232,17 @@ export function registerPlaylistHandlers() {
       if (orderedFilePaths.length === 0) {
         throw new Error('缺少排序后的曲目列表')
       }
-      const absolutePlaylistPath = resolveLibraryPath(songListPath).absPath
+      const resolvedPlaylist = resolveLibraryPath(songListPath)
       const result = await setSongListTrackNumbersByOrder({
-        listRoot: absolutePlaylistPath,
+        listRoot: resolvedPlaylist.absPath,
         orderedFilePaths
       })
       if (!result.updated || result.total <= 0) {
         throw new Error('重排序号未写入，目标歌单可能不支持真实序号或没有可写入曲目')
       }
-      markGlobalSongSearchDirty('songList:reorder-track-numbers')
+      markGlobalSongSearchDirty('songList:reorder-track-numbers', {
+        songListUUID: findLibraryNodeByPath(resolvedPlaylist.mappedPath)?.uuid
+      })
       return result
     }
   )
@@ -251,9 +253,11 @@ export function registerPlaylistHandlers() {
       assertLibraryMergeMutationAllowed()
       const songListPath = String(payload?.songListPath || '').trim()
       if (songListPath) {
-        const absolutePlaylistPath = resolveLibraryPath(songListPath).absPath
-        const result = await compactSongListTrackNumbers(absolutePlaylistPath)
-        markGlobalSongSearchDirty('songList:compact-track-numbers')
+        const resolvedPlaylist = resolveLibraryPath(songListPath)
+        const result = await compactSongListTrackNumbers(resolvedPlaylist.absPath)
+        markGlobalSongSearchDirty('songList:compact-track-numbers', {
+          songListUUID: findLibraryNodeByPath(resolvedPlaylist.mappedPath)?.uuid
+        })
         return {
           ...result,
           roots: 1

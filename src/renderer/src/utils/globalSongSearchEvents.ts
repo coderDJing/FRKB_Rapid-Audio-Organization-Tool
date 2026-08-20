@@ -13,8 +13,13 @@ const normalizePath = (value: string) =>
     .replace(/\//g, '\\')
     .toLowerCase()
 
-export const markGlobalSongSearchDirty = (reason: string) => {
-  void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
+export const markGlobalSongSearchDirty = (
+  reason: string,
+  options?: { songListUUID?: string; songListUUIDs?: string[] }
+) => {
+  void window.electron.ipcRenderer
+    .invoke('song-search:mark-dirty', { reason, ...options })
+    .catch(() => {})
 }
 
 export const handleSongsRemovedForGlobalSearchUpdate = (
@@ -22,7 +27,7 @@ export const handleSongsRemovedForGlobalSearchUpdate = (
   payload: SongsRemovedPayload | null
 ) => {
   try {
-    markGlobalSongSearchDirty('songs-removed')
+    markGlobalSongSearchDirty('songs-removed', { songListUUID: payload?.listUUID })
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
     const listUUID: string | undefined = payload?.listUUID
     if (itemIds.length > 0) {

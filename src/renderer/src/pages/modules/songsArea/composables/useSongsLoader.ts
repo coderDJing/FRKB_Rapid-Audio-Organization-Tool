@@ -1,4 +1,4 @@
-import { ref, nextTick, markRaw, onUnmounted } from 'vue'
+import { ref, nextTick, markRaw } from 'vue'
 import type { ShallowRef } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
@@ -80,7 +80,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     return true
   }
   let lastAppliedSongListUUID = hydrateFromPaneSnapshot() ? songsAreaState.songListUUID : ''
-  let backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
   const playlistTrackNumberTipStorageKey = 'playlistTrackNumberInitHintShown'
 
   // 渐进式渲染（当前行数）
@@ -154,19 +153,14 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
   }
 
-  const notifySongSearchDirty = (reason: string) => {
-    void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
-  }
-
-  const clearBackgroundRefreshTimer = () => {
-    if (!backgroundRefreshTimer) return
-    clearTimeout(backgroundRefreshTimer)
-    backgroundRefreshTimer = null
+  const notifySongSearchDirty = (reason: string, songListUUID?: string) => {
+    void window.electron.ipcRenderer
+      .invoke('song-search:mark-dirty', { reason, songListUUID })
+      .catch(() => {})
   }
 
   const invalidatePendingSongListLoads = () => {
     loadGenerationGuard.invalidate()
-    clearBackgroundRefreshTimer()
     isRequesting.value = false
     loadingShow.value = false
   }
@@ -192,17 +186,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         message: t('tracks.playlistTrackNumbersInitializedHint')
       })
     } catch {}
-  }
-
-  const scheduleBackgroundSongListRefresh = (songListPath: string, ticket: SongListLoadTicket) => {
-    clearBackgroundRefreshTimer()
-    backgroundRefreshTimer = setTimeout(() => {
-      backgroundRefreshTimer = null
-      if (!loadGenerationGuard.isCurrent(ticket)) return
-      void loadSongListFromDisk(songListPath, ticket, {
-        diagnosticSource: 'background-refresh'
-      }).catch(() => {})
-    }, 1500)
   }
 
   const hydrateRenderCount = async (ticket?: SongListLoadTicket) => {
@@ -602,7 +585,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (unchanged) {
       lastAppliedSongListUUID = loadedUUID
       if (options?.forceNotifySongSearchDirty) {
-        notifySongSearchDirty('scanSongList')
+        notifySongSearchDirty('scanSongList', loadedUUID)
       }
       return true
     }
@@ -611,21 +594,20 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
       if (!(await applySongListData(scanData, ticket))) return false
       lastAppliedSongListUUID = loadedUUID
-      notifySongSearchDirty('scanSongList-analysis-fields')
+      notifySongSearchDirty('scanSongList-analysis-fields', loadedUUID)
       if (options?.forceNotifySongSearchDirty) {
-        notifySongSearchDirty('scanSongList')
+        notifySongSearchDirty('scanSongList', loadedUUID)
       }
       return true
     }
     if (!(await applySongListData(scanData, ticket))) return false
-    notifySongSearchDirty('scanSongList')
+    notifySongSearchDirty('scanSongList', loadedUUID)
     return true
   }
 
   const openSongList = async (options: OpenSongListOptions = {}) => {
     const requestUUID = songsAreaState.songListUUID
     const ticket = loadGenerationGuard.begin(requestUUID)
-    clearBackgroundRefreshTimer()
     isRequesting.value = true
     const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
     if (shouldResetVisibleList) {
@@ -767,7 +749,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
     const songListPath = libraryUtils.findDirPathByUuid(requestUUID)
 
-    // 先走主进程内存索引快照，保证首屏秒开
+    // 先核对磁盘身份，缓存全部命中才出列表；对不上再走完整扫描。
     try {
       const fastPayload = await window.electron.ipcRenderer.invoke(
         'song-search:playlist-fast-load',
@@ -779,6 +761,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       const hit = Boolean(fastPayload?.hit)
       if (hit) {
         const fastItems = Array.isArray(fastPayload?.items) ? fastPayload.items : []
+        songsAreaState.missingWaveformFilePaths = normalizeMissingWaveformFilePaths(
+          fastPayload?.missingWaveformFilePaths
+        )
         if (!(await applySongListData(fastItems, ticket))) return
         if (loadGenerationGuard.isCurrent(ticket)) {
           isRequesting.value = false
@@ -788,10 +773,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           await loadSongListFromDisk(songListPath, ticket, {
             diagnosticSource: 'fresh-analysis'
           })
-          return
         }
-        // 内存快照只负责立即展示；磁盘校验放到后台，不能拿一次慢盘遍历卡住窗口。
-        scheduleBackgroundSongListRefresh(songListPath, ticket)
         return
       }
     } catch {}
@@ -814,10 +796,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       }
     }
   }
-
-  onUnmounted(() => {
-    clearBackgroundRefreshTimer()
-  })
 
   return {
     loadingShow,
