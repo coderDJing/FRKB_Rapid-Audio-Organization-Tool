@@ -109,6 +109,11 @@ const stableRenderRevision = computed(() => {
   return 0
 })
 const waveformPlaybackActive = computed(() => Boolean(props.playbackActive ?? props.playing))
+// macOS 上播放期间不使用超宽稳定 Canvas 的 CSS transform 路径；
+// 交给已有 Worker 增量滚动渲染，避免 Metal 合成超宽纹理时出现抽动。
+const resolveCanvasStableWaveformSource = () =>
+  compactVisualWaveformActive.value &&
+  (runtime.setting.platform !== 'darwin' || !waveformPlaybackActive.value)
 const isRekordboxReadOnlySong = computed(() => isRekordboxExternalPlaybackSource('', props.song))
 const externalDetailWaveformUnavailable = computed(
   () => isRekordboxReadOnlySong.value && !rawData.value
@@ -399,7 +404,7 @@ const {
   allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
   waveformLayout: resolveWaveformLayout,
   waveformRenderStyle: resolveWaveformRenderStyle,
-  stableWaveformSource: () => compactVisualWaveformActive.value,
+  stableWaveformSource: resolveCanvasStableWaveformSource,
   stableRenderRevision: () => stableRenderRevision.value,
   linkedGridActive: () => presentationLinkedGridActive.value,
   phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
