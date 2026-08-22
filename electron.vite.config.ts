@@ -157,7 +157,11 @@ export default defineConfig({
           whatsNew: resolve(__dirname, 'src/renderer/', 'whatsNew.html'),
           startup: resolve(__dirname, 'src/renderer/', 'startup.html'),
           mixtape: resolve(__dirname, 'src/renderer/', 'mixtape.html'),
-          libraryRelocate: resolve(__dirname, 'src/renderer/', 'libraryRelocate.html')
+          libraryRelocate: resolve(__dirname, 'src/renderer/', 'libraryRelocate.html'),
+          miniPlayer: resolve(__dirname, 'src/renderer/', 'miniPlayer.html'),
+          miniPlayerCover: resolve(__dirname, 'src/renderer/', 'miniPlayerCover.html'),
+          miniPlayerOverlay: resolve(__dirname, 'src/renderer/', 'miniPlayerOverlay.html'),
+          miniPlayerTooltip: resolve(__dirname, 'src/renderer/', 'miniPlayerTooltip.html')
         }
       }
     }

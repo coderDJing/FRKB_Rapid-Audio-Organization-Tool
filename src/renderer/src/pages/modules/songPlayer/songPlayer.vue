@@ -12,7 +12,6 @@ import {
   nextTick
 } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
-import type { IpcRendererEvent } from 'electron'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
@@ -58,6 +57,8 @@ import {
 } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { normalizeSongStructureAnalysis } from '@shared/songStructure'
 import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
+import { useMainPlayerMiniPlayer } from './useMainPlayerMiniPlayer'
+import { createMainPlayerGlobalShortcutHandler } from './createMainPlayerGlobalShortcutHandler'
 const musicIcon = musicIconAsset
 type WaveformPreviewStatePayload = {
   active?: boolean
@@ -648,6 +649,32 @@ const playerWaveformDurationSec = computed(() => {
   return parseDurationToSeconds(runtime.playingData.playingSong?.duration)
 })
 
+const { toggleMiniPlayer } = useMainPlayerMiniPlayer({
+  runtime,
+  audioPlayer,
+  isPlaying,
+  playerCurrentSeconds,
+  playerWaveformDurationSec,
+  playerWaveformRenderRevision,
+  waveformShow,
+  bpm,
+  isInternalSongChange,
+  requestLoadSong,
+  play: handleUserPlay,
+  actions: {
+    pause: playerActions.pause,
+    togglePlayPause: handleUserTogglePlayPause,
+    nextSong: handleUserNextSong,
+    previousSong: handleUserPreviousSong,
+    fastForward: playerActions.fastForward,
+    fastBackward: playerActions.fastBackward,
+    delSong: playerActions.delSong,
+    handleMoveSong: playerActions.handleMoveSong
+  },
+  setVolume,
+  getVolume
+})
+
 const {
   playbackRangeHandlesLocked,
   playbackRangeHandlesVisible,
@@ -698,35 +725,16 @@ const playerState = {
 }
 usePlayerHotkeys(hotkeyActions, playerState, runtime)
 
-type GlobalPlayerShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'
-const handleGlobalPlayerShortcut = (
-  _event: IpcRendererEvent,
-  action: GlobalPlayerShortcutAction
-) => {
-  if (previewHotkeysActive.value || runtime.selectSongListDialogShow) {
-    return
-  }
-  if (!waveformShow.value) {
-    return
-  }
-  if ((action === 'nextSong' || action === 'previousSong') && selectSongListDialogShow.value) {
-    return
-  }
-  switch (action) {
-    case 'fastForward':
-      playerActions.fastForward()
-      break
-    case 'fastBackward':
-      playerActions.fastBackward()
-      break
-    case 'nextSong':
-      handleUserNextSong()
-      break
-    case 'previousSong':
-      handleUserPreviousSong()
-      break
-  }
-}
+const handleGlobalPlayerShortcut = createMainPlayerGlobalShortcutHandler({
+  previewHotkeysActive,
+  selectSongListDialogShow,
+  waveformShow,
+  isGlobalSelectSongListDialogVisible: () => runtime.selectSongListDialogShow,
+  fastForward: playerActions.fastForward,
+  fastBackward: playerActions.fastBackward,
+  nextSong: handleUserNextSong,
+  previousSong: handleUserPreviousSong
+})
 
 watch(
   () => runtime.setting.audioOutputDeviceId,
@@ -865,12 +873,12 @@ watch(
       </transition>
       <div
         class="controlsContainer"
-        :style="{ width: runtime.setting.hiddenPlayControlArea ? '15px' : '244px' }"
+        :style="{ width: runtime.setting.hiddenPlayControlArea ? '42px' : '280px' }"
       >
         <transition name="player-controls-toggle">
           <playerControls
-            v-if="!runtime.setting.hiddenPlayControlArea"
             ref="playerControlsRef"
+            :hide-playback-controls="runtime.setting.hiddenPlayControlArea"
             @pause="playerActions.pause"
             @play="handleUserPlay"
             @fast-forward="playerActions.fastForward"
@@ -887,6 +895,7 @@ watch(
             @move-to-set-library="(song) => playerActions.moveToSetLibrary(song)"
             @move-to-mixtape-library="(song) => playerActions.moveToMixtapeLibrary(song)"
             @export-track="playerActions.exportTrack"
+            @toggle-mini-window="toggleMiniPlayer"
           />
         </transition>
       </div>

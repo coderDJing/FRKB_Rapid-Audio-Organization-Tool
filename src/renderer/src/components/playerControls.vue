@@ -6,6 +6,7 @@ import pauseAsset from '@renderer/assets/pause.svg?asset'
 import fastForwardAsset from '@renderer/assets/fastForward.svg?asset'
 import nextSongAsset from '@renderer/assets/nextSong.svg?asset'
 import moreAsset from '@renderer/assets/more.svg?asset'
+import miniPlayerPipAsset from '@renderer/assets/miniPlayerPip.svg?asset'
 import { ref, onUnmounted, watch, useTemplateRef, onMounted, computed } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -41,9 +42,20 @@ const pause = pauseAsset
 const fastForward = fastForwardAsset
 const nextSong = nextSongAsset
 const more = moreAsset
+const miniPlayerPip = miniPlayerPipAsset
 const shortcutIcon = shortcutIconAsset
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
+const props = withDefaults(
+  defineProps<{
+    variant?: 'main' | 'mini'
+    hidePlaybackControls?: boolean
+  }>(),
+  {
+    variant: 'main',
+    hidePlaybackControls: false
+  }
+)
 const isReadOnlyPlaybackSource = computed(() =>
   isRekordboxExternalPlaybackSource(
     runtime.playingData.playingSongListUUID,
@@ -71,7 +83,9 @@ const emits = defineEmits([
   'moveToListLibrary',
   'moveToSetLibrary',
   'moveToMixtapeLibrary',
-  'exportTrack'
+  'exportTrack',
+  'toggleMiniWindow',
+  'toggleMiniMoreMenu'
 ])
 
 const setPlayingValue = (value: boolean) => {
@@ -146,6 +160,15 @@ const playRef = useTemplateRef('playRef')
 const pauseRef = useTemplateRef('pauseRef')
 const fastForwardRef = useTemplateRef('fastForwardRef')
 const nextSongRef = useTemplateRef('nextSongRef')
+const miniWindowRef = useTemplateRef('miniWindowRef')
+
+const handleMoreButtonClick = () => {
+  if (props.variant === 'mini') {
+    emits('toggleMiniMoreMenu')
+    return
+  }
+  handelMoreClick()
+}
 
 const delSong = () => {
   emits('delSong')
@@ -710,40 +733,56 @@ onUnmounted(() => {
 <template>
   <div class="playerControlsRoot">
     <div class="playerControls unselectable">
-      <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
-        <img :src="previousSong" draggable="false" />
-      </div>
-      <bubbleBox :dom="previousSongRef || undefined" :title="t('player.previous')" shortcut="W" />
-      <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
-        <img :src="fastBackward" draggable="false" />
-      </div>
-      <bubbleBox
-        :dom="fastBackwardRef || undefined"
-        :title="t('player.fastBackward')"
-        shortcut="A"
-      />
-      <div v-show="!playing" ref="playRef" class="buttonIcon" @click="handlePlay()">
-        <img :src="play" draggable="false" />
-      </div>
-      <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
-      <div v-show="playing" ref="pauseRef" class="buttonIcon" @click="handlePause()">
-        <img :src="pause" draggable="false" />
-      </div>
-      <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />
-      <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
-        <img :src="fastForward" draggable="false" />
-      </div>
-      <bubbleBox :dom="fastForwardRef || undefined" :title="t('player.fastForward')" shortcut="D" />
-      <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
-        <img :src="nextSong" draggable="false" />
-      </div>
-      <bubbleBox :dom="nextSongRef || undefined" :title="t('player.next')" shortcut="S" />
-      <div class="buttonIcon" @click.stop="handelMoreClick()">
-        <img :src="more" draggable="false" />
-      </div>
+      <template v-if="!props.hidePlaybackControls">
+        <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
+          <img :src="previousSong" draggable="false" />
+        </div>
+        <bubbleBox :dom="previousSongRef || undefined" :title="t('player.previous')" shortcut="W" />
+        <div ref="fastBackwardRef" class="buttonIcon" @mousedown="handleFastBackward()">
+          <img :src="fastBackward" draggable="false" />
+        </div>
+        <bubbleBox
+          :dom="fastBackwardRef || undefined"
+          :title="t('player.fastBackward')"
+          shortcut="A"
+        />
+        <div v-show="!playing" ref="playRef" class="buttonIcon" @click="handlePlay()">
+          <img :src="play" draggable="false" />
+        </div>
+        <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
+        <div v-show="playing" ref="pauseRef" class="buttonIcon" @click="handlePause()">
+          <img :src="pause" draggable="false" />
+        </div>
+        <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />
+        <div ref="fastForwardRef" class="buttonIcon" @mousedown="handleFastForward()">
+          <img :src="fastForward" draggable="false" />
+        </div>
+        <bubbleBox
+          :dom="fastForwardRef || undefined"
+          :title="t('player.fastForward')"
+          shortcut="D"
+        />
+        <div ref="nextSongRef" class="buttonIcon" @click="handleNextSong()">
+          <img :src="nextSong" draggable="false" />
+        </div>
+        <bubbleBox :dom="nextSongRef || undefined" :title="t('player.next')" shortcut="S" />
+        <div class="buttonIcon" @click.stop="handleMoreButtonClick()">
+          <img :src="more" draggable="false" />
+        </div>
+      </template>
+      <template v-if="props.variant === 'main'">
+        <div
+          ref="miniWindowRef"
+          class="buttonIcon miniWindowButton"
+          @click.stop="emits('toggleMiniWindow')"
+        >
+          <img :src="miniPlayerPip" draggable="false" />
+        </div>
+        <bubbleBox :dom="miniWindowRef || undefined" :title="t('player.miniWindowOpen')" />
+      </template>
     </div>
     <transition name="fade">
-      <div v-if="moreMenuShow" class="moreMenu unselectable">
+      <div v-if="moreMenuShow && !props.hidePlaybackControls" class="moreMenu unselectable">
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="exportTrack()">
             <span>{{ exportTrackLabel }}</span>

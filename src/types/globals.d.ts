@@ -622,6 +622,10 @@ interface ILayoutConfig {
   mainWindowWidth: number
   mainWindowHeight: number
   mainWindowSizeMigrationVersion?: number
+  miniPlayerWindowX?: number
+  miniPlayerWindowY?: number
+  miniPlayerWindowWidth?: number
+  miniPlayerWindowAlwaysOnTop?: boolean
 }
 
 type PlayerGlobalShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'

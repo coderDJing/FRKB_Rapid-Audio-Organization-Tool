@@ -72,7 +72,18 @@ function normalizeLayoutConfig(value: unknown): ILayoutConfig {
     isMaxMainWin: !!merged.isMaxMainWin,
     mainWindowWidth: Math.max(mainWindowWidth, MAIN_WINDOW_MIN_WIDTH),
     mainWindowHeight: Math.max(mainWindowHeight, MAIN_WINDOW_MIN_HEIGHT),
-    mainWindowSizeMigrationVersion
+    mainWindowSizeMigrationVersion,
+    miniPlayerWindowX: Number.isFinite(Number(merged.miniPlayerWindowX))
+      ? Math.round(Number(merged.miniPlayerWindowX))
+      : undefined,
+    miniPlayerWindowY: Number.isFinite(Number(merged.miniPlayerWindowY))
+      ? Math.round(Number(merged.miniPlayerWindowY))
+      : undefined,
+    miniPlayerWindowWidth: Math.max(
+      720,
+      Math.round(toFiniteNumber(merged.miniPlayerWindowWidth, 960))
+    ),
+    miniPlayerWindowAlwaysOnTop: merged.miniPlayerWindowAlwaysOnTop !== false
   }
 }
 

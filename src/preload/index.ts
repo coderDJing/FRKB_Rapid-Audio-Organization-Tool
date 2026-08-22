@@ -216,6 +216,7 @@ const invokePrefixes = [
   'library-stem:',
   'library-merge:',
   'library-relocate:',
+  'mini-player:',
   'metadata:',
   'mixtape:',
   'mixtape-drag-session:',
@@ -251,11 +252,13 @@ const isAllowedIpcChannel = (method: IpcMethod, channel: string): boolean => {
   if (method === 'send') {
     return (
       exactSendChannels.has(channel) ||
+      channel.startsWith('mini-player:') ||
       sourceChannelPrefixes.some((prefix) => channel === `${prefix}stream-preview-waveforms`)
     )
   }
   return (
     exactListenChannels.has(channel) ||
+    channel.startsWith('mini-player:') ||
     sourceChannelPrefixes.some(
       (prefix) =>
         channel === `${prefix}preview-waveform-item` || channel === `${prefix}preview-waveform-done`

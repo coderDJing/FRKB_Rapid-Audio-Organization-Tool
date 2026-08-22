@@ -1,29 +1,61 @@
 <script setup lang="ts">
-defineProps<{
-  coverBlobUrl: string
-  placeholderSrc: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    slotSize?: number
+    coverSize?: number
+    coverBlobUrl: string
+    placeholderSrc: string
+  }>(),
+  {
+    slotSize: 62,
+    coverSize: 52
+  }
+)
 
 const emit = defineEmits<{
   (event: 'hover-cover'): void
+  (event: 'leave-cover'): void
 }>()
+
+/*
+ * Keep the cover slot reusable by the main player and the compact window. The
+ * main player keeps its existing dimensions while the compact window can use
+ * a smaller stable slot without duplicating this component.
+ */
+const slotStyle = () => ({
+  width: `${props.slotSize}px`,
+  height: `${props.slotSize}px`,
+  flex: `0 0 ${props.slotSize}px`
+})
+
+const coverStyle = () => ({
+  width: `${props.coverSize}px`,
+  height: `${props.coverSize}px`
+})
 </script>
 
 <template>
-  <div class="player-cover-slot unselectable">
-    <div class="player-cover-slot__anchor" @mouseenter="emit('hover-cover')">
+  <div class="player-cover-slot unselectable" :style="slotStyle()">
+    <div
+      class="player-cover-slot__anchor"
+      :style="slotStyle()"
+      @mouseenter="emit('hover-cover')"
+      @mouseleave="emit('leave-cover')"
+    >
       <transition name="cover-switch" mode="out-in">
         <img
           v-if="coverBlobUrl"
           :key="coverBlobUrl"
           :src="coverBlobUrl"
           class="player-cover-slot__cover"
+          :style="coverStyle()"
         />
         <img
           v-else
           :key="'placeholder'"
           :src="placeholderSrc"
           class="player-cover-slot__placeholder"
+          :style="coverStyle()"
         />
       </transition>
     </div>

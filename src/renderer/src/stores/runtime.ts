@@ -18,6 +18,7 @@ import type {
   CloudSyncSummary
 } from 'src/types/cloudSync'
 import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '@shared/browserPlayerRightTrackInfo'
+import type { MiniPlayerSession } from '@shared/miniPlayerWindow'
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
@@ -187,6 +188,7 @@ interface Runtime {
     playingSongListUUID: string
     playingSongListData: ISongInfo[]
   }
+  miniPlayerSession: MiniPlayerSession
   mainWindowPlaybackHandoff: MainWindowPlaybackHandoff | null
   horizontalBrowseDecks: {
     topSong: null | ISongInfo
@@ -333,6 +335,10 @@ export const useRuntimeStore = defineStore('runtime', {
         playingSong: null, //正在播放的歌曲信息
         playingSongListUUID: '', //正在播放的歌单的UUID
         playingSongListData: [] //正在播放的歌单的曲目数组
+      },
+      miniPlayerSession: {
+        open: false,
+        alwaysOnTop: true
       },
       mainWindowPlaybackHandoff: null,
       horizontalBrowseDecks: {

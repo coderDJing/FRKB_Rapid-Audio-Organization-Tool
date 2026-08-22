@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>FRKB</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: *; media-src 'self' data: blob: *; connect-src 'self' data: blob: *"
+    />
+    <style>
+      html,
+      body,
+      #app {
+        width: max-content;
+        height: max-content;
+        margin: 0;
+        overflow: hidden;
+        border-radius: 8px;
+        background: var(--bg-elev, #1f1f1f);
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/miniPlayerCover_main"></script>
+  </body>
+</html>

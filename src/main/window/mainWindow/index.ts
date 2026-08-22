@@ -48,6 +48,7 @@ import {
 import { restrictExternalNavigation } from '../externalNavigation'
 import startupWindow from '../startupWindow'
 import { attachMainWindowResponsivenessDiagnostics } from './responsivenessDiagnostics'
+import miniPlayerWindow from '../miniPlayerWindow'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -353,6 +354,7 @@ export const syncWindowScreenshotShortcut = () => {
 
 function ensureSharedHandlersRegistered() {
   if (sharedHandlersRegistered) return
+  miniPlayerWindow.bind({ getMainWindow })
   registerAudioDecodeHandlers(getMainWindow)
   registerFingerprintHandlers({ sendProgress, getWindow: getMainWindow })
   registerImportHandlers(sendProgress, getMainWindow)

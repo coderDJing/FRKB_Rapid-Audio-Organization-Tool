@@ -43,5 +43,7 @@ export const defaultLayoutConfig: ILayoutConfig = {
   isMaxMainWin: false,
   mainWindowWidth: MAIN_WINDOW_DEFAULT_WIDTH,
   mainWindowHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
-  mainWindowSizeMigrationVersion: latestMainWindowSizeMigration.version
+  mainWindowSizeMigrationVersion: latestMainWindowSizeMigration.version,
+  miniPlayerWindowWidth: 960,
+  miniPlayerWindowAlwaysOnTop: true
 }
