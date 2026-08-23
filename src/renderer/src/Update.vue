@@ -218,6 +218,9 @@ const canCheckNewVersion = computed(() => errorInfo.value.kind === 'gone')
 const isManualMacUpdate = computed(
   () => runtime.setting.platform === 'darwin' && downloadedInfo.value.mode === 'manual'
 )
+const canRestartFrkbForUpdate = computed(
+  () => runtime.setting.platform === 'win32' && downloadedInfo.value.mode === 'auto'
+)
 const startUpdateText = computed(() =>
   runtime.setting.platform === 'darwin' ? t('update.downloadUpdate') : t('update.startUpdate')
 )
@@ -287,6 +290,14 @@ const openApplicationsFolder = () => {
 
 const quitApp = () => {
   window.electron.ipcRenderer.send('updateWindow-quit-app')
+}
+
+const restartFrkbForUpdate = () => {
+  window.electron.ipcRenderer.send('updateWindow-restart-app-for-update')
+}
+
+const restartFrkbLater = () => {
+  toggleClose()
 }
 </script>
 <template>
@@ -497,6 +508,24 @@ const quitApp = () => {
       <div style="max-width: 80%; word-wrap: break-word; overflow-wrap: break-word">
         {{ downloadedText }}
       </div>
+      <template v-if="canRestartFrkbForUpdate">
+        <div
+          style="
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 12px;
+          "
+        >
+          <div class="button primary" @click="restartFrkbForUpdate()">
+            {{ t('update.restartFrkbNow') }}
+          </div>
+          <div class="button" @click="restartFrkbLater()">
+            {{ t('update.restartFrkbLater') }}
+          </div>
+        </div>
+      </template>
       <template v-if="isManualMacUpdate">
         <div
           v-if="savedLocationText"

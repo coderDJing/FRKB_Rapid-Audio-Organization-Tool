@@ -393,6 +393,13 @@ const handleQuitApp = () => {
   app.quit()
 }
 
+const handleRestartAppForUpdate = () => {
+  if (process.platform !== 'win32') return
+  // 合并进行中不能退出，避免中断写库。
+  if (isLibraryMergeActive()) return
+  autoUpdater.quitAndInstall()
+}
+
 const startCachedDownload = () => {
   if (!isDownloadInProgress() && lastUpdateInfo) {
     sendToUpdateWindow('newVersion', lastUpdateInfo)
@@ -489,6 +496,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
   ipcMain.on('updateWindow-open-download-folder', handleOpenDownloadFolder)
   ipcMain.on('updateWindow-open-applications-folder', handleOpenApplicationsFolder)
   ipcMain.on('updateWindow-quit-app', handleQuitApp)
+  ipcMain.on('updateWindow-restart-app-for-update', handleRestartAppForUpdate)
 
   updateWindow.on('closed', () => {
     ipcMain.removeListener('updateWindow-startDownload', handleStartDownload)
@@ -500,6 +508,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
     ipcMain.removeListener('updateWindow-open-download-folder', handleOpenDownloadFolder)
     ipcMain.removeListener('updateWindow-open-applications-folder', handleOpenApplicationsFolder)
     ipcMain.removeListener('updateWindow-quit-app', handleQuitApp)
+    ipcMain.removeListener('updateWindow-restart-app-for-update', handleRestartAppForUpdate)
     updateWindow = null
   })
 }
