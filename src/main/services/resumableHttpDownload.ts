@@ -346,7 +346,6 @@ const downloadResumableFileOnce = async (session: DownloadSession) => {
   const idle = createIdleController(session.idleTimeoutMs, session.signal)
   let writer: ReturnType<typeof createWriteStream> | null = null
   const startedAt = Date.now()
-  emitProgress(session.onProgress, existingBytes, session.knownTotal, startedAt, 0)
 
   try {
     let response: ResumableDownloadResponse | null = null
@@ -419,6 +418,9 @@ const downloadResumableFileOnce = async (session: DownloadSession) => {
       session.knownTotal ||
       (existingBytes > 0 && remainingLength > 0 ? existingBytes + remainingLength : remainingLength)
     session.knownTotal = totalBytes
+    // Wait for the response headers before emitting the first snapshot so a resumed
+    // download never renders the existing bytes against an unknown total as 0%.
+    emitProgress(session.onProgress, existingBytes, totalBytes, startedAt, 0)
 
     writer = createWriteStream(session.destinationPath, {
       flags: existingBytes > 0 ? 'a' : 'w'

@@ -74,6 +74,7 @@ describe('downloadResumableFile', () => {
     const destinationPath = await createTempFile()
     await writeFile(destinationPath, payload.subarray(0, 10))
     const ranges: string[] = []
+    const progress: Array<{ transferredBytes: number; totalBytes: number; percent: number }> = []
     const fetch: ResumableDownloadFetch = async (_url, init) => {
       ranges.push(init?.headers?.Range || '')
       return createRangeFetch(payload)(_url, init)
@@ -85,12 +86,20 @@ describe('downloadResumableFile', () => {
         destinationPath,
         expectedSize: payload.length,
         sha512: sha512Of(payload),
-        maxAttempts: 1
+        maxAttempts: 1,
+        onProgress: (snapshot) => progress.push(snapshot)
       },
       { fetch }
     )
 
     expect(ranges).toEqual(['bytes=10-'])
+    expect(progress[0]).toEqual({
+      transferredBytes: 10,
+      totalBytes: payload.length,
+      percent: (10 / payload.length) * 100,
+      bytesPerSecond: expect.any(Number)
+    })
+    expect(progress.at(-1)?.transferredBytes).toBe(payload.length)
     expect(await readFile(destinationPath)).toEqual(payload)
   })
 
