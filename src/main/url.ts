@@ -1,28 +1,24 @@
 import { app } from 'electron'
 import path = require('path')
 
-const isPackagedRuntime = (() => {
+const resolveUserDataDir = () => {
   try {
-    return !!(app && typeof app.isPackaged === 'boolean' && app.isPackaged)
+    return app.getPath('userData')
   } catch {
-    return false
+    return __dirname
   }
-})()
+}
 
-let userDataDir = ''
-if (isPackagedRuntime) {
-  try {
-    userDataDir = app.getPath('userData')
-  } catch {
-    userDataDir = __dirname
-  }
-} else {
-  userDataDir = __dirname
-}
-let layoutConfigFileUrl = path.join(userDataDir, 'config', 'layoutConfig.json')
-let settingConfigFileUrl = path.join(userDataDir, 'config', 'settingConfig.json')
-export default {
+const buildConfigPaths = (userDataDir: string) => ({
   userDataDir,
-  layoutConfigFileUrl,
-  settingConfigFileUrl
+  layoutConfigFileUrl: path.join(userDataDir, 'config', 'layoutConfig.json'),
+  settingConfigFileUrl: path.join(userDataDir, 'config', 'settingConfig.json')
+})
+
+const url = buildConfigPaths(resolveUserDataDir())
+
+export const setUserDataDir = (userDataDir: string) => {
+  Object.assign(url, buildConfigPaths(userDataDir))
 }
+
+export default url

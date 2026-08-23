@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { spawnSync } from 'node:child_process'
 import fs from 'fs-extra'
 import path from 'path'
+import { setUserDataDir } from './url'
 
 type LoggerLike = {
   error: (...args: unknown[]) => void
@@ -192,6 +193,10 @@ export const configureDevRuntime = (isDev: boolean, log: LoggerLike): DevRuntime
     } catch {
       userDataDir = ''
     }
+  }
+
+  if (userDataDir) {
+    setUserDataDir(userDataDir)
   }
 
   const configuredDatabaseDir = normalizeDirectoryOverride(
