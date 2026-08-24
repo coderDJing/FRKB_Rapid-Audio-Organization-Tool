@@ -6,7 +6,6 @@ import pauseAsset from '@renderer/assets/pause.svg?asset'
 import fastForwardAsset from '@renderer/assets/fastForward.svg?asset'
 import nextSongAsset from '@renderer/assets/nextSong.svg?asset'
 import moreAsset from '@renderer/assets/more.svg?asset'
-import miniPlayerPipAsset from '@renderer/assets/miniPlayerPip.svg?asset'
 import { ref, onUnmounted, watch, useTemplateRef, onMounted, computed } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -42,7 +41,6 @@ const pause = pauseAsset
 const fastForward = fastForwardAsset
 const nextSong = nextSongAsset
 const more = moreAsset
-const miniPlayerPip = miniPlayerPipAsset
 const shortcutIcon = shortcutIconAsset
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
@@ -776,7 +774,7 @@ onUnmounted(() => {
           class="buttonIcon miniWindowButton"
           @click.stop="emits('toggleMiniWindow')"
         >
-          <img :src="miniPlayerPip" draggable="false" />
+          <span class="miniWindowIcon" aria-hidden="true"></span>
         </div>
         <bubbleBox :dom="miniWindowRef || undefined" :title="t('player.miniWindowOpen')" />
       </template>
@@ -1017,6 +1015,19 @@ onUnmounted(() => {
       filter: contrast(120%) drop-shadow(0px 0px 6px var(--text));
     }
   }
+
+  .miniWindowButton {
+    color: #cccccc;
+  }
+
+  .miniWindowIcon {
+    width: 18px;
+    height: 18px;
+    display: block;
+    background: currentColor;
+    -webkit-mask: url('../assets/miniPlayerPip.svg') center / contain no-repeat;
+    mask: url('../assets/miniPlayerPip.svg') center / contain no-repeat;
+  }
 }
 
 img {
@@ -1029,8 +1040,17 @@ img {
   .buttonIcon:hover {
     filter: none;
   }
+  .buttonIcon img {
+    filter: grayscale(1) brightness(0.58);
+  }
   .buttonIcon:hover img {
     filter: grayscale(1) brightness(0);
+  }
+  .miniWindowIcon {
+    background: #767676;
+  }
+  .miniWindowButton:hover .miniWindowIcon {
+    background: #000000;
   }
 }
 </style>

@@ -31,13 +31,9 @@ import {
 } from '@shared/miniPlayerWindow'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
-import pinIconAsset from '@renderer/assets/miniPlayerPin.svg?asset'
-import closeIconAsset from '@renderer/assets/miniPlayerClose.svg?asset'
 
 const runtime = useRuntimeStore()
 const musicIcon = musicIconAsset
-const pinIcon = pinIconAsset
-const closeIcon = closeIconAsset
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
 const pinRef = useTemplateRef<HTMLDivElement>('pinRef')
 const closeRef = useTemplateRef<HTMLDivElement>('closeRef')
@@ -515,14 +511,14 @@ onUnmounted(() => {
           :class="{ 'is-active': alwaysOnTop }"
           @click="toggleAlwaysOnTop"
         >
-          <img :src="pinIcon" draggable="false" />
+          <span class="mini-player__icon-mask mini-player__icon-mask--pin"></span>
         </div>
         <bubbleBox
           :dom="pinRef || undefined"
           :title="alwaysOnTop ? t('player.miniWindowUnpin') : t('player.miniWindowPin')"
         />
         <div ref="closeRef" class="mini-player__icon" @click="restoreMainWindow">
-          <img :src="closeIcon" draggable="false" />
+          <span class="mini-player__icon-mask mini-player__icon-mask--close"></span>
         </div>
         <bubbleBox :dom="closeRef || undefined" :title="t('player.miniWindowRestore')" />
       </div>
@@ -629,12 +625,6 @@ onUnmounted(() => {
   border-radius: 50%;
   cursor: pointer;
 
-  img {
-    width: 16px;
-    height: 16px;
-    display: block;
-  }
-
   &:hover {
     background: var(--hover);
   }
@@ -644,12 +634,26 @@ onUnmounted(() => {
   }
 }
 
-:global(.theme-light) .mini-player__icon img {
-  filter: grayscale(1) brightness(0.35);
+.mini-player__icon-mask {
+  width: 16px;
+  height: 16px;
+  display: block;
+  background: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
 }
 
-:global(.theme-light) .mini-player__icon:hover img,
-:global(.theme-light) .mini-player__icon.is-active img {
-  filter: grayscale(1) brightness(0);
+.mini-player__icon-mask--pin {
+  -webkit-mask-image: url('./assets/miniPlayerPin.svg');
+  mask-image: url('./assets/miniPlayerPin.svg');
+}
+
+.mini-player__icon-mask--close {
+  -webkit-mask-image: url('./assets/miniPlayerClose.svg');
+  mask-image: url('./assets/miniPlayerClose.svg');
 }
 </style>

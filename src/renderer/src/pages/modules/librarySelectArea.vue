@@ -886,7 +886,7 @@ watch(
       height: 25px;
       display: inline-block;
       position: relative;
-      opacity: 0.55;
+      opacity: var(--sidebar-icon-opacity);
       background-color: currentColor;
       color: var(--text);
       mask-image: var(--icon-mask);
