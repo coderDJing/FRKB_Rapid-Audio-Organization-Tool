@@ -3,6 +3,11 @@ import type {
   MiniPlayerHostState,
   MiniPlayerPioneerPreviewWaveform
 } from '@shared/miniPlayerWindow'
+import {
+  clampPlaybackRangePercent,
+  type PlaybackRangeHandleVisual,
+  type PlaybackRangePercentRange
+} from '@shared/playbackRange'
 import type { IPioneerPreviewWaveformData, ISongInfo } from 'src/types/globals'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -103,6 +108,31 @@ export const clonePioneerPreviewWaveform = (
   }
 }
 
+const clonePlaybackRangePercentRange = (range: unknown): PlaybackRangePercentRange | null => {
+  if (!isRecord(range)) return null
+  const startPercent = clampPlaybackRangePercent(range.startPercent, 0)
+  const endPercent = clampPlaybackRangePercent(range.endPercent, 100)
+  if (!(endPercent > startPercent)) return null
+  return { startPercent, endPercent }
+}
+
+export const cloneMiniPlayerPlaybackRange = (
+  value: PlaybackRangeHandleVisual | null | undefined
+): PlaybackRangeHandleVisual => {
+  const lockedRanges = Array.isArray(value?.lockedRanges)
+    ? value.lockedRanges
+        .map((range) => clonePlaybackRangePercentRange(range))
+        .filter((range): range is PlaybackRangePercentRange => range !== null)
+    : []
+  return {
+    visible: !!value?.visible,
+    locked: !!value?.locked,
+    startPercent: clampPlaybackRangePercent(value?.startPercent, 0),
+    endPercent: clampPlaybackRangePercent(value?.endPercent, 100),
+    lockedRanges
+  }
+}
+
 export const cloneMiniPlayerHostState = (state: MiniPlayerHostState): MiniPlayerHostState => ({
   song: cloneSong(state.song),
   playingSongListUUID: String(state.playingSongListUUID || ''),
@@ -112,5 +142,8 @@ export const cloneMiniPlayerHostState = (state: MiniPlayerHostState): MiniPlayer
   volume: Number(state.volume) || 0,
   waveformMode: state.waveformMode === 'full' ? 'full' : 'half',
   compactVisualWaveform: cloneCompactVisualWaveformData(state.compactVisualWaveform),
-  pioneerPreviewWaveform: clonePioneerPreviewWaveform(state.pioneerPreviewWaveform)
+  pioneerPreviewWaveform: clonePioneerPreviewWaveform(state.pioneerPreviewWaveform),
+  playbackRange: cloneMiniPlayerPlaybackRange(state.playbackRange),
+  canDeleteAllAbove: !!state.canDeleteAllAbove,
+  deleteAllAboveCount: Math.max(0, Math.floor(Number(state.deleteAllAboveCount) || 0))
 })

@@ -669,6 +669,7 @@ const { toggleMiniPlayer } = useMainPlayerMiniPlayer({
     fastForward: playerActions.fastForward,
     fastBackward: playerActions.fastBackward,
     delSong: playerActions.delSong,
+    delAllAbove: playerActions.delAllAbove,
     handleMoveSong: playerActions.handleMoveSong
   },
   setVolume,
@@ -721,7 +722,8 @@ const playerState = {
   confirmShow: readonly(toRef(runtime, 'confirmShow')),
   songsAreaSelectedCount: computed(() => runtime.songsArea.selectedSongFilePath.length),
   activeMenuUUID: toRef(runtime, 'activeMenuUUID'),
-  isPlaying: readonly(isPlaying)
+  isPlaying: readonly(isPlaying),
+  hotkeysEnabled: computed(() => !runtime.miniPlayerSession.open)
 }
 usePlayerHotkeys(hotkeyActions, playerState, runtime)
 
@@ -886,6 +888,7 @@ watch(
             @next-song="handleUserNextSong"
             @previous-song="handleUserPreviousSong"
             @del-song="playerActions.delSong"
+            @del-all-above="playerActions.delAllAbove"
             @move-to-list-library="
               (song, actionMode) => playerActions.moveToListLibrary(song, actionMode)
             "

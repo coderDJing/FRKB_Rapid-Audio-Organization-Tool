@@ -4,6 +4,7 @@ import playerControls from '@renderer/components/playerControls.vue'
 import BpmTap from '@renderer/pages/modules/songPlayer/BpmTap.vue'
 import PlayerCoverSlot from '@renderer/pages/modules/songPlayer/PlayerCoverSlot.vue'
 import PlayerStructureRail from '@renderer/pages/modules/songPlayer/PlayerStructureRail.vue'
+import PlaybackRangeHandles from '@renderer/pages/modules/songPlayer/PlaybackRangeHandles.vue'
 import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
 import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
@@ -54,6 +55,19 @@ const volume = computed(() => Number(hostState.value?.volume) || 0)
 const waveformMode = computed(() => hostState.value?.waveformMode || 'half')
 const compactVisualWaveform = computed(() => hostState.value?.compactVisualWaveform || null)
 const pioneerPreviewWaveform = computed(() => hostState.value?.pioneerPreviewWaveform || null)
+const playbackRange = computed(() => hostState.value?.playbackRange || null)
+const waveformContainerWidth = ref(0)
+let waveformResizeObserver: ResizeObserver | null = null
+
+const updateWaveformContainerWidth = () => {
+  waveformContainerWidth.value = waveform.value?.clientWidth || 0
+}
+
+const focusKeyboardTarget = () => {
+  const el = waveform.value
+  if (!el) return
+  el.focus({ preventScroll: true })
+}
 const isReadOnlyPlaybackSource = computed(() =>
   isRekordboxExternalPlaybackSource(
     runtime.playingData.playingSongListUUID,
@@ -304,6 +318,30 @@ const handleDelete = async () => {
   sendCommand({ type: 'delete' })
 }
 
+const handleDeleteAllAbove = async () => {
+  closeLocalMenus()
+  if (isReadOnlyPlaybackSource.value) {
+    await showHint([t('tracks.readOnlySourceDeleteNotAllowed')])
+    return
+  }
+  const count = Number(hostState.value?.deleteAllAboveCount || 0)
+  if (!(count > 0) || !hostState.value?.canDeleteAllAbove) return
+  const isRecycle = String(hostState.value?.playingSongListUUID || '') === RECYCLE_BIN_UUID
+  const content = [t('tracks.confirmDeleteAllAbovePlaying', { count })]
+  if (isRecycle) {
+    content.push(t('tracks.confirmDeleteAllAbove'), t('tracks.deleteHint'))
+  }
+  const result = await showOverlay('confirm', {
+    title: t('common.delete'),
+    content,
+    confirmShow: true,
+    innerHeight: isRecycle ? 260 : 220,
+    innerWidth: 400
+  })
+  if (result.type !== 'confirm' || !result.ok) return
+  sendCommand({ type: 'deleteAllAbove', confirmed: true })
+}
+
 const handleMenuAction = (action: MiniPlayerOverlayMenuAction) => {
   if (action === 'export') {
     void handleExport()
@@ -337,6 +375,10 @@ const handleMenuAction = (action: MiniPlayerOverlayMenuAction) => {
     void handleDelete()
     return
   }
+  if (action === 'deleteAllAbove') {
+    void handleDeleteAllAbove()
+    return
+  }
   window.electron.ipcRenderer.send('show-item-in-folder', song.value?.filePath)
 }
 
@@ -352,7 +394,8 @@ const handleToggleMiniMoreMenu = async (anchor: MiniPlayerCoverPopupAnchor | nul
       'menu',
       {
         isReadOnly: isReadOnlyPlaybackSource.value,
-        filePath: String(song.value?.filePath || '')
+        filePath: String(song.value?.filePath || ''),
+        canDeleteAllAbove: !!hostState.value?.canDeleteAllAbove
       },
       anchor
     )
@@ -415,11 +458,20 @@ onMounted(() => {
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.playhead, handlePlayhead)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.session, handleSession)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.coverPopupPointer, handleCoverPopupPointer)
+  window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.requestKeyboardFocus, focusKeyboardTarget)
   window.electron.ipcRenderer.send(MINI_PLAYER_CHANNELS.rendererReady)
   playerControlsRef.value?.setPlayingValue?.(isPlaying.value)
+  updateWaveformContainerWidth()
+  focusKeyboardTarget()
+  if (waveform.value) {
+    waveformResizeObserver = new ResizeObserver(() => updateWaveformContainerWidth())
+    waveformResizeObserver.observe(waveform.value)
+  }
 })
 
 onUnmounted(() => {
+  waveformResizeObserver?.disconnect()
+  waveformResizeObserver = null
   clearCoverHideTimer()
   void hideCoverPopup()
   void window.electron.ipcRenderer.invoke(MINI_PLAYER_CHANNELS.hideOverlay)
@@ -431,11 +483,15 @@ onUnmounted(() => {
     MINI_PLAYER_CHANNELS.coverPopupPointer,
     handleCoverPopupPointer
   )
+  window.electron.ipcRenderer.removeListener(
+    MINI_PLAYER_CHANNELS.requestKeyboardFocus,
+    focusKeyboardTarget
+  )
 })
 </script>
 
 <template>
-  <div class="mini-player unselectable">
+  <div class="mini-player unselectable" @pointerdown="focusKeyboardTarget">
     <div class="mini-player__bar canDrag">
       <div ref="coverAnchorRef" class="mini-player__cover canNotDrag">
         <PlayerCoverSlot
@@ -472,7 +528,7 @@ onUnmounted(() => {
         />
       </div>
       <div class="mini-player__waveform canNotDrag">
-        <div id="waveform" ref="waveform">
+        <div id="waveform" ref="waveform" tabindex="0">
           <div id="time">{{ timeText }}</div>
           <div id="duration">{{ durationText }}</div>
           <MemoryCueMarkersLayer
@@ -488,6 +544,15 @@ onUnmounted(() => {
             size="compact"
             clickable
             @marker-click="sendCommand({ type: 'seekSeconds', seconds: $event.sec })"
+          />
+          <PlaybackRangeHandles
+            :model-value-start="playbackRange?.startPercent || 0"
+            :model-value-end="playbackRange?.endPercent || 100"
+            :container-width="waveformContainerWidth"
+            :enable-playback-range="!!playbackRange?.visible"
+            :waveform-show="!!song"
+            locked
+            :locked-ranges="playbackRange?.lockedRanges || []"
           />
         </div>
         <PlayerStructureRail
@@ -585,6 +650,10 @@ onUnmounted(() => {
   min-height: 40px;
   background: var(--waveform-bg);
   overflow: hidden;
+}
+
+#waveform:focus {
+  outline: none;
 }
 
 #time,

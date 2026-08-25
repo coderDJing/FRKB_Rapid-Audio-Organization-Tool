@@ -17,6 +17,7 @@ import {
   type LibraryTransferActionMode,
   type LibraryTransferTarget
 } from '@renderer/utils/libraryTransfer'
+import { createDelAllAbove } from './usePlayerDeleteAllAbove'
 
 type DeleteSummary = {
   total?: number
@@ -564,6 +565,12 @@ export function usePlayerControlsLogic({
     }
   }
 
+  const delAllAbove = createDelAllAbove({
+    runtime,
+    isFileOperationInProgress,
+    isReadOnlyPlaybackSource
+  })
+
   const openSongMoveDialog = (
     libraryName: LibraryTransferTarget,
     song?: ISongInfo,
@@ -971,6 +978,7 @@ export function usePlayerControlsLogic({
     nextSong,
     previousSong,
     delSong,
+    delAllAbove,
     moveToListLibrary,
     moveToLikeLibrary,
     moveToSetLibrary,

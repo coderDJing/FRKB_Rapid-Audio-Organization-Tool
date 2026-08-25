@@ -31,6 +31,7 @@
     "confirmDeletePlaying": "确定彻底删除正在播放的曲目吗",
     "deleteAllAbove": "删除上方所有曲目",
     "confirmDeleteAllAbove": "确定彻底删除此曲目上方的所有曲目吗",
+    "confirmDeleteAllAbovePlaying": "将从当前播放列表删除当前曲目上方的 {count} 首曲目",
     "deleteHint": "(曲目将在磁盘上被删除，但声音指纹依然会保留)",
     "cannotPlay": "该文件无法播放，是否直接删除",
     "cannotPlayHint": "(文件内容不是音频或文件已损坏)",

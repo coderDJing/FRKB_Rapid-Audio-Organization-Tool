@@ -29,6 +29,7 @@ import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
 import { promptAndStartTrackReanalysis } from '@renderer/utils/trackReanalysis'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
+import { resolvePlaybackDeleteAllAboveTarget } from '@shared/playbackDeleteAllAbove'
 import {
   type ISongInfo,
   type IMetadataAutoFillSummary,
@@ -77,6 +78,7 @@ const emits = defineEmits([
   'nextSong',
   'previousSong',
   'delSong',
+  'delAllAbove',
   'moveToLikeLibrary',
   'moveToListLibrary',
   'moveToSetLibrary',
@@ -202,6 +204,11 @@ const showInFileExplorer = () => {
 const closeMoreMenu = () => {
   runtime.activeMenuUUID = ''
   moreMenuShow.value = false
+}
+
+const delAllAbove = () => {
+  closeMoreMenu()
+  emits('delAllAbove')
 }
 
 const normalizeFilePathForCompare = (filePath?: string | null) =>
@@ -591,6 +598,16 @@ const neteaseSearchShow = ref(false)
 const exportTrackLabel = computed(() =>
   isReadOnlyPlaybackSource.value ? t('tracks.exportTracksCopyOnly') : t('tracks.exportTracks')
 )
+const canDeleteAllAbove = computed(() => {
+  if (isReadOnlyPlaybackSource.value) return false
+  const listUuid = String(runtime.playingData.playingSongListUUID || '')
+  return !!resolvePlaybackDeleteAllAboveTarget({
+    listUuid,
+    listData: runtime.playingData.playingSongListData,
+    playingSong: runtime.playingData.playingSong,
+    libraryType: libraryUtils.getLibraryTreeByUUID(listUuid)?.type
+  })
+})
 
 defineExpose({
   setPlayingValue
@@ -856,6 +873,9 @@ onUnmounted(() => {
             <div class="shortcut" style="display: flex; align-items: center">
               <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>F</span>
             </div>
+          </div>
+          <div v-if="canDeleteAllAbove" class="menuButton" @click="delAllAbove()">
+            <span>{{ t('tracks.deleteAllAbove') }}</span>
           </div>
         </div>
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">

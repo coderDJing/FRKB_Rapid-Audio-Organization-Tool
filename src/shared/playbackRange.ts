@@ -49,6 +49,14 @@ export type PlaybackRangePercentRange = {
   endPercent: number
 }
 
+export type PlaybackRangeHandleVisual = {
+  visible: boolean
+  locked: boolean
+  startPercent: number
+  endPercent: number
+  lockedRanges: PlaybackRangePercentRange[]
+}
+
 export type PlaybackSectionRangeStatus = 'disabled' | 'custom' | 'unanalysed' | 'no-match' | 'ready'
 
 export type PlaybackSectionRangeResolution = {
@@ -239,3 +247,57 @@ export const findNextPlaybackSectionRange = (
   afterSec: number,
   toleranceSec = 0.05
 ) => ranges.find((range) => range.startSec > afterSec + toleranceSec) ?? null
+
+export const secondsToPlaybackRangePercent = (seconds: number, durationSec: number) => {
+  if (!(durationSec > 0)) return 0
+  return Math.min(Math.max((seconds / durationSec) * 100, 0), 100)
+}
+
+const toLockedDisplayRanges = (
+  ranges: readonly PlaybackSectionRange[],
+  durationSec: number
+): PlaybackRangePercentRange[] =>
+  ranges
+    .map((range) => ({
+      startPercent: secondsToPlaybackRangePercent(range.startSec, durationSec),
+      endPercent: secondsToPlaybackRangePercent(range.endSec, durationSec)
+    }))
+    .filter((range) => range.endPercent > range.startPercent)
+
+export const resolvePlaybackRangeHandleVisual = (
+  setting: PlaybackRangeSettingsLike,
+  songStructure: unknown,
+  durationSec: number
+): PlaybackRangeHandleVisual => {
+  const locked = isPlaybackSectionRangeMode(setting)
+  const startPercent = clampPlaybackRangePercent(setting.startPlayPercent, 0)
+  const endPercent = clampPlaybackRangePercent(setting.endPlayPercent, 100)
+  if (setting.enablePlaybackRange !== true) {
+    return {
+      visible: false,
+      locked,
+      startPercent,
+      endPercent,
+      lockedRanges: []
+    }
+  }
+  if (!locked) {
+    return {
+      visible: true,
+      locked: false,
+      startPercent,
+      endPercent,
+      lockedRanges: []
+    }
+  }
+  const resolution = resolvePlaybackSectionRangeResolution(setting, songStructure, durationSec)
+  const lockedRanges =
+    resolution.status === 'ready' ? toLockedDisplayRanges(resolution.ranges, durationSec) : []
+  return {
+    visible: lockedRanges.length > 0,
+    locked: true,
+    startPercent: lockedRanges[0]?.startPercent ?? startPercent,
+    endPercent: lockedRanges[0]?.endPercent ?? endPercent,
+    lockedRanges
+  }
+}

@@ -1,4 +1,5 @@
 import type { CompactVisualWaveformData } from './compactVisualWaveform'
+import type { PlaybackRangeHandleVisual } from './playbackRange'
 import type { ISongInfo } from 'src/types/globals'
 
 export type MiniPlayerTransferActionMode = 'move' | 'copy'
@@ -52,6 +53,9 @@ export type MiniPlayerHostState = {
   waveformMode: MiniPlayerWaveformMode
   compactVisualWaveform: CompactVisualWaveformData | null
   pioneerPreviewWaveform: MiniPlayerPioneerPreviewWaveform | null
+  playbackRange: PlaybackRangeHandleVisual
+  canDeleteAllAbove: boolean
+  deleteAllAboveCount: number
 }
 
 export type MiniPlayerPlayhead = {
@@ -95,11 +99,13 @@ export type MiniPlayerOverlayMenuAction =
   | 'addToSet'
   | 'addToMixtape'
   | 'delete'
+  | 'deleteAllAbove'
   | 'showInExplorer'
 
 export type MiniPlayerOverlayMenuPayload = {
   isReadOnly: boolean
   filePath: string
+  canDeleteAllAbove: boolean
 }
 
 export type MiniPlayerOverlaySongListPayload = {
@@ -147,7 +153,7 @@ export type MiniPlayerTooltipPayload = {
 }
 
 export const MINI_PLAYER_OVERLAY_MENU_WIDTH = 280
-export const MINI_PLAYER_OVERLAY_MENU_HEIGHT = 340
+export const MINI_PLAYER_OVERLAY_MENU_HEIGHT = 372
 export const MINI_PLAYER_OVERLAY_DIALOG_WIDTH = 302
 export const MINI_PLAYER_OVERLAY_CONFIRM_WIDTH = 402
 export const MINI_PLAYER_OVERLAY_CONFIRM_HEIGHT = 222
@@ -164,9 +170,11 @@ export type MiniPlayerCommand =
   | { type: 'fastForward' }
   | { type: 'fastBackward' }
   | { type: 'seekSeconds'; seconds: number }
+  // percent 为 0-1 比例；大于 1 时按 0-100 百分比兼容
   | { type: 'seekPercent'; percent: number }
   | { type: 'setVolume'; value: number }
   | { type: 'delete' }
+  | { type: 'deleteAllAbove'; confirmed?: boolean }
   | {
       type: 'export'
       folderPath: string
@@ -178,6 +186,13 @@ export type MiniPlayerCommand =
       actionMode: MiniPlayerTransferActionMode
       targetUuid: string
     }
+
+export const normalizeMiniPlayerSeekRatio = (percent: unknown) => {
+  const value = Number(percent)
+  if (!Number.isFinite(value)) return 0
+  if (value > 1) return Math.min(Math.max(value, 0), 100) / 100
+  return Math.min(Math.max(value, 0), 1)
+}
 
 export const MINI_PLAYER_CHANNELS = {
   open: 'mini-player:open',
@@ -207,5 +222,6 @@ export const MINI_PLAYER_CHANNELS = {
   hideTooltip: 'mini-player:hide-tooltip',
   tooltipState: 'mini-player:tooltip-state',
   tooltipReady: 'mini-player:tooltip-ready',
-  tooltipContentSize: 'mini-player:tooltip-content-size'
+  tooltipContentSize: 'mini-player:tooltip-content-size',
+  requestKeyboardFocus: 'mini-player:request-keyboard-focus'
 } as const

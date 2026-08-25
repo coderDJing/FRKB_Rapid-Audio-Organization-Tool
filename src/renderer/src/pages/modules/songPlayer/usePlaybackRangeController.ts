@@ -11,7 +11,9 @@ import {
   normalizePlaybackRangeSectionMatchMode,
   resolveCustomPlaybackRangeEndSec,
   resolveInitialPlaybackRangeStartSec,
+  resolvePlaybackRangeHandleVisual,
   resolvePlaybackSectionRangeResolution,
+  secondsToPlaybackRangePercent,
   type PlaybackSectionRange
 } from '@shared/playbackRange'
 import { WebAudioPlayer } from './webAudioPlayer'
@@ -62,37 +64,23 @@ export function usePlaybackRangeController(options: PlaybackRangeControllerOptio
     )
   })
 
-  const sectionSecondsToPercent = (seconds: number) => {
-    const duration = playerWaveformDurationSec.value
-    if (duration <= 0) return 0
-    return Math.min(Math.max((seconds / duration) * 100, 0), 100)
-  }
+  const playbackRangeHandleVisual = computed(() =>
+    resolvePlaybackRangeHandleVisual(
+      runtime.setting,
+      runtime.playingData.playingSong?.songStructure,
+      playerWaveformDurationSec.value
+    )
+  )
 
-  const playbackRangeLockedRanges = computed(() => {
-    if (!isPlaybackSectionRangeMode(runtime.setting)) return []
-    const resolution = playbackSectionRangeResolution.value
-    if (resolution.status !== 'ready') return []
-    return resolution.ranges
-      .map((range) => ({
-        startPercent: sectionSecondsToPercent(range.startSec),
-        endPercent: sectionSecondsToPercent(range.endSec)
-      }))
-      .filter((range) => range.endPercent > range.startPercent)
-  })
-
-  const playbackRangeHandlesLocked = computed(() => isPlaybackSectionRangeMode(runtime.setting))
-
-  const playbackRangeHandlesVisible = computed(() => {
-    if (runtime.setting.enablePlaybackRange !== true) return false
-    if (!playbackRangeHandlesLocked.value) return true
-    return playbackRangeLockedRanges.value.length > 0
-  })
+  const playbackRangeLockedRanges = computed(() => playbackRangeHandleVisual.value.lockedRanges)
+  const playbackRangeHandlesLocked = computed(() => playbackRangeHandleVisual.value.locked)
+  const playbackRangeHandlesVisible = computed(() => playbackRangeHandleVisual.value.visible)
 
   const playbackRangeHandleStartPercent = computed({
     get: () => {
       const sectionRange = playbackSectionHandleRange.value
       if (playbackRangeHandlesLocked.value && sectionRange) {
-        return sectionSecondsToPercent(sectionRange.startSec)
+        return secondsToPlaybackRangePercent(sectionRange.startSec, playerWaveformDurationSec.value)
       }
       return runtime.setting.startPlayPercent
     },
@@ -106,7 +94,7 @@ export function usePlaybackRangeController(options: PlaybackRangeControllerOptio
     get: () => {
       const sectionRange = playbackSectionHandleRange.value
       if (playbackRangeHandlesLocked.value && sectionRange) {
-        return sectionSecondsToPercent(sectionRange.endSec)
+        return secondsToPlaybackRangePercent(sectionRange.endSec, playerWaveformDurationSec.value)
       }
       return runtime.setting.endPlayPercent
     },

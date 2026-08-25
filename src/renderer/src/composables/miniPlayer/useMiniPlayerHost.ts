@@ -15,6 +15,13 @@ import type {
 } from '@renderer/utils/libraryTransfer'
 import { cloneMiniPlayerHostState } from '@renderer/composables/miniPlayer/miniPlayerStateClone'
 import { isRuntimeLibraryTree } from '@renderer/utils/appRuntimeStateGuards'
+import {
+  normalizePlaybackRangeSectionKinds,
+  resolvePlaybackRangeHandleVisual
+} from '@shared/playbackRange'
+import { resolvePlaybackDeleteAllAboveTarget } from '@shared/playbackDeleteAllAbove'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 type MiniPlayerHostActions = {
   play: () => void
@@ -25,6 +32,7 @@ type MiniPlayerHostActions = {
   fastForward: () => void
   fastBackward: () => void
   delSong: () => void | Promise<void>
+  delAllAbove: (options?: { confirmed?: boolean }) => void | Promise<void>
   handleMoveSong: (targetUuid: string) => Promise<void>
   prepareRemoteTransfer: (
     libraryName: LibraryTransferTarget,
@@ -52,8 +60,25 @@ export function useMiniPlayerHost(params: {
 
   const resolveIsPlaying = () => params.audioPlayer.value?.isPlaying() ?? params.isPlaying.value
 
+  const resolveDeleteAllAboveHostFields = () => {
+    const playingSong = params.runtime.playingData.playingSong
+    const listUuid = String(params.runtime.playingData.playingSongListUUID || '')
+    if (isRekordboxExternalPlaybackSource(listUuid, playingSong)) {
+      return { canDeleteAllAbove: false, deleteAllAboveCount: 0 }
+    }
+    const target = resolvePlaybackDeleteAllAboveTarget({
+      listUuid,
+      listData: params.runtime.playingData.playingSongListData,
+      playingSong,
+      libraryType: libraryUtils.getLibraryTreeByUUID(listUuid)?.type
+    })
+    if (!target) return { canDeleteAllAbove: false, deleteAllAboveCount: 0 }
+    return { canDeleteAllAbove: true, deleteAllAboveCount: target.songs.length }
+  }
+
   const buildHostState = (): MiniPlayerHostState => {
     const player = params.audioPlayer.value
+    const deleteAllAbove = resolveDeleteAllAboveHostFields()
     return cloneMiniPlayerHostState({
       song: (params.runtime.playingData.playingSong as ISongInfo | null) || null,
       playingSongListUUID: String(params.runtime.playingData.playingSongListUUID || ''),
@@ -63,7 +88,14 @@ export function useMiniPlayerHost(params: {
       volume: params.actions.getVolume(),
       waveformMode: params.runtime.setting.waveformMode === 'full' ? 'full' : 'half',
       compactVisualWaveform: player?.compactVisualWaveformData ?? null,
-      pioneerPreviewWaveform: player?.pioneerPreviewWaveformData ?? null
+      pioneerPreviewWaveform: player?.pioneerPreviewWaveformData ?? null,
+      playbackRange: resolvePlaybackRangeHandleVisual(
+        params.runtime.setting,
+        params.runtime.playingData.playingSong?.songStructure,
+        params.playerWaveformDurationSec.value
+      ),
+      canDeleteAllAbove: deleteAllAbove.canDeleteAllAbove,
+      deleteAllAboveCount: deleteAllAbove.deleteAllAboveCount
     })
   }
 
@@ -153,6 +185,9 @@ export function useMiniPlayerHost(params: {
       case 'delete':
         await params.actions.delSong()
         break
+      case 'deleteAllAbove':
+        await params.actions.delAllAbove({ confirmed: command.confirmed === true })
+        break
       case 'export':
         await params.actions.exportTrackWithFolder(command.folderPath, !!command.deleteAfter)
         break
@@ -179,6 +214,9 @@ export function useMiniPlayerHost(params: {
     () => [
       params.runtime.playingData.playingSong?.filePath,
       params.runtime.playingData.playingSongListUUID,
+      params.runtime.playingData.playingSongListData
+        .map((song) => song.setItemId || song.mixtapeItemId || song.filePath)
+        .join('\n'),
       params.runtime.playingData.playingSong?.hotCues,
       params.runtime.playingData.playingSong?.memoryCues,
       params.runtime.playingData.playingSong?.songStructure,
@@ -187,9 +225,16 @@ export function useMiniPlayerHost(params: {
       params.runtime.playingData.playingSong?.bpm,
       params.runtime.playingData.playingSong?.key,
       params.isPlaying.value,
+      params.playerWaveformDurationSec.value,
       params.playerWaveformRenderRevision.value,
       params.runtime.setting.waveformMode,
-      params.runtime.setting.themeMode
+      params.runtime.setting.themeMode,
+      params.runtime.setting.enablePlaybackRange,
+      params.runtime.setting.playbackRangeMode,
+      params.runtime.setting.startPlayPercent,
+      params.runtime.setting.endPlayPercent,
+      params.runtime.setting.playbackRangeSectionMatchMode,
+      normalizePlaybackRangeSectionKinds(params.runtime.setting.playbackRangeSectionKinds).join('|')
     ],
     () => publishHostState()
   )

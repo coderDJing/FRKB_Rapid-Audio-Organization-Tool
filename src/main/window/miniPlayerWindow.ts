@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, screen } from 'electron'
+import { BrowserWindow, ipcMain, screen, app } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import path = require('path')
 import icon from '../../../resources/icon.png?asset'
@@ -196,7 +196,57 @@ const destroyMiniWindow = (restoreMainWindow: boolean) => {
   notifySession()
 }
 
+const restorePinnedAlwaysOnTop = (target: BrowserWindow) => {
+  if (!resolveAlwaysOnTop()) return
+  try {
+    target.setAlwaysOnTop(true, 'floating')
+  } catch {
+    target.setAlwaysOnTop(true)
+  }
+}
+
+const applyKeyboardFocus = (target: BrowserWindow) => {
+  try {
+    if (target.isMinimized()) target.restore()
+    target.show()
+    target.moveTop()
+    const pinned = resolveAlwaysOnTop()
+    if (process.platform === 'win32' && pinned) {
+      try {
+        target.setAlwaysOnTop(false)
+      } catch {}
+    }
+    if (process.platform === 'darwin') {
+      try {
+        app.focus({ steal: true })
+      } catch {}
+    }
+    target.focus()
+    target.webContents.focus()
+    if (process.platform === 'win32' && pinned) {
+      restorePinnedAlwaysOnTop(target)
+    }
+    target.webContents.send(MINI_PLAYER_CHANNELS.requestKeyboardFocus)
+    setTimeout(() => {
+      if (!isUsableWindow(target)) return
+      try {
+        target.webContents.send(MINI_PLAYER_CHANNELS.requestKeyboardFocus)
+      } catch {}
+    }, 80)
+  } catch (error) {
+    log.error('[mini-player] focus failed', error)
+  }
+}
+
 export const isOpen = () => isUsableWindow(miniPlayerWindow)
+
+export const focusExisting = () => {
+  if (!isUsableWindow(miniPlayerWindow)) return false
+  applyKeyboardFocus(miniPlayerWindow)
+  return true
+}
+
+export const isPinnedOpen = () => isOpen() && resolveAlwaysOnTop()
 
 export const restoreMain = () => {
   if (!isOpen()) {
@@ -300,8 +350,7 @@ const createMiniPlayerWindow = () => {
   target.on('ready-to-show', () => {
     if (!isUsableWindow(target)) return
     hideMainWindow()
-    target.show()
-    target.focus()
+    applyKeyboardFocus(target)
     notifySession(target)
   })
   target.on('close', (event) => {
@@ -322,11 +371,8 @@ const createMiniPlayerWindow = () => {
 const open = () => {
   attachMainWindowListeners()
   if (isUsableWindow(miniPlayerWindow)) {
-    try {
-      miniPlayerWindow.show()
-      miniPlayerWindow.focus()
-    } catch {}
     hideMainWindow()
+    applyKeyboardFocus(miniPlayerWindow)
     notifySession(miniPlayerWindow)
     return miniPlayerWindow
   }
@@ -413,6 +459,9 @@ const ensureIpcHandlers = () => {
   ipcMain.on(MINI_PLAYER_CHANNELS.rendererReady, () => {
     forwardToMain(MINI_PLAYER_CHANNELS.rendererReady, null)
     notifySession(miniPlayerWindow)
+    if (isUsableWindow(miniPlayerWindow)) {
+      applyKeyboardFocus(miniPlayerWindow)
+    }
   })
 }
 
@@ -434,5 +483,7 @@ export default {
   open,
   restoreMain,
   isOpen,
+  isPinnedOpen,
+  focusExisting,
   notifySession
 }

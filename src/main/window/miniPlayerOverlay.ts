@@ -97,7 +97,8 @@ const parseMenuPayload = (value: unknown): MiniPlayerOverlayMenuPayload | null =
   if (!isRecord(value)) return null
   return {
     isReadOnly: !!value.isReadOnly,
-    filePath: String(value.filePath || '')
+    filePath: String(value.filePath || ''),
+    canDeleteAllAbove: !!value.canDeleteAllAbove
   }
 }
 
@@ -154,6 +155,7 @@ const MENU_ACTIONS: MiniPlayerOverlayMenuAction[] = [
   'addToSet',
   'addToMixtape',
   'delete',
+  'deleteAllAbove',
   'showInExplorer'
 ]
 

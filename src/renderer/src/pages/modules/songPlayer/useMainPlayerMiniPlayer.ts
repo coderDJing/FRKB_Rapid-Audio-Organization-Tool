@@ -3,6 +3,7 @@ import { useMiniPlayerHost } from '@renderer/composables/miniPlayer/useMiniPlaye
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { WebAudioPlayer } from './webAudioPlayer'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { normalizeMiniPlayerSeekRatio } from '@shared/miniPlayerWindow'
 import emitter from '@renderer/utils/mitt'
 
 type MainPlayerActions = {
@@ -13,6 +14,7 @@ type MainPlayerActions = {
   fastForward: () => void
   fastBackward: () => void
   delSong: () => void | Promise<void>
+  delAllAbove: (options?: { confirmed?: boolean }) => void | Promise<void>
   handleMoveSong: (targetUuid: string) => Promise<void>
 }
 
@@ -36,9 +38,8 @@ export function useMainPlayerMiniPlayer(params: {
     const player = params.audioPlayer.value
     if (!player || !params.waveformShow.value) return
     const duration = params.playerWaveformDurationSec.value
-    const current = Number(player.getCurrentTime?.()) || 0
-    const next = Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, current + seconds))
-    player.seek(next)
+    const next = Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, Number(seconds) || 0))
+    player.seek(next, true)
   }
 
   const seekPercent = (percent: number) => {
@@ -46,7 +47,7 @@ export function useMainPlayerMiniPlayer(params: {
     if (!player || !params.waveformShow.value) return
     const duration = params.playerWaveformDurationSec.value
     if (!(duration > 0)) return
-    player.seek((Math.max(0, Math.min(100, percent)) / 100) * duration)
+    player.seek(normalizeMiniPlayerSeekRatio(percent) * duration, true)
   }
 
   const exportTrackWithFolder = async (folderPath: string, deleteAfter: boolean) => {
@@ -111,6 +112,7 @@ export function useMainPlayerMiniPlayer(params: {
       fastForward: params.actions.fastForward,
       fastBackward: params.actions.fastBackward,
       delSong: params.actions.delSong,
+      delAllAbove: params.actions.delAllAbove,
       handleMoveSong: params.actions.handleMoveSong,
       prepareRemoteTransfer: () => true,
       exportTrackWithFolder,

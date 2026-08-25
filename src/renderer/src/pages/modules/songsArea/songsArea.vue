@@ -227,6 +227,25 @@ const bindPaneScrollListener = () => {
   detachPaneScrollListener = () => carrier.removeEventListener('scroll', handleScroll)
   handleScroll()
 }
+const scrollCurrentListToTop = () => {
+  songsAreaState.scrollTop = 0
+  const apply = () => {
+    const carrier = resolvePaneScrollCarrier()
+    if (carrier && carrier.scrollTop !== 0) {
+      carrier.scrollTop = 0
+    }
+    songsAreaState.scrollTop = 0
+  }
+  apply()
+  void nextTick().then(() => {
+    requestAnimationFrame(apply)
+  })
+}
+const handleSongsAreaScrollToTop = (payload?: { listUUID?: string }) => {
+  const listUUID = String(payload?.listUUID || '')
+  if (!listUUID || listUUID !== songsAreaState.songListUUID) return
+  scrollCurrentListToTop()
+}
 const schedulePaneScrollRestore = () => {
   void nextTick().then(() => {
     requestAnimationFrame(() => {
@@ -481,6 +500,7 @@ const handlePreviewMoveRequest = (payload?: PreviewMoveRequestPayload) => {
   initiateMoveSongs(targetLibraryName)
 }
 emitter.on('preview-transfer:open-dialog', handlePreviewMoveRequest)
+emitter.on('songsArea/scrollToTop', handleSongsAreaScrollToTop)
 
 watch(
   () => isPaneActive.value,
@@ -501,6 +521,7 @@ onUnmounted(() => {
   emitter.off('songsArea/clipboardHint', handleClipboardHint)
   emitter.off('waveform-preview:state', handleWaveformPreviewState)
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
+  emitter.off('songsArea/scrollToTop', handleSongsAreaScrollToTop)
 })
 const applyMetadataUpdate = async (
   updatedSong: ISongInfo | undefined,

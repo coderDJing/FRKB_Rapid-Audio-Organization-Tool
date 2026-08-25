@@ -4,6 +4,7 @@ import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { resolveSeekPercentHotkeyRatio } from '@shared/playerSeekHotkeyRatio'
 import type { ISongInfo } from '../../../../../types/globals'
 
 // 使用 ReturnType 获取 useRuntimeStore 的返回类型，模拟 Store 类型
@@ -34,6 +35,7 @@ interface PlayerState {
   songsAreaSelectedCount: Readonly<Ref<number>> // 从 runtime store 获取
   activeMenuUUID: { value: string } // 从 runtime store 获取，允许修改
   isPlaying?: Readonly<Ref<boolean>> // 可选：传入播放状态以优化 space 键
+  hotkeysEnabled?: Readonly<Ref<boolean>>
 }
 
 type PreviewStatePayload = {
@@ -107,6 +109,7 @@ export function usePlayerHotkeys(
   const isPreviewMoveActive = () => previewMoveTarget.value !== null
   const isAnySelectSongListDialogVisible = () =>
     state.selectSongListDialogShow.value || runtime.selectSongListDialogShow
+  const areHotkeysEnabled = () => state.hotkeysEnabled?.value !== false
   const emitPreviewMoveRequest = (targetLibraryName: 'FilterLibrary' | 'CuratedLibrary') => {
     const target = previewMoveTarget.value
     if (!target) return false
@@ -126,7 +129,7 @@ export function usePlayerHotkeys(
 
     const spaceHandler: KeyHandler = (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || isPreviewMoveActive()) {
+      if (!areHotkeysEnabled() || !state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       if (actions.togglePlayPause) {
@@ -148,7 +151,7 @@ export function usePlayerHotkeys(
 
     hotkeys('d,right', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || isPreviewMoveActive()) {
+      if (!areHotkeysEnabled() || !state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       actions.fastForward()
@@ -158,7 +161,7 @@ export function usePlayerHotkeys(
 
     hotkeys('a,left', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || isPreviewMoveActive()) {
+      if (!areHotkeysEnabled() || !state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       actions.fastBackward()
@@ -167,6 +170,7 @@ export function usePlayerHotkeys(
     hotkeys('s,down', scope, (event) => {
       event.preventDefault()
       if (
+        !areHotkeysEnabled() ||
         !state.waveformShow.value ||
         isPreviewMoveActive() ||
         isAnySelectSongListDialogVisible()
@@ -179,6 +183,7 @@ export function usePlayerHotkeys(
     hotkeys('w,up', scope, (event) => {
       event.preventDefault()
       if (
+        !areHotkeysEnabled() ||
         !state.waveformShow.value ||
         isPreviewMoveActive() ||
         isAnySelectSongListDialogVisible()
@@ -189,7 +194,7 @@ export function usePlayerHotkeys(
     })
 
     hotkeys('r', scope, (event) => {
-      if (runtime.mainWindowBrowseMode !== 'browser') return
+      if (!areHotkeysEnabled() || runtime.mainWindowBrowseMode !== 'browser') return
       event.preventDefault()
       if (
         !state.waveformShow.value ||
@@ -204,7 +209,7 @@ export function usePlayerHotkeys(
 
     const deleteHandler: KeyHandler = (event, handler) => {
       event.preventDefault()
-      if (!state.waveformShow.value || isPreviewMoveActive()) {
+      if (!areHotkeysEnabled() || !state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       // 检查是否是 Delete 键触发，并且歌曲列表区有选中的歌曲
@@ -243,6 +248,7 @@ export function usePlayerHotkeys(
     hotkeys('q', scope, (event) => {
       event.preventDefault()
       if (
+        !areHotkeysEnabled() ||
         (!state.waveformShow.value && !isPreviewMoveActive()) ||
         isAnySelectSongListDialogVisible()
       ) {
@@ -258,6 +264,7 @@ export function usePlayerHotkeys(
     hotkeys('e', scope, (event) => {
       event.preventDefault()
       if (
+        !areHotkeysEnabled() ||
         (!state.waveformShow.value && !isPreviewMoveActive()) ||
         isAnySelectSongListDialogVisible()
       ) {
@@ -270,45 +277,45 @@ export function usePlayerHotkeys(
       actions.moveToLikeLibrary()
     })
 
-    hotkeys('`', scope, (event) => {
+    const seekToHotkeyPercent = (event: KeyboardEvent, handlerKey?: string) => {
       event.preventDefault()
       if (
+        !areHotkeysEnabled() ||
         !state.waveformShow.value ||
         isPreviewMoveActive() ||
         isAnySelectSongListDialogVisible()
       ) {
         return
       }
-      actions.seekToPercent(0)
+      const ratio = resolveSeekPercentHotkeyRatio(event, handlerKey)
+      if (ratio === null) return
+      actions.seekToPercent(ratio)
+    }
+
+    hotkeys('`,shift+`', scope, (event) => {
+      seekToHotkeyPercent(event, '`')
     })
 
-    hotkeys('1,2,3,4,5,6,7,8,9,0', scope, (event, handler) => {
-      event.preventDefault()
-      if (
-        !state.waveformShow.value ||
-        isPreviewMoveActive() ||
-        isAnySelectSongListDialogVisible()
-      ) {
-        return
+    hotkeys(
+      '1,2,3,4,5,6,7,8,9,0,num_1,num_2,num_3,num_4,num_5,num_6,num_7,num_8,num_9,num_0',
+      scope,
+      (event, handler) => {
+        seekToHotkeyPercent(event, handler.key)
       }
-      const rawKey = handler.key
-      const normalized = rawKey === '0' ? 10 : Number(rawKey)
-      if (!Number.isFinite(normalized)) {
-        return
-      }
-      actions.seekToPercent(Math.min(Math.max(normalized / 10, 0), 1))
-    })
+    )
 
     // +/- 音量控制
     hotkeys('=,+,shift+=', scope, (event) => {
       event.preventDefault()
-      if (isPreviewMoveActive() || isAnySelectSongListDialogVisible()) return
+      if (!areHotkeysEnabled() || isPreviewMoveActive() || isAnySelectSongListDialogVisible())
+        return
       actions.volumeUp()
     })
 
     hotkeys('-', scope, (event) => {
       event.preventDefault()
-      if (isPreviewMoveActive() || isAnySelectSongListDialogVisible()) return
+      if (!areHotkeysEnabled() || isPreviewMoveActive() || isAnySelectSongListDialogVisible())
+        return
       actions.volumeDown()
     })
   }
@@ -323,8 +330,11 @@ export function usePlayerHotkeys(
     hotkeys.unbind('f,delete', 'windowGlobal')
     hotkeys.unbind('q', 'windowGlobal')
     hotkeys.unbind('e', 'windowGlobal')
-    hotkeys.unbind('`', 'windowGlobal')
-    hotkeys.unbind('1,2,3,4,5,6,7,8,9,0', 'windowGlobal')
+    hotkeys.unbind('`,shift+`', 'windowGlobal')
+    hotkeys.unbind(
+      '1,2,3,4,5,6,7,8,9,0,num_1,num_2,num_3,num_4,num_5,num_6,num_7,num_8,num_9,num_0',
+      'windowGlobal'
+    )
     hotkeys.unbind('r', 'windowGlobal')
     hotkeys.unbind('=,+,shift+=', 'windowGlobal')
     hotkeys.unbind('-', 'windowGlobal')

@@ -142,6 +142,7 @@ onUnmounted(() => {
     <MiniPlayerMoreMenu
       v-if="kind === 'menu' && menuPayload"
       :is-read-only="menuPayload.isReadOnly"
+      :can-delete-all-above="menuPayload.canDeleteAllAbove"
       @action="handleMenuAction"
     />
     <selectSongListDialog

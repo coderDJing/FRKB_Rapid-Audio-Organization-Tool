@@ -31,6 +31,7 @@
     "confirmDeletePlaying": "Permanently delete current track?",
     "deleteAllAbove": "Delete all tracks above",
     "confirmDeleteAllAbove": "Permanently delete all above?",
+    "confirmDeleteAllAbovePlaying": "Delete {count} tracks above the current song from the playing playlist",
     "deleteHint": "(File will be deleted; fingerprint kept.)",
     "cannotPlay": "Cannot play. Delete?",
     "cannotPlayHint": "(Not audio or file is corrupted)",

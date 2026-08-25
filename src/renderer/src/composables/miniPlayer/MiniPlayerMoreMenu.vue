@@ -7,6 +7,7 @@ import type { MiniPlayerOverlayMenuAction } from '@shared/miniPlayerWindow'
 const shortcutIcon = shortcutIconAsset
 const props = defineProps<{
   isReadOnly: boolean
+  canDeleteAllAbove?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -70,6 +71,9 @@ const mixtapeLabel = computed(() =>
           <span>{{ t('tracks.deleteTracks') }} </span>
         </div>
         <div class="shortcut"><img :src="shortcutIcon" draggable="false" /><span>F</span></div>
+      </div>
+      <div v-if="canDeleteAllAbove" class="menuButton" @click="emit('action', 'deleteAllAbove')">
+        <span>{{ t('tracks.deleteAllAbove') }}</span>
       </div>
     </div>
     <div class="more-menu__section more-menu__section--last">

@@ -135,6 +135,26 @@ const screenshotCss = `
 let screenshotInProgress = false
 let registeredScreenshotShortcut = ''
 
+const toggleMainWindowVisibility = () => {
+  if (!mainWindow) return
+  if (!mainWindow.isFocused()) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.focus()
+    return
+  }
+  mainWindow.minimize()
+}
+
+const handleGlobalCallShortcut = () => {
+  if (miniPlayerWindow.isPinnedOpen()) {
+    miniPlayerWindow.focusExisting()
+    return
+  }
+  toggleMainWindowVisibility()
+}
+
 const isWindowScreenshotFeatureEnabledForBuild = () =>
   isWindowScreenshotFeatureAvailable({
     platform: process.platform,
@@ -402,16 +422,7 @@ function createWindow() {
     }
     startupWindow.closeWindow()
     mainWindow?.show()
-    globalShortcut.register(store.settingConfig.globalCallShortcut, () => {
-      if (!mainWindow?.isFocused()) {
-        if (mainWindow?.isMinimized()) {
-          mainWindow.restore()
-        }
-        mainWindow?.focus()
-      } else {
-        mainWindow.minimize()
-      }
-    })
+    globalShortcut.register(store.settingConfig.globalCallShortcut, handleGlobalCallShortcut)
     registerPlaybackGlobalShortcuts()
     syncWindowScreenshotShortcut()
   })
@@ -528,16 +539,7 @@ function createWindow() {
   })
 
   ipcMain.handle('changeGlobalShortcut', (_e, shortCutValue: string) => {
-    const ret = globalShortcut.register(shortCutValue, () => {
-      if (!mainWindow?.isFocused()) {
-        if (mainWindow?.isMinimized()) {
-          mainWindow.restore()
-        }
-        mainWindow?.focus()
-      } else {
-        mainWindow.minimize()
-      }
-    })
+    const ret = globalShortcut.register(shortCutValue, handleGlobalCallShortcut)
     if (!ret) return false
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     store.settingConfig.globalCallShortcut = shortCutValue
