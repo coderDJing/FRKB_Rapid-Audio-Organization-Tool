@@ -8,10 +8,10 @@ import {
   type ComponentPublicInstance
 } from 'vue'
 import { MINI_PLAYER_CHANNELS, type MiniPlayerCoverPopupPayload } from '@shared/miniPlayerWindow'
-import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
+import logoAsset from '@renderer/assets/logo.png?asset'
 import PlayerSongInfoCard from '@renderer/pages/modules/songPlayer/PlayerSongInfoCard.vue'
 
-const musicIcon = musicIconAsset
+const placeholderLogo = logoAsset
 const payload = ref<MiniPlayerCoverPopupPayload | null>(null)
 const coverUrl = ref('')
 const cardRef = useTemplateRef<ComponentPublicInstance>('cardRef')
@@ -119,7 +119,7 @@ onUnmounted(() => {
   <PlayerSongInfoCard
     ref="cardRef"
     :cover-url="coverUrl"
-    :placeholder-src="musicIcon"
+    :placeholder-src="placeholderLogo"
     :title-text="payload?.title || ''"
     :artist-text="payload?.artist || ''"
     :album-text="payload?.album || ''"

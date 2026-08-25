@@ -210,6 +210,7 @@ export const MINI_PLAYER_CHANNELS = {
   command: 'mini-player:command',
   rendererReady: 'mini-player:renderer-ready',
   session: 'mini-player:session',
+  windowFocus: 'mini-player:window-focus',
   showCoverPopup: 'mini-player:show-cover-popup',
   hideCoverPopup: 'mini-player:hide-cover-popup',
   coverPopupState: 'mini-player:cover-popup-state',

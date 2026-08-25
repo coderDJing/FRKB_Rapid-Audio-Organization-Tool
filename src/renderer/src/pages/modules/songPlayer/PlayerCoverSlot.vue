@@ -3,12 +3,14 @@ const props = withDefaults(
   defineProps<{
     slotSize?: number
     coverSize?: number
+    placeholderSize?: number
     coverBlobUrl: string
     placeholderSrc: string
   }>(),
   {
     slotSize: 62,
-    coverSize: 52
+    coverSize: 52,
+    placeholderSize: 28
   }
 )
 
@@ -31,6 +33,11 @@ const slotStyle = () => ({
 const coverStyle = () => ({
   width: `${props.coverSize}px`,
   height: `${props.coverSize}px`
+})
+
+const placeholderStyle = () => ({
+  width: `${props.placeholderSize}px`,
+  height: `${props.placeholderSize}px`
 })
 </script>
 
@@ -55,7 +62,7 @@ const coverStyle = () => ({
           :key="'placeholder'"
           :src="placeholderSrc"
           class="player-cover-slot__placeholder"
-          :style="coverStyle()"
+          :style="placeholderStyle()"
         />
       </transition>
     </div>

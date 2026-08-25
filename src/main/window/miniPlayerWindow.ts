@@ -309,6 +309,12 @@ const createMiniPlayerWindow = () => {
     }
   })
   lockNormalHeight(target, bounds.width)
+  const pushWindowFocus = (focused: boolean) => {
+    if (!isUsableWindow(target)) return
+    try {
+      target.webContents.send(MINI_PLAYER_CHANNELS.windowFocus, focused)
+    } catch {}
+  }
   if (resolveAlwaysOnTop()) {
     try {
       target.setAlwaysOnTop(true, 'floating')
@@ -348,11 +354,18 @@ const createMiniPlayerWindow = () => {
     repositionCoverPopup(newBounds)
     repositionMiniPlayerOverlay(newBounds)
   })
+  target.on('focus', () => {
+    pushWindowFocus(true)
+  })
+  target.on('blur', () => {
+    pushWindowFocus(false)
+  })
   target.on('ready-to-show', () => {
     if (!isUsableWindow(target)) return
     hideMainWindow()
     applyKeyboardFocus(target)
     notifySession(target)
+    pushWindowFocus(target.isFocused())
   })
   target.on('close', (event) => {
     if (allowDestroy) return
@@ -460,6 +473,7 @@ const ensureIpcHandlers = () => {
   ipcMain.on(MINI_PLAYER_CHANNELS.rendererReady, () => {
     forwardToMain(MINI_PLAYER_CHANNELS.rendererReady, null)
     notifySession(miniPlayerWindow)
+    forwardToMini(MINI_PLAYER_CHANNELS.windowFocus, miniPlayerWindow?.isFocused() === true)
     if (isUsableWindow(miniPlayerWindow)) {
       applyKeyboardFocus(miniPlayerWindow)
     }

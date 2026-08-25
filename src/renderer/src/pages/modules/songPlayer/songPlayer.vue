@@ -14,7 +14,7 @@ import {
 import type { ISongInfo } from 'src/types/globals'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
+import logoAsset from '@renderer/assets/logo.png?asset'
 import playerControls from '../../../components/playerControls.vue'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import BpmTap from './BpmTap.vue'
@@ -59,7 +59,7 @@ import { normalizeSongStructureAnalysis } from '@shared/songStructure'
 import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 import { useMainPlayerMiniPlayer } from './useMainPlayerMiniPlayer'
 import { createMainPlayerGlobalShortcutHandler } from './createMainPlayerGlobalShortcutHandler'
-const musicIcon = musicIconAsset
+const placeholderLogo = logoAsset
 type WaveformPreviewStatePayload = {
   active?: boolean
   song?: ISongInfo | null
@@ -859,7 +859,7 @@ watch(
     >
       <PlayerCoverSlot
         :cover-blob-url="coverBlobUrl"
-        :placeholder-src="musicIcon"
+        :placeholder-src="placeholderLogo"
         @hover-cover="songInfoShow = true"
       />
       <transition name="fade">
@@ -871,7 +871,12 @@ watch(
               style="width: 280px; height: 280px"
               draggable="false"
             />
-            <img v-else :src="musicIcon" style="width: 48px; height: 48px" draggable="false" />
+            <img
+              v-else
+              :src="placeholderLogo"
+              style="width: 48px; height: 48px"
+              draggable="false"
+            />
           </div>
           <div style="font-size: 14px" class="info">
             {{ runtime.playingData.playingSong?.title }}
@@ -1023,6 +1028,10 @@ watch(
   justify-content: center;
   gap: 4px;
   position: relative;
+}
+
+.main-player-waveform-slot :deep(.player-structure-rail--empty) {
+  display: none;
 }
 
 #waveform {

@@ -31,11 +31,12 @@ import {
   type MiniPlayerTransferTarget
 } from '@shared/miniPlayerWindow'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import musicIconAsset from '@renderer/assets/musicIcon.svg?asset'
+import logoAsset from '@renderer/assets/logo.png?asset'
 
 const runtime = useRuntimeStore()
-const musicIcon = musicIconAsset
+const miniPlayerPlaceholderCover = logoAsset
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
+const focusCanvas = useTemplateRef<HTMLCanvasElement>('focusCanvas')
 const pinRef = useTemplateRef<HTMLDivElement>('pinRef')
 const closeRef = useTemplateRef<HTMLDivElement>('closeRef')
 const coverAnchorRef = useTemplateRef<HTMLDivElement>('coverAnchorRef')
@@ -45,6 +46,7 @@ const playerControlsRef = useTemplateRef<{ setPlayingValue?: (value: boolean) =>
 const hostState = ref<MiniPlayerHostState | null>(null)
 const overlayBusy = ref(false)
 const overlayOpen = ref(false)
+const windowFocused = ref(false)
 const selectSongListDialogShow = overlayBusy
 const alwaysOnTop = computed(() => runtime.miniPlayerSession.alwaysOnTop !== false)
 const song = computed(() => hostState.value?.song || runtime.playingData.playingSong)
@@ -58,6 +60,9 @@ const pioneerPreviewWaveform = computed(() => hostState.value?.pioneerPreviewWav
 const playbackRange = computed(() => hostState.value?.playbackRange || null)
 const waveformContainerWidth = ref(0)
 let waveformResizeObserver: ResizeObserver | null = null
+let focusCanvasResizeObserver: ResizeObserver | null = null
+let focusAnimationFrame = 0
+let focusAnimationStartedAt = 0
 
 const updateWaveformContainerWidth = () => {
   waveformContainerWidth.value = waveform.value?.clientWidth || 0
@@ -219,6 +224,146 @@ const handleSession = (_event: unknown, payload: MiniPlayerSession) => {
     alwaysOnTop: payload?.alwaysOnTop !== false
   }
 }
+
+const handleWindowFocus = (_event: unknown, focused: unknown) => {
+  windowFocused.value = focused === true || document.hasFocus()
+}
+
+const handleRendererFocus = () => {
+  windowFocused.value = true
+}
+
+const handleRendererBlur = () => {
+  windowFocused.value = false
+}
+
+const FOCUS_SOURCE_CYCLE_MS = 3600
+
+const resolveFocusPerimeterPoint = (
+  distance: number,
+  width: number,
+  height: number
+): { x: number; y: number; perimeter: number } => {
+  const left = 1
+  const top = 1
+  const right = Math.max(left, width - 1)
+  const bottom = Math.max(top, height - 1)
+  const horizontalLength = right - left
+  const verticalLength = bottom - top
+  const perimeter = Math.max(1, 2 * (horizontalLength + verticalLength))
+  let offset = ((distance % perimeter) + perimeter) % perimeter
+
+  if (offset <= horizontalLength) {
+    return { x: left + offset, y: top, perimeter }
+  }
+  offset -= horizontalLength
+  if (offset <= verticalLength) {
+    return { x: right, y: top + offset, perimeter }
+  }
+  offset -= verticalLength
+  if (offset <= horizontalLength) {
+    return { x: right - offset, y: bottom, perimeter }
+  }
+  offset -= horizontalLength
+  return { x: left, y: bottom - offset, perimeter }
+}
+
+const drawFocusSource = (timestamp = performance.now()) => {
+  const canvas = focusCanvas.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const width = Math.max(1, rect.width)
+  const height = Math.max(1, rect.height)
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1)
+  const pixelWidth = Math.round(width * pixelRatio)
+  const pixelHeight = Math.round(height * pixelRatio)
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth
+    canvas.height = pixelHeight
+  }
+  const context = canvas.getContext('2d')
+  if (!context) return
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+  context.clearRect(0, 0, width, height)
+  if (!windowFocused.value) return
+
+  const accent = getComputedStyle(canvas).getPropertyValue('--accent').trim() || 'rgb(0, 170, 255)'
+  const perimeter = resolveFocusPerimeterPoint(0, width, height).perimeter
+  const elapsed = Math.max(0, timestamp - focusAnimationStartedAt)
+  const headDistance = ((elapsed % FOCUS_SOURCE_CYCLE_MS) / FOCUS_SOURCE_CYCLE_MS) * perimeter
+  const tailLength = Math.min(190, Math.max(120, width * 0.18))
+  const segmentCount = Math.max(72, Math.ceil(tailLength / 2))
+  const lightTheme = document.documentElement.classList.contains('theme-light')
+
+  const drawPass = (lineWidth: number, alphaScale: number, shadowBlur: number) => {
+    context.lineWidth = lineWidth
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    context.strokeStyle = accent
+    context.shadowColor = accent
+    context.shadowBlur = shadowBlur
+    for (let index = 0; index < segmentCount; index += 1) {
+      const startRatio = index / segmentCount
+      const endRatio = (index + 1) / segmentCount
+      const start = resolveFocusPerimeterPoint(
+        headDistance - tailLength + tailLength * startRatio,
+        width,
+        height
+      )
+      const end = resolveFocusPerimeterPoint(
+        headDistance - tailLength + tailLength * endRatio,
+        width,
+        height
+      )
+      context.globalAlpha = Math.pow(endRatio, 1.8) * alphaScale
+      context.beginPath()
+      context.moveTo(start.x, start.y)
+      context.lineTo(end.x, end.y)
+      context.stroke()
+    }
+  }
+
+  drawPass(5, lightTheme ? 0.18 : 0.24, 7)
+  drawPass(2, lightTheme ? 0.72 : 0.92, 2)
+  context.globalAlpha = 1
+  context.shadowBlur = 0
+}
+
+const stopFocusSourceAnimation = () => {
+  if (focusAnimationFrame) {
+    cancelAnimationFrame(focusAnimationFrame)
+    focusAnimationFrame = 0
+  }
+}
+
+const startFocusSourceAnimation = () => {
+  stopFocusSourceAnimation()
+  focusAnimationStartedAt = performance.now()
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const renderFrame = (timestamp: number) => {
+    drawFocusSource(timestamp)
+    if (!windowFocused.value || reducedMotion) {
+      focusAnimationFrame = 0
+      return
+    }
+    focusAnimationFrame = requestAnimationFrame(renderFrame)
+  }
+  focusAnimationFrame = requestAnimationFrame(renderFrame)
+}
+
+watch(windowFocused, (focused) => {
+  if (focused) {
+    startFocusSourceAnimation()
+    return
+  }
+  stopFocusSourceAnimation()
+  drawFocusSource()
+})
+
+watch(
+  () => runtime.setting.themeMode,
+  () => drawFocusSource()
+)
 
 watch(
   () => song.value?.filePath,
@@ -455,9 +600,13 @@ usePlayerHotkeys(
 )
 
 onMounted(() => {
+  windowFocused.value = document.hasFocus()
+  window.addEventListener('focus', handleRendererFocus)
+  window.addEventListener('blur', handleRendererBlur)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.hostState, handleHostState)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.playhead, handlePlayhead)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.session, handleSession)
+  window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.windowFocus, handleWindowFocus)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.coverPopupPointer, handleCoverPopupPointer)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.requestKeyboardFocus, focusKeyboardTarget)
   window.electron.ipcRenderer.send(MINI_PLAYER_CHANNELS.rendererReady)
@@ -468,9 +617,19 @@ onMounted(() => {
     waveformResizeObserver = new ResizeObserver(() => updateWaveformContainerWidth())
     waveformResizeObserver.observe(waveform.value)
   }
+  if (focusCanvas.value?.parentElement) {
+    focusCanvasResizeObserver = new ResizeObserver(() => drawFocusSource())
+    focusCanvasResizeObserver.observe(focusCanvas.value.parentElement)
+  }
+  if (windowFocused.value) startFocusSourceAnimation()
 })
 
 onUnmounted(() => {
+  window.removeEventListener('focus', handleRendererFocus)
+  window.removeEventListener('blur', handleRendererBlur)
+  stopFocusSourceAnimation()
+  focusCanvasResizeObserver?.disconnect()
+  focusCanvasResizeObserver = null
   waveformResizeObserver?.disconnect()
   waveformResizeObserver = null
   clearCoverHideTimer()
@@ -480,6 +639,7 @@ onUnmounted(() => {
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.hostState, handleHostState)
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.playhead, handlePlayhead)
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.session, handleSession)
+  window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.windowFocus, handleWindowFocus)
   window.electron.ipcRenderer.removeListener(
     MINI_PLAYER_CHANNELS.coverPopupPointer,
     handleCoverPopupPointer
@@ -492,14 +652,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mini-player unselectable" @pointerdown="focusKeyboardTarget">
+  <div
+    class="mini-player unselectable"
+    :class="{ 'is-window-focused': windowFocused }"
+    @pointerdown="focusKeyboardTarget"
+  >
     <div class="mini-player__bar canDrag">
+      <canvas ref="focusCanvas" class="mini-player__focus-source" aria-hidden="true"></canvas>
       <div ref="coverAnchorRef" class="mini-player__cover canNotDrag">
         <PlayerCoverSlot
           :cover-blob-url="coverBlobUrl"
-          :placeholder-src="musicIcon"
+          :placeholder-src="miniPlayerPlaceholderCover"
           :slot-size="52"
           :cover-size="44"
+          :placeholder-size="28"
           @hover-cover="handleCoverEnter"
           @leave-cover="scheduleCoverPopupHide"
         />
@@ -580,7 +746,7 @@ onUnmounted(() => {
         />
         <div
           ref="pinRef"
-          class="mini-player__icon"
+          class="mini-player__icon mini-player__icon--pin"
           :class="{ 'is-active': alwaysOnTop }"
           @click="toggleAlwaysOnTop"
         >
@@ -621,6 +787,21 @@ onUnmounted(() => {
   position: relative;
 }
 
+.mini-player__focus-source {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.mini-player.is-window-focused .mini-player__focus-source {
+  opacity: 1;
+}
+
 .mini-player__cover {
   flex: 0 0 52px;
   width: 52px;
@@ -648,6 +829,10 @@ onUnmounted(() => {
 
 .mini-player__waveform :deep(.player-structure-rail) {
   border-radius: 2px;
+}
+
+.mini-player__waveform :deep(.player-structure-rail--empty) {
+  display: none;
 }
 
 #waveform {
@@ -685,10 +870,11 @@ onUnmounted(() => {
 }
 
 .mini-player__side {
+  --mini-player-side-gap: 4px;
   display: flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: var(--mini-player-side-gap);
   padding-left: 4px;
 }
 
@@ -707,13 +893,13 @@ onUnmounted(() => {
   }
 
   &.is-active {
-    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--accent);
   }
 }
 
 .mini-player__icon-mask {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: block;
   background: currentColor;
   -webkit-mask-position: center;
@@ -722,6 +908,11 @@ onUnmounted(() => {
   mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
+}
+
+.mini-player__icon--pin {
+  // 图钉 SVG 的实际轮廓较窄，向右校正以平衡三项的可见间距。
+  transform: translateX(2px);
 }
 
 .mini-player__icon-mask--pin {

@@ -222,7 +222,7 @@ onUnmounted(() => {
 
 .windowVolumeDial__ring {
   position: absolute;
-  inset: 3px;
+  inset: 4px;
   border-radius: inherit;
   background: conic-gradient(
     from -90deg,
