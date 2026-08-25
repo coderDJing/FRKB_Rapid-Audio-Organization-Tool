@@ -38,7 +38,10 @@ const toggleClose = () => {
   window.electron.ipcRenderer.send('updateWindow-toggle-close')
 }
 
-const state = ref('isRequesting')
+const launchedWithStartDownload =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('startDownload') === '1'
+const state = ref(launchedWithStartDownload ? 'isUpdateProgress' : 'isRequesting')
 const errorInfo = ref<Required<UpdateErrorPayload>>({
   kind: 'network',
   message: '',
@@ -109,6 +112,9 @@ const updateReleaseNotesHtml = async (payload: ReleaseNotesRangePayload | null) 
 
 window.electron.ipcRenderer.on('newVersion', (_event, versionInfo: UpdateInfo) => {
   newVersionInfo.value = versionInfo
+  if (state.value === 'isUpdateProgress' || state.value === 'isUpdateDownloaded') {
+    return
+  }
   releaseNotesRange.value = null
   releaseNotesHtml.value = ''
   releaseNotesLoading.value = true

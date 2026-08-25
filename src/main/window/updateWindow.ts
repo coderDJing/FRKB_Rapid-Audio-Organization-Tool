@@ -278,6 +278,18 @@ const handleStartDownload = () => {
 
     if (manualMacDownloadPromise) return
 
+    // 立刻切到进度条，避免真正开始下载前仍停在「发现新版本」页
+    sendToUpdateWindow(
+      'updateProgress',
+      normalizeDownloadProgress({
+        percent: 0,
+        bytesPerSecond: 0,
+        transferredBytes: 0,
+        totalBytes: latestMacManualUpdateAsset.totalBytes,
+        fileName: latestMacManualUpdateAsset.fileName
+      })
+    )
+
     manualMacDownloadPromise = downloadManualMacUpdate(latestMacManualUpdateAsset, (progress) => {
       sendToUpdateWindow('updateProgress', progress)
     })
@@ -312,6 +324,17 @@ const handleStartDownload = () => {
 
   if (autoDownloadInProgress) return
   autoDownloadInProgress = true
+  // 立刻切到进度条，避免真正开始下载前仍停在「发现新版本」页
+  sendToUpdateWindow(
+    'updateProgress',
+    normalizeDownloadProgress({
+      percent: 0,
+      bytesPerSecond: 0,
+      transferredBytes: 0,
+      totalBytes: 0,
+      fileName: ''
+    })
+  )
   void autoUpdater.downloadUpdate().catch((error) => {
     autoDownloadInProgress = false
     reportUpdateErrorToWindow('[updateWindow] downloadUpdate failed', error)
@@ -401,10 +424,6 @@ const handleRestartAppForUpdate = () => {
 }
 
 const startCachedDownload = () => {
-  if (!isDownloadInProgress() && lastUpdateInfo) {
-    sendToUpdateWindow('newVersion', lastUpdateInfo)
-    sendLastReleaseNotesRange()
-  }
   handleStartDownload()
 }
 
@@ -448,9 +467,15 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    updateWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/update.html`)
+    const updatePageUrl = new URL(`${process.env['ELECTRON_RENDERER_URL']}/update.html`)
+    if (startDownload) {
+      updatePageUrl.searchParams.set('startDownload', '1')
+    }
+    updateWindow.loadURL(updatePageUrl.toString())
   } else {
-    updateWindow.loadFile(path.join(__dirname, '../renderer/update.html'))
+    updateWindow.loadFile(path.join(__dirname, '../renderer/update.html'), {
+      query: startDownload ? { startDownload: '1' } : undefined
+    })
   }
 
   updateWindow.on('ready-to-show', () => {
@@ -468,10 +493,12 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
     } catch {}
     if (skipCheck) {
       if (lastUpdateInfo) {
-        sendToUpdateWindow('newVersion', lastUpdateInfo)
-        sendLastReleaseNotesRange()
         if (startDownload) {
+          // 用户已在「发现新版本」确认过，不要再发 newVersion 把同一页弹出来
           handleStartDownload()
+        } else {
+          sendToUpdateWindow('newVersion', lastUpdateInfo)
+          sendLastReleaseNotesRange()
         }
       } else {
         log.error('[updateWindow] skipCheck without cached update info')
