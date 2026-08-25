@@ -26,6 +26,7 @@ interface PlayerActions {
   volumeDown: () => void
   // 可以添加一个 togglePlayPause 方法来简化 space 键处理
   togglePlayPause?: () => void
+  togglePlaybackRange?: () => void
 }
 
 interface PlayerState {
@@ -201,6 +202,10 @@ export function usePlayerHotkeys(
         isPreviewMoveActive() ||
         isAnySelectSongListDialogVisible()
       ) {
+        return
+      }
+      if (actions.togglePlaybackRange) {
+        actions.togglePlaybackRange()
         return
       }
       runtime.setting.enablePlaybackRange = !runtime.setting.enablePlaybackRange

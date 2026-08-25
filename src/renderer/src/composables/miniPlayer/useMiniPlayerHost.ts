@@ -41,6 +41,10 @@ type MiniPlayerHostActions = {
   exportTrackWithFolder: (folderPath: string, deleteAfter: boolean) => Promise<void>
   seekSeconds: (seconds: number) => void
   seekPercent: (percent: number) => void
+  setPlaybackRangeStartPercent: (value: number) => void
+  setPlaybackRangeEndPercent: (value: number) => void
+  savePlaybackRange: () => void | Promise<void>
+  togglePlaybackRange: () => void | Promise<void>
   setVolume: (value: number) => void
   getVolume: () => number
 }
@@ -178,6 +182,18 @@ export function useMiniPlayerHost(params: {
         break
       case 'seekPercent':
         params.actions.seekPercent(Number(command.percent) || 0)
+        break
+      case 'setPlaybackRangeStartPercent':
+        params.actions.setPlaybackRangeStartPercent(Number(command.value) || 0)
+        break
+      case 'setPlaybackRangeEndPercent':
+        params.actions.setPlaybackRangeEndPercent(Number(command.value) || 0)
+        break
+      case 'savePlaybackRange':
+        await params.actions.savePlaybackRange()
+        break
+      case 'togglePlaybackRange':
+        await params.actions.togglePlaybackRange()
         break
       case 'setVolume':
         params.actions.setVolume(Number(command.value) || 0)

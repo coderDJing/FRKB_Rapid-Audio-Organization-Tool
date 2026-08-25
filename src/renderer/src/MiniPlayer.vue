@@ -446,6 +446,7 @@ usePlayerHotkeys(
     moveToLikeLibrary: () =>
       openTransferDialog('CuratedLibrary', isReadOnlyPlaybackSource.value ? 'copy' : 'move'),
     seekToPercent: (percent: number) => sendCommand({ type: 'seekPercent', percent }),
+    togglePlaybackRange: () => sendCommand({ type: 'togglePlaybackRange' }),
     volumeUp: () => sendCommand({ type: 'setVolume', value: Math.min(1, volume.value + 0.05) }),
     volumeDown: () => sendCommand({ type: 'setVolume', value: Math.max(0, volume.value - 0.05) })
   },
@@ -551,8 +552,15 @@ onUnmounted(() => {
             :container-width="waveformContainerWidth"
             :enable-playback-range="!!playbackRange?.visible"
             :waveform-show="!!song"
-            locked
+            :locked="playbackRange?.locked"
             :locked-ranges="playbackRange?.lockedRanges || []"
+            @update:model-value-start="
+              sendCommand({ type: 'setPlaybackRangeStartPercent', value: $event })
+            "
+            @update:model-value-end="
+              sendCommand({ type: 'setPlaybackRangeEndPercent', value: $event })
+            "
+            @drag-end="sendCommand({ type: 'savePlaybackRange' })"
           />
         </div>
         <PlayerStructureRail

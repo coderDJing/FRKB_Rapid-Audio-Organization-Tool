@@ -16,6 +16,10 @@ type MainPlayerActions = {
   delSong: () => void | Promise<void>
   delAllAbove: (options?: { confirmed?: boolean }) => void | Promise<void>
   handleMoveSong: (targetUuid: string) => Promise<void>
+  setPlaybackRangeStartPercent: (value: number) => void
+  setPlaybackRangeEndPercent: (value: number) => void
+  savePlaybackRange: () => void | Promise<void>
+  togglePlaybackRange: () => void | Promise<void>
 }
 
 export function useMainPlayerMiniPlayer(params: {
@@ -118,6 +122,10 @@ export function useMainPlayerMiniPlayer(params: {
       exportTrackWithFolder,
       seekSeconds,
       seekPercent,
+      setPlaybackRangeStartPercent: params.actions.setPlaybackRangeStartPercent,
+      setPlaybackRangeEndPercent: params.actions.setPlaybackRangeEndPercent,
+      savePlaybackRange: params.actions.savePlaybackRange,
+      togglePlaybackRange: params.actions.togglePlaybackRange,
       setVolume: params.setVolume,
       getVolume: params.getVolume
     }

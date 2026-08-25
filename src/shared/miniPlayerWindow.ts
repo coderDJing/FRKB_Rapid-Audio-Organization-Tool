@@ -172,6 +172,10 @@ export type MiniPlayerCommand =
   | { type: 'seekSeconds'; seconds: number }
   // percent 为 0-1 比例；大于 1 时按 0-100 百分比兼容
   | { type: 'seekPercent'; percent: number }
+  | { type: 'setPlaybackRangeStartPercent'; value: number }
+  | { type: 'setPlaybackRangeEndPercent'; value: number }
+  | { type: 'savePlaybackRange' }
+  | { type: 'togglePlaybackRange' }
   | { type: 'setVolume'; value: number }
   | { type: 'delete' }
   | { type: 'deleteAllAbove'; confirmed?: boolean }

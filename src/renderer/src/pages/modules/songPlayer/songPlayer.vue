@@ -575,6 +575,11 @@ const setSetting = async () => {
   )
 }
 
+const togglePlaybackRange = async () => {
+  runtime.setting.enablePlaybackRange = !runtime.setting.enablePlaybackRange
+  await setSetting()
+}
+
 const applyAudioOutputDevice = async (deviceId: string) => {
   pendingAudioOutputDeviceId = deviceId
   const playerInstance = audioPlayer.value
@@ -611,6 +616,7 @@ const hotkeyActions = {
   moveToListLibrary: playerActions.moveToListLibrary,
   moveToLikeLibrary: playerActions.moveToLikeLibrary,
   togglePlayPause: handleUserTogglePlayPause,
+  togglePlaybackRange,
   seekToPercent: handleSeekToPercent,
   volumeUp: handleVolumeUp,
   volumeDown: handleVolumeDown
@@ -649,33 +655,6 @@ const playerWaveformDurationSec = computed(() => {
   return parseDurationToSeconds(runtime.playingData.playingSong?.duration)
 })
 
-const { toggleMiniPlayer } = useMainPlayerMiniPlayer({
-  runtime,
-  audioPlayer,
-  isPlaying,
-  playerCurrentSeconds,
-  playerWaveformDurationSec,
-  playerWaveformRenderRevision,
-  waveformShow,
-  bpm,
-  isInternalSongChange,
-  requestLoadSong,
-  play: handleUserPlay,
-  actions: {
-    pause: playerActions.pause,
-    togglePlayPause: handleUserTogglePlayPause,
-    nextSong: handleUserNextSong,
-    previousSong: handleUserPreviousSong,
-    fastForward: playerActions.fastForward,
-    fastBackward: playerActions.fastBackward,
-    delSong: playerActions.delSong,
-    delAllAbove: playerActions.delAllAbove,
-    handleMoveSong: playerActions.handleMoveSong
-  },
-  setVolume,
-  getVolume
-})
-
 const {
   playbackRangeHandlesLocked,
   playbackRangeHandlesVisible,
@@ -702,6 +681,41 @@ const {
   },
   nextSong: () => playerActions.nextSong(),
   setSetting
+})
+
+const { toggleMiniPlayer } = useMainPlayerMiniPlayer({
+  runtime,
+  audioPlayer,
+  isPlaying,
+  playerCurrentSeconds,
+  playerWaveformDurationSec,
+  playerWaveformRenderRevision,
+  waveformShow,
+  bpm,
+  isInternalSongChange,
+  requestLoadSong,
+  play: handleUserPlay,
+  actions: {
+    pause: playerActions.pause,
+    togglePlayPause: handleUserTogglePlayPause,
+    nextSong: handleUserNextSong,
+    previousSong: handleUserPreviousSong,
+    fastForward: playerActions.fastForward,
+    fastBackward: playerActions.fastBackward,
+    delSong: playerActions.delSong,
+    delAllAbove: playerActions.delAllAbove,
+    handleMoveSong: playerActions.handleMoveSong,
+    setPlaybackRangeStartPercent: (value) => {
+      playbackRangeHandleStartPercent.value = value
+    },
+    setPlaybackRangeEndPercent: (value) => {
+      playbackRangeHandleEndPercent.value = value
+    },
+    savePlaybackRange: handlePlaybackRangeDragEnd,
+    togglePlaybackRange
+  },
+  setVolume,
+  getVolume
 })
 
 const handlePlayerStructureSectionClick = (startSec: number) => {

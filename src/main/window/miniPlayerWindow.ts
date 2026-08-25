@@ -181,6 +181,8 @@ const destroyMiniWindow = (restoreMainWindow: boolean) => {
   destroyMiniPlayerOverlay()
   const target = miniPlayerWindow
   miniPlayerWindow = null
+  // 在主窗口恢复可见前先解除其快捷键禁用状态，避免首个按键被忽略。
+  notifySession()
   if (restoreMainWindow) {
     showMainWindow()
   } else {
@@ -193,7 +195,6 @@ const destroyMiniWindow = (restoreMainWindow: boolean) => {
     } catch {}
   }
   allowDestroy = false
-  notifySession()
 }
 
 const restorePinnedAlwaysOnTop = (target: BrowserWindow) => {
