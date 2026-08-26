@@ -381,11 +381,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
   const onExternalPlaylistRefresh = () => {
     if (songsAreaState.songListUUID !== EXTERNAL_PLAYLIST_UUID) return
-    invalidatePendingSongListLoads()
-    const songs = runtime.externalPlaylist.songs || []
-    originalSongInfoArr.value = markRaw([...songs])
-    applyFiltersAndSorting()
-    scheduleSweepCovers()
+    void openSongList().catch(() => {})
   }
 
   let keyUpdateScheduled = false
@@ -811,19 +807,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       songsAreaState.missingWaveformFilePaths = []
       songsAreaState.totalSongCount = 0
       originalSongInfoArr.value = []
-      return
-    }
-    if (songListUUID === EXTERNAL_PLAYLIST_UUID) {
-      const songs = runtime.externalPlaylist.songs || []
-      originalSongInfoArr.value = markRaw([...songs])
-      applyFiltersAndSorting()
-      scheduleSweepCovers()
-      if (options?.notifyUserOpened) {
-        notifyUserOpenedSongList(songListUUID, {
-          ...options,
-          source: options.source || 'external-playlist-load'
-        })
-      }
       return
     }
     await openSongList({ waitForFreshAnalysisFields: options?.notifyUserOpened === true })

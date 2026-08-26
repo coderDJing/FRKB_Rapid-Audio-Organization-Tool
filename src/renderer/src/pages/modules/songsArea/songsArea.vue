@@ -50,7 +50,10 @@ import { useSongLocateFlash } from '@renderer/pages/modules/songsArea/composable
 import { useSongsAreaDragAndDrop } from '@renderer/pages/modules/songsArea/composables/useSongsAreaDragAndDrop'
 import { usePlaylistTrackNumbers } from '@renderer/pages/modules/songsArea/composables/usePlaylistTrackNumbers'
 import { detectSongsAreaScrollCarrier } from '@renderer/pages/modules/songsArea/composables/scrollCarrier'
-import { isSongListViewPending } from '@renderer/pages/modules/songsArea/composables/songListLoadGeneration'
+import {
+  resolveDisplayedSongList,
+  shouldHoldSongListLoading
+} from '@renderer/pages/modules/songsArea/composables/songListLoadGeneration'
 
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
@@ -162,13 +165,15 @@ const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 
 // 切换歌单离开动画期间保留旧数据，避免动画播放空内容
 const leaveData = shallowRef<ISongInfo[] | null>(null)
-const displaySongs = computed(() => leaveData.value ?? songsAreaState.songInfoArr)
+const clearLeaveData = () => {
+  leaveData.value = null
+}
 const handleListLeave = (el: Element, done: () => void) => {
   let finished = false
   const finish = () => {
     if (finished) return
     finished = true
-    leaveData.value = null
+    clearLeaveData()
     done()
   }
   el.addEventListener(
@@ -326,6 +331,15 @@ const {
   originalSongInfoArr,
   applyFiltersAndSorting
 })
+
+const displaySongs = computed(() =>
+  resolveDisplayedSongList(
+    leaveData.value,
+    songsAreaState.songInfoArr,
+    songsAreaState.songListUUID,
+    lastAppliedSongListUUID.value
+  )
+)
 
 const {
   playlistAnalysisActionVisible,
@@ -776,16 +790,31 @@ const currentPlayingRowKey = computed(() => {
 })
 
 const viewState = computed<'welcome' | 'blank' | 'loading' | 'list'>(() => {
-  if (loadingShow.value) return 'loading'
   if (!songsAreaState.songListUUID) {
     return runtime.songsAreaPanels.splitEnabled && props.pane !== 'single' ? 'blank' : 'welcome'
   }
-  // UUID 已切走、但本批数据还没落地时，直接进载入态，避免先画出空表头再过渡到转圈
-  if (isSongListViewPending(songsAreaState.songListUUID, lastAppliedSongListUUID.value)) {
+  if (
+    shouldHoldSongListLoading({
+      songListUUID: songsAreaState.songListUUID,
+      appliedSongListUUID: lastAppliedSongListUUID.value,
+      visibleCount: songsAreaState.songInfoArr.length,
+      isRequesting: isRequesting.value,
+      loadingShow: loadingShow.value
+    })
+  ) {
     return 'loading'
   }
   return 'list'
 })
+
+watch(
+  () => lastAppliedSongListUUID.value,
+  (appliedUUID) => {
+    if (appliedUUID && appliedUUID === songsAreaState.songListUUID) {
+      clearLeaveData()
+    }
+  }
+)
 
 watch(
   () => ({

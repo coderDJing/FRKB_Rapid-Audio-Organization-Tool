@@ -88,7 +88,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!loadGenerationGuard.isCurrent(ticket)) return
     isRequesting.value = false
     loadingShow.value = false
-    if (lastAppliedSongListUUID.value !== ticket.songListUUID) {
+    if (lastAppliedSongListUUID.value === ticket.songListUUID) return
+    // 请求结束时如果可见列表已经清空，才把 UUID 标成落地（失败时结束转圈）。
+    // 列表里还留着上一份歌单时绝不能标，否则会把旧内容当成新歌单画出来。
+    if (songsAreaState.songInfoArr.length === 0 && originalSongInfoArr.value.length === 0) {
       markSongListApplied(ticket.songListUUID)
     }
   }
@@ -545,7 +548,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const applySongListData = async (scanData: ISongInfo[], ticket: SongListLoadTicket) => {
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     originalSongInfoArr.value = markRaw(scanData)
-    await applyFiltersAndSorting()
+    applyFiltersAndSorting()
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     syncSelectedKeysAfterReload(scanData, ticket.songListUUID)
     syncPlayingStateAfterReload(scanData, ticket.songListUUID)
@@ -622,17 +625,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const openSongList = async (options: OpenSongListOptions = {}) => {
     const requestUUID = songsAreaState.songListUUID
     const ticket = loadGenerationGuard.begin(requestUUID)
+    const wasAlreadyApplied = lastAppliedSongListUUID.value === requestUUID
     isRequesting.value = true
-    const shouldResetVisibleList = lastAppliedSongListUUID.value !== requestUUID
-    if (shouldResetVisibleList) {
-      songsAreaState.songInfoArr = []
-      songsAreaState.missingWaveformFilePaths = []
-      songsAreaState.totalSongCount = 0
-      originalSongInfoArr.value = []
-      renderCount.value = 0
-      await nextTick()
-      if (!loadGenerationGuard.isCurrent(ticket)) return
-    }
+    loadingShow.value = false
+    // 切到另一张歌单时不要丢掉已落地的列表。pending/loading 会挡住旧内容；
+    // 载入中途切回来时才能立刻还原，而不是先画出空表再等完整扫描。
 
     if (requestUUID === EXTERNAL_PLAYLIST_UUID) {
       const songs = runtime.externalPlaylist.songs || []
@@ -765,7 +762,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         )
         if (!(await applySongListData(fastItems, ticket))) return
         settleSongListRequest(ticket)
-        if (options.waitForFreshAnalysisFields === true) {
+        if (options.waitForFreshAnalysisFields === true && !wasAlreadyApplied) {
           await loadSongListFromDisk(songListPath, ticket, {
             diagnosticSource: 'fresh-analysis'
           })

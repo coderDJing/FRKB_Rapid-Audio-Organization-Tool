@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createSongListLoadGenerationGuard, isSongListViewPending } from './songListLoadGeneration'
+import {
+  createSongListLoadGenerationGuard,
+  isSongListViewPending,
+  resolveDisplayedSongList,
+  shouldHoldSongListLoading
+} from './songListLoadGeneration'
 
 describe('song list load generation guard', () => {
   it('rejects an in-flight load after the list membership changes', () => {
@@ -46,5 +51,72 @@ describe('song list view pending', () => {
   it('is not pending when no playlist is selected', () => {
     expect(isSongListViewPending('', 'playlist-a')).toBe(false)
     expect(isSongListViewPending('', '')).toBe(false)
+  })
+})
+
+describe('should hold song list loading', () => {
+  it('keeps loading while switching to a playlist whose data is not applied yet', () => {
+    expect(
+      shouldHoldSongListLoading({
+        songListUUID: 'playlist-b',
+        appliedSongListUUID: 'playlist-a',
+        visibleCount: 12,
+        isRequesting: true
+      })
+    ).toBe(true)
+  })
+
+  it('keeps loading when bouncing back after the visible list was wiped', () => {
+    expect(
+      shouldHoldSongListLoading({
+        songListUUID: 'playlist-a',
+        appliedSongListUUID: 'playlist-a',
+        visibleCount: 0,
+        isRequesting: true
+      })
+    ).toBe(true)
+  })
+
+  it('shows the existing list immediately when bouncing back with data still in memory', () => {
+    expect(
+      shouldHoldSongListLoading({
+        songListUUID: 'playlist-a',
+        appliedSongListUUID: 'playlist-a',
+        visibleCount: 12,
+        isRequesting: true
+      })
+    ).toBe(false)
+  })
+
+  it('allows a truly empty playlist to render after load settles', () => {
+    expect(
+      shouldHoldSongListLoading({
+        songListUUID: 'playlist-a',
+        appliedSongListUUID: 'playlist-a',
+        visibleCount: 0,
+        isRequesting: false
+      })
+    ).toBe(false)
+  })
+})
+
+describe('resolve displayed song list', () => {
+  const previousSongs = [{ id: 'a' }]
+  const nextSongs = [{ id: 'b' }]
+
+  it('keeps the leave snapshot only while the new playlist is still pending', () => {
+    expect(resolveDisplayedSongList(previousSongs, nextSongs, 'playlist-b', 'playlist-a')).toEqual(
+      previousSongs
+    )
+  })
+
+  it('drops the leave snapshot once the current playlist data has been applied', () => {
+    expect(resolveDisplayedSongList(previousSongs, nextSongs, 'playlist-b', 'playlist-b')).toEqual(
+      nextSongs
+    )
+  })
+
+  it('uses the current list when there is no leave snapshot', () => {
+    expect(resolveDisplayedSongList(null, nextSongs, 'playlist-b', 'playlist-a')).toEqual(nextSongs)
   })
 })
