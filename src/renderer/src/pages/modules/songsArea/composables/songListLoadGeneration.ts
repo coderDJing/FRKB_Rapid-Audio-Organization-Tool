@@ -3,6 +3,9 @@ export type SongListLoadTicket = Readonly<{
   songListUUID: string
 }>
 
+export const isSongListViewPending = (songListUUID: string, appliedSongListUUID: string) =>
+  songListUUID !== '' && appliedSongListUUID !== songListUUID
+
 export const createSongListLoadGenerationGuard = (getCurrentSongListUUID: () => string) => {
   let generation = 0
 

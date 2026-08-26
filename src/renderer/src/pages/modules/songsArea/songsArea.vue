@@ -50,6 +50,7 @@ import { useSongLocateFlash } from '@renderer/pages/modules/songsArea/composable
 import { useSongsAreaDragAndDrop } from '@renderer/pages/modules/songsArea/composables/useSongsAreaDragAndDrop'
 import { usePlaylistTrackNumbers } from '@renderer/pages/modules/songsArea/composables/usePlaylistTrackNumbers'
 import { detectSongsAreaScrollCarrier } from '@renderer/pages/modules/songsArea/composables/scrollCarrier'
+import { isSongListViewPending } from '@renderer/pages/modules/songsArea/composables/songListLoadGeneration'
 
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
@@ -313,7 +314,13 @@ const {
 const { scheduleSweepCovers } = useSweepCovers({ runtime, songsAreaState })
 
 // 歌单加载
-const { loadingShow, isRequesting, openSongList, invalidatePendingSongListLoads } = useSongsLoader({
+const {
+  loadingShow,
+  lastAppliedSongListUUID,
+  isRequesting,
+  openSongList,
+  invalidatePendingSongListLoads
+} = useSongsLoader({
   runtime,
   songsAreaState,
   originalSongInfoArr,
@@ -772,6 +779,10 @@ const viewState = computed<'welcome' | 'blank' | 'loading' | 'list'>(() => {
   if (loadingShow.value) return 'loading'
   if (!songsAreaState.songListUUID) {
     return runtime.songsAreaPanels.splitEnabled && props.pane !== 'single' ? 'blank' : 'welcome'
+  }
+  // UUID 已切走、但本批数据还没落地时，直接进载入态，避免先画出空表头再过渡到转圈
+  if (isSongListViewPending(songsAreaState.songListUUID, lastAppliedSongListUUID.value)) {
+    return 'loading'
   }
   return 'list'
 })

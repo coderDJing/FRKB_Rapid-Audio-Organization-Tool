@@ -79,8 +79,19 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     originalSongInfoArr.value = markRaw([...songsAreaState.songInfoArr])
     return true
   }
-  let lastAppliedSongListUUID = hydrateFromPaneSnapshot() ? songsAreaState.songListUUID : ''
+  const lastAppliedSongListUUID = ref(hydrateFromPaneSnapshot() ? songsAreaState.songListUUID : '')
   const playlistTrackNumberTipStorageKey = 'playlistTrackNumberInitHintShown'
+  const markSongListApplied = (songListUUID: string) => {
+    lastAppliedSongListUUID.value = songListUUID
+  }
+  const settleSongListRequest = (ticket: SongListLoadTicket) => {
+    if (!loadGenerationGuard.isCurrent(ticket)) return
+    isRequesting.value = false
+    loadingShow.value = false
+    if (lastAppliedSongListUUID.value !== ticket.songListUUID) {
+      markSongListApplied(ticket.songListUUID)
+    }
+  }
 
   // 渐进式渲染（当前行数）
   const renderCount = ref(0)
@@ -163,6 +174,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     loadGenerationGuard.invalidate()
     isRequesting.value = false
     loadingShow.value = false
+    if (!songsAreaState.songListUUID) {
+      lastAppliedSongListUUID.value = ''
+    }
   }
 
   const maybeShowPlaylistTrackNumberInitHint = (
@@ -535,7 +549,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     syncSelectedKeysAfterReload(scanData, ticket.songListUUID)
     syncPlayingStateAfterReload(scanData, ticket.songListUUID)
-    lastAppliedSongListUUID = ticket.songListUUID
+    markSongListApplied(ticket.songListUUID)
     try {
       emitter.emit('playlistContentChanged', { uuids: [ticket.songListUUID] })
     } catch {}
@@ -583,7 +597,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const unchanged = await isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     if (unchanged) {
-      lastAppliedSongListUUID = loadedUUID
+      markSongListApplied(loadedUUID)
       if (options?.forceNotifySongSearchDirty) {
         notifySongSearchDirty('scanSongList', loadedUUID)
       }
@@ -593,7 +607,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
       if (!(await applySongListData(scanData, ticket))) return false
-      lastAppliedSongListUUID = loadedUUID
+      markSongListApplied(loadedUUID)
       notifySongSearchDirty('scanSongList-analysis-fields', loadedUUID)
       if (options?.forceNotifySongSearchDirty) {
         notifySongSearchDirty('scanSongList', loadedUUID)
@@ -609,7 +623,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const requestUUID = songsAreaState.songListUUID
     const ticket = loadGenerationGuard.begin(requestUUID)
     isRequesting.value = true
-    const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
+    const shouldResetVisibleList = lastAppliedSongListUUID.value !== requestUUID
     if (shouldResetVisibleList) {
       songsAreaState.songInfoArr = []
       songsAreaState.missingWaveformFilePaths = []
@@ -627,11 +641,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       applyFiltersAndSorting()
       syncSelectedKeysAfterReload(songsAreaState.songInfoArr, requestUUID)
       syncPlayingStateAfterReload(songsAreaState.songInfoArr, requestUUID)
-      lastAppliedSongListUUID = requestUUID
-      if (loadGenerationGuard.isCurrent(ticket)) {
-        isRequesting.value = false
-        loadingShow.value = false
-      }
+      markSongListApplied(requestUUID)
+      settleSongListRequest(ticket)
       return
     }
     if (requestUUID === RECYCLE_BIN_UUID) {
@@ -648,13 +659,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(scanData, songListUUID)
         syncPlayingStateAfterReload(scanData, songListUUID)
-        lastAppliedSongListUUID = songListUUID
+        markSongListApplied(songListUUID)
       } finally {
         clearTimeout(loadingSetTimeout)
-        if (loadGenerationGuard.isCurrent(ticket)) {
-          isRequesting.value = false
-          loadingShow.value = false
-        }
+        settleSongListRequest(ticket)
       }
       return
     }
@@ -672,13 +680,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(scanData, songListUUID)
         syncPlayingStateAfterReload(scanData, songListUUID)
-        lastAppliedSongListUUID = songListUUID
+        markSongListApplied(songListUUID)
       } finally {
         clearTimeout(loadingSetTimeout)
-        if (loadGenerationGuard.isCurrent(ticket)) {
-          isRequesting.value = false
-          loadingShow.value = false
-        }
+        settleSongListRequest(ticket)
       }
       return
     }
@@ -706,14 +711,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(songs, requestUUID)
         syncPlayingStateAfterReload(songs, requestUUID)
-        lastAppliedSongListUUID = requestUUID
+        markSongListApplied(requestUUID)
         await hydrateRenderCount(ticket)
       } finally {
         clearTimeout(loadingSetTimeout)
-        if (loadGenerationGuard.isCurrent(ticket)) {
-          isRequesting.value = false
-          loadingShow.value = false
-        }
+        settleSongListRequest(ticket)
       }
       return
     }
@@ -735,14 +737,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(songs, songListUUID)
         syncPlayingStateAfterReload(songs, songListUUID)
-        lastAppliedSongListUUID = songListUUID
+        markSongListApplied(songListUUID)
         await hydrateRenderCount(ticket)
       } finally {
         clearTimeout(loadingSetTimeout)
-        if (loadGenerationGuard.isCurrent(ticket)) {
-          isRequesting.value = false
-          loadingShow.value = false
-        }
+        settleSongListRequest(ticket)
       }
       return
     }
@@ -765,10 +764,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           fastPayload?.missingWaveformFilePaths
         )
         if (!(await applySongListData(fastItems, ticket))) return
-        if (loadGenerationGuard.isCurrent(ticket)) {
-          isRequesting.value = false
-          loadingShow.value = false
-        }
+        settleSongListRequest(ticket)
         if (options.waitForFreshAnalysisFields === true) {
           await loadSongListFromDisk(songListPath, ticket, {
             diagnosticSource: 'fresh-analysis'
@@ -790,15 +786,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       })
     } finally {
       clearTimeout(loadingSetTimeout)
-      if (loadGenerationGuard.isCurrent(ticket)) {
-        isRequesting.value = false
-        loadingShow.value = false
-      }
+      settleSongListRequest(ticket)
     }
   }
 
   return {
     loadingShow,
+    lastAppliedSongListUUID,
     isRequesting,
     renderCount,
     openSongList,
