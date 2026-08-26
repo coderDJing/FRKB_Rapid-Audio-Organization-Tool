@@ -241,15 +241,13 @@ const FOCUS_SOURCE_CYCLE_MS = 3600
 
 const resolveFocusPerimeterPoint = (
   distance: number,
-  width: number,
-  height: number
+  left: number,
+  top: number,
+  right: number,
+  bottom: number
 ): { x: number; y: number; perimeter: number } => {
-  const left = 1
-  const top = 1
-  const right = Math.max(left, width - 1)
-  const bottom = Math.max(top, height - 1)
-  const horizontalLength = right - left
-  const verticalLength = bottom - top
+  const horizontalLength = Math.max(0, right - left)
+  const verticalLength = Math.max(0, bottom - top)
   const perimeter = Math.max(1, 2 * (horizontalLength + verticalLength))
   let offset = ((distance % perimeter) + perimeter) % perimeter
 
@@ -272,27 +270,36 @@ const drawFocusSource = (timestamp = performance.now()) => {
   const canvas = focusCanvas.value
   if (!canvas) return
   const rect = canvas.getBoundingClientRect()
-  const width = Math.max(1, rect.width)
-  const height = Math.max(1, rect.height)
+  const cssWidth = Math.max(1, rect.width)
+  const cssHeight = Math.max(1, rect.height)
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1)
-  const pixelWidth = Math.round(width * pixelRatio)
-  const pixelHeight = Math.round(height * pixelRatio)
+  const pixelWidth = Math.max(1, Math.round(cssWidth * pixelRatio))
+  const pixelHeight = Math.max(1, Math.round(cssHeight * pixelRatio))
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
     canvas.width = pixelWidth
     canvas.height = pixelHeight
   }
   const context = canvas.getContext('2d')
   if (!context) return
-  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-  context.clearRect(0, 0, width, height)
+  // 按设备像素描边：2px 核的外沿落到 bitmap 最外一行。
+  // CSS 的 height-1 在 125% 缩放下对不齐 62px 高的最后一行，底边会空出约 1px。
+  context.setTransform(1, 0, 0, 1, 0, 0)
+  context.clearRect(0, 0, pixelWidth, pixelHeight)
   if (!windowFocused.value) return
 
   const accent = getComputedStyle(canvas).getPropertyValue('--accent').trim() || 'rgb(0, 170, 255)'
-  const perimeter = resolveFocusPerimeterPoint(0, width, height).perimeter
+  const coreLineWidth = 2 * pixelRatio
+  const glowLineWidth = 5 * pixelRatio
+  const inset = coreLineWidth / 2
+  const left = inset
+  const top = inset
+  const right = Math.max(left, pixelWidth - inset)
+  const bottom = Math.max(top, pixelHeight - inset)
+  const perimeter = resolveFocusPerimeterPoint(0, left, top, right, bottom).perimeter
   const elapsed = Math.max(0, timestamp - focusAnimationStartedAt)
   const headDistance = ((elapsed % FOCUS_SOURCE_CYCLE_MS) / FOCUS_SOURCE_CYCLE_MS) * perimeter
-  const tailLength = Math.min(190, Math.max(120, width * 0.18))
-  const segmentCount = Math.max(72, Math.ceil(tailLength / 2))
+  const tailLength = Math.min(190, Math.max(120, cssWidth * 0.18)) * pixelRatio
+  const segmentCount = Math.max(72, Math.ceil(tailLength / (2 * pixelRatio)))
   const lightTheme = document.documentElement.classList.contains('theme-light')
 
   const drawPass = (lineWidth: number, alphaScale: number, shadowBlur: number) => {
@@ -307,13 +314,17 @@ const drawFocusSource = (timestamp = performance.now()) => {
       const endRatio = (index + 1) / segmentCount
       const start = resolveFocusPerimeterPoint(
         headDistance - tailLength + tailLength * startRatio,
-        width,
-        height
+        left,
+        top,
+        right,
+        bottom
       )
       const end = resolveFocusPerimeterPoint(
         headDistance - tailLength + tailLength * endRatio,
-        width,
-        height
+        left,
+        top,
+        right,
+        bottom
       )
       context.globalAlpha = Math.pow(endRatio, 1.8) * alphaScale
       context.beginPath()
@@ -323,8 +334,8 @@ const drawFocusSource = (timestamp = performance.now()) => {
     }
   }
 
-  drawPass(5, lightTheme ? 0.18 : 0.24, 7)
-  drawPass(2, lightTheme ? 0.72 : 0.92, 2)
+  drawPass(glowLineWidth, lightTheme ? 0.18 : 0.24, 7 * pixelRatio)
+  drawPass(coreLineWidth, lightTheme ? 0.72 : 0.92, 2 * pixelRatio)
   context.globalAlpha = 1
   context.shadowBlur = 0
 }
@@ -653,12 +664,12 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="mini-player unselectable"
+    class="mini-player unselectable canDrag"
     :class="{ 'is-window-focused': windowFocused }"
     @pointerdown="focusKeyboardTarget"
   >
+    <canvas ref="focusCanvas" class="mini-player__focus-source" aria-hidden="true"></canvas>
     <div class="mini-player__bar canDrag">
-      <canvas ref="focusCanvas" class="mini-player__focus-source" aria-hidden="true"></canvas>
       <div ref="coverAnchorRef" class="mini-player__cover canNotDrag">
         <PlayerCoverSlot
           :cover-blob-url="coverBlobUrl"
@@ -670,7 +681,7 @@ onUnmounted(() => {
           @leave-cover="scheduleCoverPopupHide"
         />
       </div>
-      <div class="mini-player__controls canNotDrag">
+      <div class="mini-player__controls">
         <playerControls
           ref="playerControlsRef"
           variant="mini"
@@ -694,8 +705,8 @@ onUnmounted(() => {
           @toggle-mini-more-menu="handleToggleMiniMoreMenu"
         />
       </div>
-      <div class="mini-player__waveform canNotDrag">
-        <div id="waveform" ref="waveform" tabindex="0">
+      <div class="mini-player__waveform">
+        <div id="waveform" ref="waveform" class="canNotDrag" tabindex="0">
           <div id="time">{{ timeText }}</div>
           <div id="duration">{{ durationText }}</div>
           <MemoryCueMarkersLayer
@@ -730,15 +741,17 @@ onUnmounted(() => {
           />
         </div>
         <PlayerStructureRail
+          class="canNotDrag"
           :song="song || null"
           :current-seconds="currentSeconds"
           :duration-seconds="durationSeconds"
           @seek-play="sendCommand({ type: 'seekSeconds', seconds: $event })"
         />
       </div>
-      <div class="mini-player__side canNotDrag">
+      <div class="mini-player__side">
         <BpmTap :song="song || null" :waveform-show="!!song" />
         <WindowVolumeDial
+          class="canNotDrag"
           :model-value="volume"
           :label="t('player.volumeControl')"
           :size="26"
@@ -746,7 +759,7 @@ onUnmounted(() => {
         />
         <div
           ref="pinRef"
-          class="mini-player__icon mini-player__icon--pin"
+          class="mini-player__icon mini-player__icon--pin canNotDrag"
           :class="{ 'is-active': alwaysOnTop }"
           @click="toggleAlwaysOnTop"
         >
@@ -756,7 +769,7 @@ onUnmounted(() => {
           :dom="pinRef || undefined"
           :title="alwaysOnTop ? t('player.miniWindowUnpin') : t('player.miniWindowPin')"
         />
-        <div ref="closeRef" class="mini-player__icon" @click="restoreMainWindow">
+        <div ref="closeRef" class="mini-player__icon canNotDrag" @click="restoreMainWindow">
           <span class="mini-player__icon-mask mini-player__icon-mask--close"></span>
         </div>
         <bubbleBox :dom="closeRef || undefined" :title="t('player.miniWindowRestore')" />
@@ -772,6 +785,7 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
@@ -791,6 +805,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   z-index: 30;
+  display: block;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -923,5 +938,11 @@ onUnmounted(() => {
 .mini-player__icon-mask--close {
   -webkit-mask-image: url('./assets/miniPlayerClose.svg');
   mask-image: url('./assets/miniPlayerClose.svg');
+}
+
+.mini-player__controls :deep(.buttonIcon),
+.mini-player__side :deep(.bpm-tap),
+.mini-player__side :deep(.windowVolumeDial) {
+  -webkit-app-region: no-drag;
 }
 </style>
