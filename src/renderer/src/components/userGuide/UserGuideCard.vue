@@ -66,6 +66,14 @@ const holeStyle = computed(() => {
 
 const goNext = () => emit('next')
 const skip = () => emit('skip')
+const spotlightEl = ref<HTMLElement | null>(null)
+
+const setHtmlDragActive = (active: boolean) => {
+  spotlightEl.value?.classList.toggle('is-html-drag-active', active)
+}
+
+const handleHtmlDragStart = () => setHtmlDragActive(true)
+const handleHtmlDragFinish = () => setHtmlDragActive(false)
 
 onMounted(() => {
   hotkeys('Enter,E', uuid, () => {
@@ -79,6 +87,9 @@ onMounted(() => {
     return false
   })
   utils.setHotkeysScpoe(uuid)
+  window.addEventListener('dragstart', handleHtmlDragStart, true)
+  window.addEventListener('dragend', handleHtmlDragFinish, true)
+  window.addEventListener('drop', handleHtmlDragFinish, true)
   void nextTick(() => {
     update()
   })
@@ -86,11 +97,16 @@ onMounted(() => {
 
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
+  window.removeEventListener('dragstart', handleHtmlDragStart, true)
+  window.removeEventListener('dragend', handleHtmlDragFinish, true)
+  window.removeEventListener('drop', handleHtmlDragFinish, true)
+  setHtmlDragActive(false)
 })
 </script>
 
 <template>
   <div
+    ref="spotlightEl"
     class="user-guide-spotlight unselectable"
     :class="{ 'is-pending': !showSpotlight }"
     role="dialog"
@@ -163,6 +179,10 @@ onUnmounted(() => {
   fill: currentColor;
   pointer-events: fill;
   cursor: default;
+}
+
+.user-guide-spotlight.is-html-drag-active .user-guide-mask path {
+  pointer-events: none;
 }
 
 .user-guide-hole {

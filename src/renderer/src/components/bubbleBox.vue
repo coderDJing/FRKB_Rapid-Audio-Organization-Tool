@@ -50,7 +50,7 @@ const props = defineProps({
     type: Number,
     default: 280
   },
-  // 是否允许气泡拦截鼠标事件（普通提示默认不拦截；截断文本气泡会保留可移入行为）
+  // 是否允许气泡拦截鼠标事件。默认不拦截，否则会叠在指针上把 HTML5 拖拽抢走。
   interactive: {
     type: Boolean,
     default: false
@@ -99,7 +99,7 @@ const hasDefaultSlot = computed(() => {
   }
 })
 
-const effectiveInteractive = computed(() => props.interactive || props.onlyWhenOverflow)
+const effectiveInteractive = computed(() => props.interactive)
 
 function clearTimers() {
   if (hoverTimer.value) {
@@ -181,6 +181,18 @@ function onBubbleMouseEnter() {
   }
 }
 
+function hideImmediately() {
+  clearTimers()
+  visible.value = false
+}
+
+function onWindowPointerDown(event: PointerEvent) {
+  if (bubbleEl.value && event.target instanceof Node && bubbleEl.value.contains(event.target)) {
+    return
+  }
+  hideImmediately()
+}
+
 function onBubbleMouseLeave() {
   if (hideTimer.value) clearTimeout(hideTimer.value)
   hideTimer.value = setTimeout(() => {
@@ -240,8 +252,8 @@ function updatePosition() {
   let finalTop = 0
   let finalLeft = 0
   let placed = false
-  // 若锚点来自鼠标，则消除额外偏移，避免鼠标与气泡之间出现可见间隙
-  const effectiveOffset = mouseX.value !== null && mouseY.value !== null ? 0 : props.offset
+  // 必须离开指针一定距离：贴在光标上时，即便暂时可穿透，后续若被设为可交互也会吞掉拖拽。
+  const effectiveOffset = Math.max(8, Number(props.offset) || 0)
 
   for (const c of candidates) {
     const t = c.v === 'bottom' ? y + effectiveOffset : y - h - effectiveOffset
@@ -299,6 +311,21 @@ watch(
   { immediate: true }
 )
 
+const bindDragHideListeners = () => {
+  window.addEventListener('dragstart', hideImmediately, true)
+  window.addEventListener('pointerdown', onWindowPointerDown, true)
+}
+
+const unbindDragHideListeners = () => {
+  window.removeEventListener('dragstart', hideImmediately, true)
+  window.removeEventListener('pointerdown', onWindowPointerDown, true)
+}
+
+watch(visible, (isVisible) => {
+  if (isVisible) bindDragHideListeners()
+  else unbindDragHideListeners()
+})
+
 onMounted(() => {
   window.addEventListener('scroll', updatePosition, true)
   window.addEventListener('resize', updatePosition, resizeListenerOptions)
@@ -307,6 +334,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('scroll', updatePosition, true)
   window.removeEventListener('resize', updatePosition)
+  unbindDragHideListeners()
   removeAnchorListeners(props.dom)
   clearTimers()
 })
@@ -319,6 +347,7 @@ onUnmounted(() => {
         v-if="visible"
         ref="bubbleEl"
         class="frkb-bubble"
+        :draggable="false"
         :style="{
           top: topPx + 'px',
           left: leftPx + 'px',
@@ -358,8 +387,9 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.4;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  pointer-events: auto;
-  user-select: text;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .frkb-bubble-row {
