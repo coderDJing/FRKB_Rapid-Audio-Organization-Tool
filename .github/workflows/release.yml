@@ -810,7 +810,11 @@ jobs:
             dist/*.zip
 
   release:
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+    if: >-
+      ${{
+        (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+        startsWith(github.ref, 'refs/tags/')
+      }}
     needs: [typecheck, build_win, build_mac]
     runs-on: ubuntu-latest
     steps:
