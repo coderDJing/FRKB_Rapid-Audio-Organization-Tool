@@ -10,19 +10,48 @@ defineProps<{
 
 const emit = defineEmits<{
   coverContextmenu: [event: MouseEvent]
+  textContextmenu: [event: MouseEvent, text: string]
 }>()
+
+const emitTextContextmenu = (event: MouseEvent, text: string) => {
+  emit('textContextmenu', event, text)
+}
 </script>
 
 <template>
-  <div class="songInfo unselectable">
+  <div class="songInfo">
     <div class="cover unselectable" @contextmenu.prevent="emit('coverContextmenu', $event)">
       <img v-if="coverUrl" :src="coverUrl" style="width: 280px; height: 280px" draggable="false" />
       <img v-else :src="placeholderSrc" style="width: 48px; height: 48px" draggable="false" />
     </div>
-    <div style="font-size: 14px" class="info">{{ titleText }}</div>
-    <div style="font-size: 12px" class="info">{{ artistText }}</div>
-    <div style="font-size: 10px" class="info">{{ albumText }}</div>
-    <div style="font-size: 10px" class="info">{{ labelText }}</div>
+    <div
+      class="info selectable"
+      style="font-size: 14px"
+      @contextmenu.prevent="emitTextContextmenu($event, titleText)"
+    >
+      {{ titleText }}
+    </div>
+    <div
+      class="info selectable"
+      style="font-size: 12px"
+      @contextmenu.prevent="emitTextContextmenu($event, artistText)"
+    >
+      {{ artistText }}
+    </div>
+    <div
+      class="info selectable"
+      style="font-size: 10px"
+      @contextmenu.prevent="emitTextContextmenu($event, albumText)"
+    >
+      {{ albumText }}
+    </div>
+    <div
+      class="info selectable"
+      style="font-size: 10px"
+      @contextmenu.prevent="emitTextContextmenu($event, labelText)"
+    >
+      {{ labelText }}
+    </div>
   </div>
 </template>
 
@@ -53,6 +82,9 @@ const emit = defineEmits<{
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
   }
 }
 </style>

@@ -217,6 +217,7 @@ export const MINI_PLAYER_CHANNELS = {
   coverPopupPointer: 'mini-player:cover-popup-pointer',
   coverPopupReady: 'mini-player:cover-popup-ready',
   coverPopupContentSize: 'mini-player:cover-popup-content-size',
+  focusCoverPopup: 'mini-player:focus-cover-popup',
   showOverlay: 'mini-player:show-overlay',
   hideOverlay: 'mini-player:hide-overlay',
   overlayState: 'mini-player:overlay-state',

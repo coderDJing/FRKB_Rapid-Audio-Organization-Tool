@@ -10,16 +10,45 @@ type BufferLikeData = {
   data?: unknown
 }
 
+export type CoverSaveSnapshot = {
+  blobUrl: string
+  songTitle: string
+  artist: string
+  format: string
+}
+
+export const saveCoverBlobAs = (snapshot: CoverSaveSnapshot) => {
+  let extension = 'jpg'
+  if (snapshot.format) {
+    if (snapshot.format.includes('png')) extension = 'png'
+    else if (snapshot.format.includes('jpeg') || snapshot.format.includes('jpg')) extension = 'jpg'
+  }
+  const suggestedName = `${snapshot.artist} - ${snapshot.songTitle}.${extension}`
+  const link = document.createElement('a')
+  link.href = snapshot.blobUrl
+  link.download = suggestedName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+export const showSaveCoverContextMenu = async (
+  event: MouseEvent,
+  snapshot: CoverSaveSnapshot | null
+) => {
+  if (!snapshot?.blobUrl) return
+  const menuArr = [[{ menuName: 'tracks.saveCoverAs', shortcutKey: '' }]]
+  const result = await rightClickMenu({ menuArr, clickEvent: event })
+  if (result !== 'cancel' && result.menuName === 'tracks.saveCoverAs') {
+    saveCoverBlobAs(snapshot)
+  }
+}
+
 export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
   const coverBlobUrl = ref('')
   const songInfoShow = ref(false)
   const isShowingContextMenu = ref(false)
-  const contextMenuCoverSnapshot = ref<{
-    blobUrl: string
-    songTitle: string
-    artist: string
-    format: string
-  } | null>(null)
+  const contextMenuCoverSnapshot = ref<CoverSaveSnapshot | null>(null)
 
   const disposeCoverUrl = () => {
     if (coverBlobUrl.value && coverBlobUrl.value.startsWith('blob:')) {
@@ -111,21 +140,7 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
 
   const saveCoverAs = () => {
     if (!contextMenuCoverSnapshot.value) return
-    const snapshot = contextMenuCoverSnapshot.value
-
-    let extension = 'jpg'
-    if (snapshot.format) {
-      if (snapshot.format.includes('png')) extension = 'png'
-      else if (snapshot.format.includes('jpeg') || snapshot.format.includes('jpg'))
-        extension = 'jpg'
-    }
-    const suggestedName = `${snapshot.artist} - ${snapshot.songTitle}.${extension}`
-    const link = document.createElement('a')
-    link.href = snapshot.blobUrl
-    link.download = suggestedName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    saveCoverBlobAs(contextMenuCoverSnapshot.value)
   }
 
   const showCoverContextMenu = async (event: MouseEvent) => {
@@ -143,12 +158,8 @@ export function useCover(runtime: ReturnType<typeof useRuntimeStore>) {
         }
       }
 
-      const menuArr = [[{ menuName: 'tracks.saveCoverAs', shortcutKey: '' }]]
-      const result = await rightClickMenu({ menuArr, clickEvent: event })
+      await showSaveCoverContextMenu(event, contextMenuCoverSnapshot.value)
       isShowingContextMenu.value = false
-      if (result !== 'cancel' && result.menuName === 'tracks.saveCoverAs') {
-        saveCoverAs()
-      }
       contextMenuCoverSnapshot.value = null
     }, 0)
   }

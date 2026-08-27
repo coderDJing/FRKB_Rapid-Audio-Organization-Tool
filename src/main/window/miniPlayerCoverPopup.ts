@@ -149,7 +149,9 @@ const createCoverPopupWindow = () => {
     maximizable: false,
     minimizable: false,
     fullscreenable: false,
-    focusable: false,
+    // 悬停仍用 showInactive，不抢小窗焦点；点击文字/右键时再聚焦，才能复制与弹出菜单
+    focusable: true,
+    acceptFirstMouse: true,
     hasShadow: true,
     backgroundColor,
     webPreferences: {
@@ -285,6 +287,12 @@ export const bindMiniPlayerCoverPopup = (params: {
     if (!isUsableWindow(mini)) return
     try {
       mini.webContents.send(MINI_PLAYER_CHANNELS.coverPopupPointer, payload)
+    } catch {}
+  })
+  ipcMain.on(MINI_PLAYER_CHANNELS.focusCoverPopup, () => {
+    if (!isUsableWindow(coverPopupWindow) || !coverPopupWindow.isVisible()) return
+    try {
+      coverPopupWindow.focus()
     } catch {}
   })
 }
