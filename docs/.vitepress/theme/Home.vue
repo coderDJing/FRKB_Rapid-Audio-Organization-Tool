@@ -203,7 +203,7 @@ const zhContent = {
     {
       title: 'SET 托管歌单',
       details:
-        '按演出或场景准备映射型歌单，支持重复曲目、稳定序号、拖拽重排和删除保护。整理 SET 不必破坏源曲目。'
+        '按演出或场景准备映射型歌单，支持重复曲目、稳定序号、拖拽重排、删除保护和按顺序估算 SET 时长（起止可用 Hot Cue）。整理 SET 不必破坏源曲目。'
     },
     {
       title: 'Rekordbox & Pioneer 生态接入',
@@ -269,7 +269,7 @@ const zhContent = {
     {
       title: 'SET 与演出准备',
       details:
-        'SET 歌单保留源曲目映射，允许重复编排和序号排序，适合为不同演出、场景或能量段准备曲目。'
+        'SET 歌单保留源曲目映射，允许重复编排和序号排序，并可按顺序估算 SET 时长，适合为不同演出、场景或能量段准备曲目。'
     },
     {
       title: '外部库分析缓存',
@@ -283,6 +283,11 @@ const zhContent = {
       title: '合并 FRKB 库',
       details:
         '把另一个 FRKB 库合并进当前库，覆盖歌单、曲目、分析、SET 和 Mixtape；来源库本身不会被修改。'
+    },
+    {
+      title: '移动 FRKB 库',
+      details:
+        '将当前 FRKB 库整体搬到新位置，支持同盘/跨盘和中断续传，也可在资源管理器或 Finder 中打开音乐库。'
     },
     {
       title: '能量与段落分析',
@@ -353,7 +358,7 @@ const enContent = {
     {
       title: 'Managed SET Playlists',
       details:
-        'Prepare performance sets as mapping-based playlists with duplicate entries, stable indices, drag reordering, and source-track deletion protection.'
+        'Prepare performance sets as mapping-based playlists with duplicate entries, stable indices, drag reordering, source-track deletion protection, and SET duration estimates using Hot Cues as start and end points when available.'
     },
     {
       title: 'Rekordbox & Pioneer Integration',
@@ -424,7 +429,7 @@ const enContent = {
     {
       title: 'SET Preparation',
       details:
-        'SET playlists keep source-track mappings intact while allowing duplicate programming, stable ordering, and scene-specific performance crates.'
+        'SET playlists keep source-track mappings intact while allowing duplicate programming, stable ordering, duration estimates, and scene-specific performance crates.'
     },
     {
       title: 'External Analysis Cache',
@@ -440,6 +445,11 @@ const enContent = {
       title: 'Merge FRKB Libraries',
       details:
         'Merge another FRKB library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library.'
+    },
+    {
+      title: 'Move FRKB Library',
+      details:
+        'Relocate the current FRKB library to a new location, including same-disk and cross-disk transfers with resume. You can also open the library folder in Explorer or Finder.'
     },
     {
       title: 'Energy & Section Analysis',

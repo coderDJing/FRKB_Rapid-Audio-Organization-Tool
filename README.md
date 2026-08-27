@@ -52,6 +52,7 @@ FRKB does not provide an official Linux release.
 - **SET playlists**: Prepare performance sets as mapping-based playlists that support duplicate entries, stable track indices, drag reordering, and deletion protection for referenced source tracks.
 - **SET duration**: Estimate SET length in playlist order, using Hot Cues as start and end points when available.
 - **Merge FRKB libraries**: Merge another FRKB library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library. Integrity and disk space are checked first, and same-name playlists are kept on both sides. Curated libraries can also be merged separately.
+- **Move FRKB library**: Relocate the current FRKB library to a new folder, including same-disk and cross-disk transfers with resume. Settings can also open the library folder in Explorer or Finder.
 - **Playlist tree sorting**: Sort the playlist tree by name or track count, or switch back to manual order.
 - **Drag-and-drop import and movement**: Import files or folders, move tracks between playlists, and drag copies out to Explorer/Finder with Ctrl/Option.
 - **Safe recycle bin**: Deleted tracks and deduplicated items go to FRKB's recycle bin and can be restored to their original playlists.
@@ -77,6 +78,7 @@ FRKB does not provide an official Linux release.
 
 - **Wide format playback**: Built-in media tooling supports common and professional audio formats without sending files through another app first.
 - **Selectable playback range**: Start and stop playback within a chosen section when only part of a track needs to be checked.
+- **Browser-mode mini player**: Open a compact player window from browser mode, with range playback, waveform seeking, cover actions, and deleting tracks above the current song.
 - **Output device selection**: Play through a selected audio device or follow the system default.
 - **Multiple waveform styles**: SoundCloud-style waveform, detailed waveform, RGB energy view, list waveform previews, and single-track editing waveforms.
 - **Large waveform browsing**: Dual-track and edit-mode waveforms support precise seeking, cue placement, grid inspection, and smooth redraw during playback.
@@ -161,7 +163,7 @@ FRKB does not provide an official Linux release.
 ### Search, Discovery, And Sync
 
 - **Global track search**: Search across the app and jump back to the matching location.
-- **Song filtering**: Filter by title, artist, album, duration, format, BPM, and more, with optional persistence after restart.
+- **Song filtering**: Filter by title, artist, album, duration, format, BPM, date added, and more, with optional persistence after restart. Date-added supports a between-date range.
 - **NetEase Cloud search**: Search the selected track on NetEase Cloud Music from the context menu.
 - **Similar tracks query**: Query multiple sources for tracks with a similar vibe, launch recommendations from library menus, and hide tracks you no longer want suggested.
 - **Cloud fingerprint sync**: Sync local SHA256 fingerprints with the FRKB cloud backend, including diff analysis, paginated pulls, batched uploads, quotas, rate limiting, clear summaries, and a minimizable progress window.
