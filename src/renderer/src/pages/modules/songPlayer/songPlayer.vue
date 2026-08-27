@@ -67,7 +67,6 @@ type WaveformPreviewStatePayload = {
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
-const playerControlsRef = useTemplateRef('playerControlsRef')
 
 const handleExternalOpenPlay = (payload: { songs?: ISongInfo[]; startIndex?: number }) => {
   try {
@@ -204,19 +203,12 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   const disposers: Array<() => void> = []
 
   const onPlay = () => {
-    playerControlsRef.value?.setPlayingValue?.(true)
     runtime.playerReady = true
     runtime.isSwitchingSong = false
     previousTime = player.getCurrentTime()
   }
   player.on('play', onPlay)
   disposers.push(() => player.off('play', onPlay))
-
-  const onPause = () => {
-    playerControlsRef.value?.setPlayingValue?.(false)
-  }
-  player.on('pause', onPause)
-  disposers.push(() => player.off('pause', onPause))
 
   const onFinish = () => {
     if (runtime.setting.autoPlayNextSong) {
@@ -440,7 +432,6 @@ onMounted(() => {
     runtime,
     updateParentWaveformWidth,
     onNextSong: () => playerActions.nextSong(),
-    playerControlsRef,
     onError: async (_error: unknown) => {
       if (isIgnorablePlayerEmptySourceError(_error)) {
         ignoreNextEmptyError.value = false
@@ -622,7 +613,7 @@ const hotkeyActions = {
   volumeDown: handleVolumeDown
 }
 
-const isPlaying = computed(() => audioPlayer.value?.isPlaying() ?? false)
+const isPlaying = computed(() => audioPlayer.value?.playingState.value ?? false)
 const parseDurationToSeconds = (input: unknown) => {
   const raw = String(input || '').trim()
   if (!raw) return 0
@@ -898,7 +889,7 @@ watch(
       >
         <transition name="player-controls-toggle">
           <playerControls
-            ref="playerControlsRef"
+            :playing="isPlaying"
             :hide-playback-controls="runtime.setting.hiddenPlayControlArea"
             @pause="playerActions.pause"
             @play="handleUserPlay"

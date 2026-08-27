@@ -49,10 +49,12 @@ const props = withDefaults(
   defineProps<{
     variant?: 'main' | 'mini'
     hidePlaybackControls?: boolean
+    playing?: boolean
   }>(),
   {
     variant: 'main',
-    hidePlaybackControls: false
+    hidePlaybackControls: false,
+    playing: false
   }
 )
 const isReadOnlyPlaybackSource = computed(() =>
@@ -61,7 +63,7 @@ const isReadOnlyPlaybackSource = computed(() =>
     runtime.playingData.playingSong
   )
 )
-const playing = ref(true)
+const isPlaying = computed(() => props.playing === true)
 watch(
   () => runtime.activeMenuUUID,
   (val) => {
@@ -88,17 +90,11 @@ const emits = defineEmits([
   'toggleMiniMoreMenu'
 ])
 
-const setPlayingValue = (value: boolean) => {
-  playing.value = value
-}
-
 const handlePause = () => {
-  playing.value = !playing.value
   emits('pause')
 }
 
 const handlePlay = () => {
-  playing.value = !playing.value
   emits('play')
 }
 
@@ -609,10 +605,6 @@ const canDeleteAllAbove = computed(() => {
   })
 })
 
-defineExpose({
-  setPlayingValue
-})
-
 // ---------------- 系统媒体会话（Media Session API）集成 ----------------
 // 目标：启用系统的 上一首/下一首/播放/暂停 按钮，并同步元数据和播放状态
 let artworkUrl: string = ''
@@ -684,7 +676,7 @@ const updatePlaybackState = () => {
   // @ts-ignore
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
   // @ts-ignore
-  navigator.mediaSession.playbackState = playing.value ? 'playing' : 'paused'
+  navigator.mediaSession.playbackState = isPlaying.value ? 'playing' : 'paused'
 }
 
 const updateActionHandlers = () => {
@@ -694,10 +686,10 @@ const updateActionHandlers = () => {
   const ms = navigator.mediaSession as MediaSession
 
   ms.setActionHandler('play', () => {
-    if (!playing.value) emits('play')
+    if (!isPlaying.value) emits('play')
   })
   ms.setActionHandler('pause', () => {
-    if (playing.value) emits('pause')
+    if (isPlaying.value) emits('pause')
   })
 
   ms.setActionHandler('previoustrack', hasPrev.value ? () => emits('previousSong') : null)
@@ -722,7 +714,7 @@ watch([hasPrev, hasNext], () => {
   updateActionHandlers()
 })
 
-watch(playing, () => {
+watch(isPlaying, () => {
   updatePlaybackState()
 })
 
@@ -761,11 +753,11 @@ onUnmounted(() => {
           :title="t('player.fastBackward')"
           shortcut="A"
         />
-        <div v-show="!playing" ref="playRef" class="buttonIcon" @click="handlePlay()">
+        <div v-show="!isPlaying" ref="playRef" class="buttonIcon" @click="handlePlay()">
           <img :src="play" draggable="false" />
         </div>
         <bubbleBox :dom="playRef || undefined" :title="t('player.play')" shortcut="Space" />
-        <div v-show="playing" ref="pauseRef" class="buttonIcon" @click="handlePause()">
+        <div v-show="isPlaying" ref="pauseRef" class="buttonIcon" @click="handlePause()">
           <img :src="pause" draggable="false" />
         </div>
         <bubbleBox :dom="pauseRef || undefined" :title="t('player.pause')" shortcut="Space" />

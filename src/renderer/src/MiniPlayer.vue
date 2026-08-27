@@ -40,9 +40,6 @@ const focusCanvas = useTemplateRef<HTMLCanvasElement>('focusCanvas')
 const pinRef = useTemplateRef<HTMLDivElement>('pinRef')
 const closeRef = useTemplateRef<HTMLDivElement>('closeRef')
 const coverAnchorRef = useTemplateRef<HTMLDivElement>('coverAnchorRef')
-const playerControlsRef = useTemplateRef<{ setPlayingValue?: (value: boolean) => void }>(
-  'playerControlsRef'
-)
 const hostState = ref<MiniPlayerHostState | null>(null)
 const overlayBusy = ref(false)
 const overlayOpen = ref(false)
@@ -389,14 +386,6 @@ watch(
   { immediate: true }
 )
 
-watch(
-  isPlaying,
-  (playing) => {
-    playerControlsRef.value?.setPlayingValue?.(playing)
-  },
-  { immediate: true }
-)
-
 useMiniPlayerRemoteWaveform({
   waveformEl: waveform,
   compactVisualWaveform,
@@ -621,7 +610,6 @@ onMounted(() => {
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.coverPopupPointer, handleCoverPopupPointer)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.requestKeyboardFocus, focusKeyboardTarget)
   window.electron.ipcRenderer.send(MINI_PLAYER_CHANNELS.rendererReady)
-  playerControlsRef.value?.setPlayingValue?.(isPlaying.value)
   updateWaveformContainerWidth()
   focusKeyboardTarget()
   if (waveform.value) {
@@ -683,8 +671,8 @@ onUnmounted(() => {
       </div>
       <div class="mini-player__controls">
         <playerControls
-          ref="playerControlsRef"
           variant="mini"
+          :playing="isPlaying"
           @pause="sendCommand({ type: 'pause' })"
           @play="sendCommand({ type: 'play' })"
           @fast-forward="sendCommand({ type: 'fastForward' })"

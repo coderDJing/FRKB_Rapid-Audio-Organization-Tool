@@ -1,4 +1,5 @@
 import mitt from 'mitt'
+import { ref } from 'vue'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 import { t } from '@renderer/utils/translate'
@@ -45,6 +46,7 @@ export class WebAudioPlayer {
   public pioneerPreviewWaveformData: IPioneerPreviewWaveformData | null = null
   private emitter = mitt<WebAudioPlayerEvents>()
   private isPlayingFlag = false
+  readonly playingState = ref(false)
   private animationFrameId: number | null = null
   private volume: number = 0.8
   private pendingSeekTime: number | null = null
@@ -301,7 +303,7 @@ export class WebAudioPlayer {
     this.pendingSeekedCleanup = null
     const audio = this.audioElement
     if (!audio) {
-      this.isPlayingFlag = false
+      this.setIsPlaying(false)
       this.stopTimeUpdate()
       return
     }
@@ -318,7 +320,7 @@ export class WebAudioPlayer {
         audio.currentTime = 0
       } catch (_) {}
     }
-    this.isPlayingFlag = false
+    this.setIsPlaying(false)
     this.stopTimeUpdate()
   }
   private stopPcmInternal(resetTime = false): void {
@@ -326,7 +328,7 @@ export class WebAudioPlayer {
     if (resetTime) {
       this.pcmOffset = 0
     }
-    this.isPlayingFlag = false
+    this.setIsPlaying(false)
     this.stopTimeUpdate()
   }
   setVolume(volume: number): void {
@@ -424,6 +426,11 @@ export class WebAudioPlayer {
   }
   isPlaying(): boolean {
     return this.isPlayingFlag
+  }
+
+  private setIsPlaying(next: boolean) {
+    this.isPlayingFlag = next
+    this.playingState.value = next
   }
   empty(): void {
     this.pendingPlay = false
@@ -726,19 +733,19 @@ export class WebAudioPlayer {
 
   private emitPlayEvent(): void {
     if (this.isPlayingFlag) return
-    this.isPlayingFlag = true
+    this.setIsPlaying(true)
     this.emit('play')
     this.startTimeUpdate()
   }
 
   private emitPauseEvent(): void {
-    this.isPlayingFlag = false
+    this.setIsPlaying(false)
     this.stopTimeUpdate()
     this.emit('pause')
   }
 
   private emitFinishEvent(): void {
-    this.isPlayingFlag = false
+    this.setIsPlaying(false)
     this.stopTimeUpdate()
     this.emit('finish')
   }
@@ -765,7 +772,7 @@ export class WebAudioPlayer {
   }
 
   private handleAudioError(): void {
-    this.isPlayingFlag = false
+    this.setIsPlaying(false)
     this.stopTimeUpdate()
     const error = this.audioElement?.error
     if (isEmptySourceAudioErrorMessage(error?.message)) {

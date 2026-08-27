@@ -31,18 +31,10 @@ export function useWaveform(params: {
   runtime: ReturnType<typeof useRuntimeStore>
   updateParentWaveformWidth: () => void
   onNextSong: () => void
-  playerControlsRef?: { value?: { setPlayingValue?: (v: boolean) => void } | null }
   onError?: (error: unknown) => void
 }) {
-  const {
-    waveformEl,
-    audioPlayer,
-    runtime,
-    updateParentWaveformWidth,
-    onNextSong,
-    playerControlsRef,
-    onError
-  } = params
+  const { waveformEl, audioPlayer, runtime, updateParentWaveformWidth, onNextSong, onError } =
+    params
 
   const waveformHeight = 40
   const cursorWidth = 9
@@ -530,13 +522,11 @@ export function useWaveform(params: {
     }
 
     const handlePlay = () => {
-      playerControlsRef?.value?.setPlayingValue?.(true)
       runtime.playerReady = true
       runtime.isSwitchingSong = false
     }
 
     const handlePause = () => {
-      playerControlsRef?.value?.setPlayingValue?.(false)
       drawWaveform()
     }
 
