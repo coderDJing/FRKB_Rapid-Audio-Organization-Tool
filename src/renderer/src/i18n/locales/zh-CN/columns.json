@@ -18,6 +18,7 @@
     "index": "序号",
     "mixOrder": "录制序号",
     "deletedAt": "删除时间",
+    "addedAt": "加入时间",
     "originalPlaylist": "原歌单",
     "mixSource": "来源路径"
   }

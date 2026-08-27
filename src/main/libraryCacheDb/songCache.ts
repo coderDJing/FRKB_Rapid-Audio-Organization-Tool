@@ -735,7 +735,7 @@ export async function updateSongCacheKey(
 
 /**
  * 清除歌曲的分析数据（Key、节拍网格、能量、段落等），用于重新分析。
- * 保留用户数据：playlistTrackNumber（序号）、hotCues、memoryCues、mixOrder 等。
+ * 保留用户数据：playlistTrackNumber（序号）、addedAtMs（加入时间）、hotCues、memoryCues、mixOrder 等。
  */
 export type SongCoreAnalysisClearFields = {
   key?: boolean

@@ -1,6 +1,8 @@
 import type { ComputedRef, Ref, ShallowRef } from 'vue'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
+import { normalizeAddedAtMs, matchTimestampByDateFilter } from '@shared/songAddedAt'
+import { matchComparableByFilter } from '@shared/filterCompare'
 import type { RekordboxSourceKind } from '@shared/rekordboxSources'
 import type {
   IPioneerPlaylistTrack,
@@ -158,6 +160,7 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
         ? params.selectedSourceRootPath.value || null
         : null,
     mixtapeItemId: track.rowKey,
+    addedAtMs: normalizeAddedAtMs(track.dateAdded),
     fileMissing: track.fileMissing ?? false
   })
 
@@ -227,36 +230,67 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
           if (hasExclude && excludeKeywords.some((item) => value.includes(item))) return false
           return true
         })
-      } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
-        const target = parseDurationToSeconds(col.filterDuration)
+      } else if (
+        col.filterType === 'duration' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterDuration || col.filterDurationTo)
+          : Boolean(col.filterDuration))
+      ) {
+        const target = col.filterDuration ? parseDurationToSeconds(col.filterDuration) : null
+        const targetTo =
+          col.filterOp === 'between' && col.filterDurationTo
+            ? parseDurationToSeconds(col.filterDurationTo)
+            : null
         filtered = filtered.filter((song) => {
           const duration = parseDurationToSeconds(String(song.duration ?? ''))
-          if (Number.isNaN(duration) || Number.isNaN(target)) return false
-          if (col.filterOp === 'eq') return duration === target
-          if (col.filterOp === 'gte') return duration >= target
-          if (col.filterOp === 'lte') return duration <= target
-          return true
+          if (Number.isNaN(duration)) return false
+          return matchComparableByFilter(
+            duration,
+            col.filterOp,
+            target !== null && Number.isNaN(target) ? null : target,
+            targetTo !== null && Number.isNaN(targetTo) ? null : targetTo
+          )
         })
-      } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
+      } else if (
+        col.filterType === 'bpm' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterNumber || col.filterNumberTo)
+          : Boolean(col.filterNumber))
+      ) {
         const target = parseComparableBpm(col.filterNumber)
+        const targetTo = col.filterOp === 'between' ? parseComparableBpm(col.filterNumberTo) : null
         filtered = filtered.filter((song) => {
           const bpm = parseComparableBpm(song.bpm)
-          if (bpm === null || target === null) return false
-          if (col.filterOp === 'eq') return bpm === target
-          if (col.filterOp === 'gte') return bpm >= target
-          if (col.filterOp === 'lte') return bpm <= target
-          return true
+          if (bpm === null) return false
+          return matchComparableByFilter(bpm, col.filterOp, target, targetTo)
         })
-      } else if (col.filterType === 'number' && col.filterOp && col.filterNumber) {
+      } else if (
+        col.filterType === 'number' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterNumber || col.filterNumberTo)
+          : Boolean(col.filterNumber))
+      ) {
         const target = parseComparableNumber(col.filterNumber)
+        const targetTo =
+          col.filterOp === 'between' ? parseComparableNumber(col.filterNumberTo) : null
         filtered = filtered.filter((song) => {
           const value = parseComparableNumber(getSongField(song, col.key))
-          if (value === null || target === null) return false
-          if (col.filterOp === 'eq') return value === target
-          if (col.filterOp === 'gte') return value >= target
-          if (col.filterOp === 'lte') return value <= target
-          return true
+          if (value === null) return false
+          return matchComparableByFilter(value, col.filterOp, target, targetTo)
         })
+      } else if (
+        col.filterType === 'date' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterDate || col.filterDateTo)
+          : Boolean(col.filterDate))
+      ) {
+        filtered = filtered.filter((song) =>
+          matchTimestampByDateFilter(song.addedAtMs, col.filterOp, col.filterDate, col.filterDateTo)
+        )
       }
     }
 
@@ -277,6 +311,17 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
           return sortedCol.order === 'asc'
             ? collator.compare(valueA, valueB)
             : collator.compare(valueB, valueA)
+        })
+      } else if (sortedCol.key === 'addedAtMs') {
+        filtered = [...filtered].sort((a, b) => {
+          const valueA = Number(a.addedAtMs)
+          const valueB = Number(b.addedAtMs)
+          const validA = Number.isFinite(valueA)
+          const validB = Number.isFinite(valueB)
+          if (!validA && !validB) return 0
+          if (!validA) return 1
+          if (!validB) return -1
+          return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
         })
       } else {
         filtered = sortArrayByProperty(filtered, sortedCol.key as keyof ISongInfo, sortedCol.order)
@@ -306,7 +351,11 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
           filterValue: col.filterValue || '',
           filterExcludeValue: col.filterExcludeValue || '',
           filterDuration: col.filterDuration || '',
-          filterNumber: col.filterNumber || ''
+          filterDurationTo: col.filterDurationTo || '',
+          filterNumber: col.filterNumber || '',
+          filterNumberTo: col.filterNumberTo || '',
+          filterDate: col.filterDate || '',
+          filterDateTo: col.filterDateTo || ''
         })),
       firstOriginalTracks: params.originalTracks.value.slice(0, 5).map((track) => ({
         rowKey: track.rowKey,

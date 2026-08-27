@@ -17,5 +17,6 @@ export const MIN_WIDTH_BY_KEY: Record<string, number> = {
   fileFormat: 100,
   container: 140,
   deletedAtMs: 180,
+  addedAtMs: 180,
   originalPlaylistPath: 220
 }

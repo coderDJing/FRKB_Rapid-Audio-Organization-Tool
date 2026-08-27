@@ -17,6 +17,7 @@ import {
   transferTrackCaches
 } from './services/cacheMaintenance'
 import { findSongListRootByPath } from './libraryTreeDb'
+import { stampPlaylistSongsAddedAt } from './services/playlistAddedAt'
 import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
@@ -512,6 +513,10 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
         toPath: destPath
       })
     } catch {}
+    await stampPlaylistSongsAddedAt({
+      listRoot: destDir,
+      filePaths: [destPath]
+    })
     try {
       invalidateKeyAnalysisCache([srcPath, destPath])
     } catch {}

@@ -61,6 +61,7 @@ interface ISongInfo {
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis
   playlistTrackNumber?: number
+  addedAtMs?: number
   timeBasisOffsetMs?: number
   timeBasisOffsetAlgorithmVersion?: number
   beatGridAlgorithmVersion?: number
@@ -793,8 +794,8 @@ interface ISongsAreaColumn {
   width: number
   order?: 'asc' | 'desc'
   // 可选：列筛选能力与状态（仅在实现列筛选功能时使用）
-  // filterType：'text' 适用于标题/艺人/专辑/流派/厂牌/格式等；'duration' 适用于时长列；'bpm' 适用于 BPM 列；'number' 适用于能量等普通数值列
-  filterType?: 'text' | 'duration' | 'bpm' | 'number'
+  // filterType：'text' 适用于标题/艺人/专辑/流派/厂牌/格式等；'duration' 适用于时长列；'bpm' 适用于 BPM 列；'number' 适用于能量等普通数值列；'date' 适用于加入时间
+  filterType?: 'text' | 'duration' | 'bpm' | 'number' | 'date'
   // 是否存在生效的筛选（用于列头图标高亮与关键字展示）
   filterActive?: boolean
   // 文本筛选：关键字（包含匹配，不区分大小写）
@@ -802,10 +803,18 @@ interface ISongsAreaColumn {
   // 文本筛选：排除关键字（包含则剔除，不区分大小写）
   filterExcludeValue?: string
   // 时长筛选：操作符与目标时长（固定 MM:SS 字符串）
-  filterOp?: 'eq' | 'gte' | 'lte'
+  filterOp?: 'eq' | 'gte' | 'lte' | 'between'
   filterDuration?: string
+  // 时长范围终点：仅 filterOp === 'between' 时使用
+  filterDurationTo?: string
   // 数值筛选：目标数值（支持小数）
   filterNumber?: string
+  // 数值范围终点：仅 filterOp === 'between' 时使用
+  filterNumberTo?: string
+  // 日期筛选：本地时间，优先 YYYY-MM-DD HH:mm:ss；兼容旧的 YYYY-MM-DD（按整天匹配）
+  filterDate?: string
+  // 日期范围终点：仅 filterOp === 'between' 时使用
+  filterDateTo?: string
   // 仅查看精选过的表演者（仅 artist 列使用）
   filterCuratedOnly?: boolean
 }

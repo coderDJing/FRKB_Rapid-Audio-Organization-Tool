@@ -35,6 +35,7 @@ import {
   compactSongListTrackNumbersByFilePaths,
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
+import { stampPlaylistSongsAddedAt } from '../services/playlistAddedAt'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 type MoveSongsToDirOptions = {
@@ -508,6 +509,10 @@ export function registerExportHandlers() {
         appendedFilePaths: movedPaths
       })
     }
+    await stampPlaylistSongsAddedAt({
+      listRoot: targetListRoot,
+      filePaths: movedPaths
+    })
     if (isMove) {
       const sourceRoots = new Set<string>()
       for (const src of srcs) {

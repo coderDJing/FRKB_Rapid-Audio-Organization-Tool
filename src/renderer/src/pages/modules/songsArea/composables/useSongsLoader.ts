@@ -346,7 +346,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableText(left.recycleBinSourceType) ===
         normalizeComparableText(right.recycleBinSourceType) &&
       normalizeComparableNumber(left.playlistTrackNumber) ===
-        normalizeComparableNumber(right.playlistTrackNumber)
+        normalizeComparableNumber(right.playlistTrackNumber) &&
+      normalizeComparableNumber(left.addedAtMs) === normalizeComparableNumber(right.addedAtMs)
     )
   }
 
@@ -466,6 +467,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableNumber(right.playlistTrackNumber)
     ) {
       fields.push('playlistTrackNumber')
+    }
+    if (normalizeComparableNumber(left.addedAtMs) !== normalizeComparableNumber(right.addedAtMs)) {
+      fields.push('addedAtMs')
     }
     return fields
   }

@@ -23,6 +23,7 @@ import {
   normalizeSongStructureAnalysis
 } from '../../shared/songStructure'
 import type { ISongInfo } from '../../types/globals'
+import { normalizeAddedAtMs } from '../../shared/songAddedAt'
 import { buildSetAnalysisSnapshot } from '../services/setAnalysisSnapshot'
 import {
   listSetItemsByPlaylist,
@@ -149,6 +150,7 @@ function createMissingSetSong(item: SetItemRecord): ISongInfo {
       bitrate: undefined,
       container: undefined,
       playlistTrackNumber: item.sortOrder,
+      addedAtMs: normalizeAddedAtMs(item.createdAtMs),
       fileMissing: true
     },
     parseSetItemAnalysisJson(item.analysisJson)
@@ -689,7 +691,8 @@ export function registerSetListHandlers() {
             {
               ...scannedSong,
               setItemId: item.id,
-              playlistTrackNumber: item.sortOrder
+              playlistTrackNumber: item.sortOrder,
+              addedAtMs: normalizeAddedAtMs(item.createdAtMs)
             },
             playlistRootByUuid
           )

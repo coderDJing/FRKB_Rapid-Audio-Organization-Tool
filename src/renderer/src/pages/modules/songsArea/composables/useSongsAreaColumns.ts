@@ -12,6 +12,8 @@ import {
   resolveSongBeatGridV2BpmFilterValues,
   resolveSongBeatGridV2BpmSortValue
 } from '@shared/songBeatGridMapV2'
+import { matchTimestampByDateFilter } from '@shared/songAddedAt'
+import { matchComparableByFilter } from '@shared/filterCompare'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseSongsAreaColumnsParams {
@@ -182,6 +184,14 @@ const buildSongsAreaBaseColumns = (
       filterType: isMixtape ? undefined : 'text'
     }
   )
+  if (!isRecycleBin) {
+    columns.push({
+      columnName: 'columns.addedAt',
+      key: 'addedAtMs',
+      show: true,
+      filterType: isMixtape ? undefined : 'date'
+    })
+  }
   return columns
 }
 
@@ -283,8 +293,20 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
                 filterDuration: runtime.setting.persistSongFilters
                   ? savedCol.filterDuration
                   : undefined,
+                filterDurationTo: runtime.setting.persistSongFilters
+                  ? (savedCol as ISongsAreaColumn).filterDurationTo
+                  : undefined,
                 filterNumber: runtime.setting.persistSongFilters
                   ? (savedCol as ISongsAreaColumn).filterNumber
+                  : undefined,
+                filterNumberTo: runtime.setting.persistSongFilters
+                  ? (savedCol as ISongsAreaColumn).filterNumberTo
+                  : undefined,
+                filterDate: runtime.setting.persistSongFilters
+                  ? (savedCol as ISongsAreaColumn).filterDate
+                  : undefined,
+                filterDateTo: runtime.setting.persistSongFilters
+                  ? (savedCol as ISongsAreaColumn).filterDateTo
                   : undefined,
                 filterCuratedOnly: runtime.setting.persistSongFilters
                   ? (savedCol as ISongsAreaColumn).filterCuratedOnly
@@ -475,40 +497,71 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
             return artistNames.some((name) => curatedNames.has(normalizeArtistName(name)))
           })
         }
-      } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
-        const target = parseDurationToSeconds(col.filterDuration)
+      } else if (
+        col.filterType === 'duration' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterDuration || col.filterDurationTo)
+          : Boolean(col.filterDuration))
+      ) {
+        const target = col.filterDuration ? parseDurationToSeconds(col.filterDuration) : null
+        const targetTo =
+          col.filterOp === 'between' && col.filterDurationTo
+            ? parseDurationToSeconds(col.filterDurationTo)
+            : null
         filtered = filtered.filter((song) => {
           const dur = parseDurationToSeconds(String(song.duration ?? ''))
-          if (Number.isNaN(dur) || Number.isNaN(target)) return false
-          if (col.filterOp === 'eq') return dur === target
-          if (col.filterOp === 'gte') return dur >= target
-          if (col.filterOp === 'lte') return dur <= target
-          return true
+          if (Number.isNaN(dur)) return false
+          return matchComparableByFilter(
+            dur,
+            col.filterOp,
+            target !== null && Number.isNaN(target) ? null : target,
+            targetTo !== null && Number.isNaN(targetTo) ? null : targetTo
+          )
         })
-      } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
+      } else if (
+        col.filterType === 'bpm' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterNumber || col.filterNumberTo)
+          : Boolean(col.filterNumber))
+      ) {
         const target = parseComparableBpm(col.filterNumber)
+        const targetTo = col.filterOp === 'between' ? parseComparableBpm(col.filterNumberTo) : null
         filtered = filtered.filter((song) => {
           const bpmValues = resolveSongBeatGridV2BpmFilterValues(song.beatGridMap, song.bpm)
-          if (!bpmValues.length || target === null) return false
+          if (!bpmValues.length) return false
           return bpmValues.some((bpmValue) => {
             const bpm = parseComparableBpm(bpmValue)
             if (bpm === null) return false
-            if (col.filterOp === 'eq') return bpm === target
-            if (col.filterOp === 'gte') return bpm >= target
-            if (col.filterOp === 'lte') return bpm <= target
-            return true
+            return matchComparableByFilter(bpm, col.filterOp, target, targetTo)
           })
         })
-      } else if (col.filterType === 'number' && col.filterOp && col.filterNumber) {
+      } else if (
+        col.filterType === 'number' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterNumber || col.filterNumberTo)
+          : Boolean(col.filterNumber))
+      ) {
         const target = parseComparableNumber(col.filterNumber)
+        const targetTo =
+          col.filterOp === 'between' ? parseComparableNumber(col.filterNumberTo) : null
         filtered = filtered.filter((song) => {
           const value = parseComparableNumber(getSongField(song, col.key))
-          if (value === null || target === null) return false
-          if (col.filterOp === 'eq') return value === target
-          if (col.filterOp === 'gte') return value >= target
-          if (col.filterOp === 'lte') return value <= target
-          return true
+          if (value === null) return false
+          return matchComparableByFilter(value, col.filterOp, target, targetTo)
         })
+      } else if (
+        col.filterType === 'date' &&
+        col.filterOp &&
+        (col.filterOp === 'between'
+          ? Boolean(col.filterDate || col.filterDateTo)
+          : Boolean(col.filterDate))
+      ) {
+        filtered = filtered.filter((song) =>
+          matchTimestampByDateFilter(song.addedAtMs, col.filterOp, col.filterDate, col.filterDateTo)
+        )
       }
     }
 
@@ -554,10 +607,10 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
             ? collator.compare(valueA, valueB)
             : collator.compare(valueB, valueA)
         })
-      } else if (sortedCol.key === 'deletedAtMs') {
+      } else if (sortedCol.key === 'deletedAtMs' || sortedCol.key === 'addedAtMs') {
         filtered = [...filtered].sort((a, b) => {
-          const valueA = Number(a.deletedAtMs)
-          const valueB = Number(b.deletedAtMs)
+          const valueA = Number(sortedCol.key === 'deletedAtMs' ? a.deletedAtMs : a.addedAtMs)
+          const valueB = Number(sortedCol.key === 'deletedAtMs' ? b.deletedAtMs : b.addedAtMs)
           const validA = Number.isFinite(valueA)
           const validB = Number.isFinite(valueB)
           if (!validA && !validB) return 0
@@ -638,6 +691,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       if (!col.filterActive) return false
       if (col.filterType === 'bpm') return fieldSet.has('bpm') || fieldSet.has('beatGridMap')
       if (col.filterType === 'number') return fieldSet.has(String(col.key || ''))
+      if (col.filterType === 'date') return fieldSet.has('addedAtMs')
       if (col.filterType === 'text' && col.key === 'key') return fieldSet.has('key')
       return false
     })

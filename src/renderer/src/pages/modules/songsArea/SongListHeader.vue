@@ -7,6 +7,7 @@ import { MIN_WIDTH_BY_KEY } from './minWidth'
 import filterDialog from '@renderer/components/filterDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
+import { normalizeFilterDate, resolveFilterDateBounds } from '@shared/songAddedAt'
 const filterIcon = filterIconAsset
 const filterIconMaskStyle = {
   '--icon-mask': `url("${filterIcon}")`
@@ -14,11 +15,13 @@ const filterIconMaskStyle = {
 
 // 类型定义
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]
-type FilterDialogType = 'text' | 'duration' | 'bpm' | 'number'
+type FilterDialogType = 'text' | 'duration' | 'bpm' | 'number' | 'date'
+type FilterOp = 'eq' | 'gte' | 'lte' | 'between'
 type FilterDialogPayload =
   | { type: 'text'; text: string; excludeText: string; curatedOnly: boolean }
-  | { type: 'duration'; op: 'eq' | 'gte' | 'lte'; duration: string }
-  | { type: 'bpm' | 'number'; op: 'eq' | 'gte' | 'lte'; value: string }
+  | { type: 'duration'; op: FilterOp; duration: string; durationTo?: string }
+  | { type: 'bpm' | 'number'; op: FilterOp; value: string; valueTo?: string }
+  | { type: 'date'; op: FilterOp; date: string; dateTo?: string }
 
 // Props
 const props = defineProps({
@@ -259,9 +262,13 @@ const handleColumnClick = (col: ISongsAreaColumn) => {
 const filterActiveKey = ref<string>('')
 const tempText = ref<string>('')
 const tempExcludeText = ref<string>('')
-const tempOp = ref<'eq' | 'gte' | 'lte'>('gte')
+const tempOp = ref<FilterOp>('gte')
 const tempDuration = ref<string>('00:00')
+const tempDurationTo = ref<string>('')
 const tempNumber = ref<string>('')
+const tempNumberTo = ref<string>('')
+const tempDate = ref<string>('')
+const tempDateTo = ref<string>('')
 const tempCuratedOnly = ref<boolean>(false)
 
 // 打开筛选弹窗
@@ -274,10 +281,16 @@ function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
     tempCuratedOnly.value = col.filterCuratedOnly || false
   } else if (col.filterType === 'duration') {
     tempOp.value = col.filterOp || 'gte'
-    tempDuration.value = col.filterDuration || '00:00'
+    tempDuration.value = col.filterDuration || (col.filterOp === 'between' ? '' : '00:00')
+    tempDurationTo.value = col.filterDurationTo || ''
   } else if (col.filterType === 'bpm' || col.filterType === 'number') {
     tempOp.value = col.filterOp || 'gte'
     tempNumber.value = col.filterNumber || ''
+    tempNumberTo.value = col.filterNumberTo || ''
+  } else if (col.filterType === 'date') {
+    tempOp.value = col.filterOp || 'gte'
+    tempDate.value = col.filterDate || ''
+    tempDateTo.value = col.filterDateTo || ''
   }
 }
 
@@ -297,6 +310,15 @@ function normalizeMmSs(input: string): string {
   const mm = String(m).padStart(2, '0')
   const ss = String(s).padStart(2, '0')
   return `${mm}:${ss}`
+}
+
+function parseDurationToSecondsLocal(mmss: string): number {
+  const parts = mmss.split(':')
+  if (parts.length !== 2) return NaN
+  const minutes = Number(parts[0])
+  const seconds = Number(parts[1])
+  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return NaN
+  return minutes * 60 + seconds
 }
 
 function normalizeNumberInput(input: string): string {
@@ -331,20 +353,78 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
       next.filterOp = undefined
       next.filterDuration = undefined
       next.filterNumber = undefined
+      next.filterDate = undefined
+      next.filterDateTo = undefined
+      next.filterDurationTo = undefined
+      next.filterNumberTo = undefined
     } else if (c.filterType === 'duration') {
       next.filterOp = tempOp.value
-      next.filterDuration = normalizeMmSs(tempDuration.value)
-      next.filterActive = !!next.filterDuration
+      if (tempOp.value === 'between') {
+        const from = tempDuration.value.trim() ? normalizeMmSs(tempDuration.value) : ''
+        const to = tempDurationTo.value.trim() ? normalizeMmSs(tempDurationTo.value) : ''
+        if (from && to) {
+          const fromSec = parseDurationToSecondsLocal(from)
+          const toSec = parseDurationToSecondsLocal(to)
+          next.filterDuration = fromSec <= toSec ? from : to
+          next.filterDurationTo = fromSec <= toSec ? to : from
+        } else {
+          next.filterDuration = from || undefined
+          next.filterDurationTo = to || undefined
+        }
+        next.filterActive = Boolean(from || to)
+      } else {
+        next.filterDuration = normalizeMmSs(tempDuration.value)
+        next.filterDurationTo = undefined
+        next.filterActive = !!next.filterDuration
+      }
       next.filterValue = undefined
       next.filterExcludeValue = undefined
       next.filterNumber = undefined
+      next.filterNumberTo = undefined
+      next.filterDate = undefined
+      next.filterDateTo = undefined
     } else if (c.filterType === 'bpm' || c.filterType === 'number') {
       next.filterOp = tempOp.value
-      next.filterNumber = normalizeNumberInput(tempNumber.value)
-      next.filterActive = !!next.filterNumber
+      if (tempOp.value === 'between') {
+        const from = normalizeNumberInput(tempNumber.value)
+        const to = normalizeNumberInput(tempNumberTo.value)
+        if (from && to) {
+          next.filterNumber = Number(from) <= Number(to) ? from : to
+          next.filterNumberTo = Number(from) <= Number(to) ? to : from
+        } else {
+          next.filterNumber = from || undefined
+          next.filterNumberTo = to || undefined
+        }
+        next.filterActive = Boolean(from || to)
+      } else {
+        next.filterNumber = normalizeNumberInput(tempNumber.value)
+        next.filterNumberTo = undefined
+        next.filterActive = !!next.filterNumber
+      }
       next.filterValue = undefined
       next.filterDuration = undefined
+      next.filterDurationTo = undefined
       next.filterExcludeValue = undefined
+      next.filterDate = undefined
+      next.filterDateTo = undefined
+    } else if (c.filterType === 'date') {
+      next.filterOp = tempOp.value
+      if (tempOp.value === 'between') {
+        const bounds = resolveFilterDateBounds(tempDate.value, tempDateTo.value)
+        next.filterDate = bounds.from
+        next.filterDateTo = bounds.to
+        next.filterActive = Boolean(bounds.from || bounds.to)
+      } else {
+        next.filterDate = normalizeFilterDate(tempDate.value)
+        next.filterDateTo = undefined
+        next.filterActive = !!next.filterDate
+      }
+      next.filterValue = undefined
+      next.filterDuration = undefined
+      next.filterDurationTo = undefined
+      next.filterExcludeValue = undefined
+      next.filterNumber = undefined
+      next.filterNumberTo = undefined
     }
     return next
   })
@@ -363,14 +443,28 @@ function clearFilter(target: ISongsAreaColumn) {
       filterCuratedOnly: undefined,
       filterOp: undefined,
       filterDuration: undefined,
-      filterNumber: undefined
+      filterDurationTo: undefined,
+      filterNumber: undefined,
+      filterNumberTo: undefined,
+      filterDate: undefined,
+      filterDateTo: undefined
     }
   })
   emit('update:columns', newColumns)
   closeFilterDialog()
 }
 
-// 生成悬浮在筛选图标上的提示文案（仅在激活时显示有意义的内容）
+function formatBetweenTooltip(prefix: string, fromValue?: string, toValue?: string): string {
+  const from = String(fromValue || '').trim()
+  const to = String(toValue || '').trim()
+  if (from && to) {
+    return `${prefix}: ${props.t('filters.between')} ${from} ${props.t('filters.rangeAnd')} ${to}`
+  }
+  if (from) return `${prefix}: ${props.t('filters.greaterOrEqual')} ${from}`
+  if (to) return `${prefix}: ${props.t('filters.lessOrEqual')} ${to}`
+  return ''
+}
+
 function getFilterTooltip(col: ISongsAreaColumn): string {
   if (!col.filterActive) return ''
   if (col.filterType === 'text') {
@@ -388,6 +482,13 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
     return prefix ? `${prefix}: ${parts.join(' / ')}` : parts.join(' / ')
   }
   if (col.filterType === 'duration') {
+    if (col.filterOp === 'between') {
+      return formatBetweenTooltip(
+        props.t('filters.filterByDuration'),
+        col.filterDuration,
+        col.filterDurationTo
+      )
+    }
     const op =
       col.filterOp === 'eq'
         ? props.t('filters.equals')
@@ -397,6 +498,13 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
     return `${props.t('filters.filterByDuration')}: ${op} ${col.filterDuration || ''}`
   }
   if (col.filterType === 'bpm') {
+    if (col.filterOp === 'between') {
+      return formatBetweenTooltip(
+        props.t('filters.filterByBpm'),
+        col.filterNumber,
+        col.filterNumberTo
+      )
+    }
     const op =
       col.filterOp === 'eq'
         ? props.t('filters.equals')
@@ -406,6 +514,13 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
     return `${props.t('filters.filterByBpm')}: ${op} ${col.filterNumber || ''}`
   }
   if (col.filterType === 'number') {
+    if (col.filterOp === 'between') {
+      return formatBetweenTooltip(
+        props.t(`filters.filterBy.${col.key}`),
+        col.filterNumber,
+        col.filterNumberTo
+      )
+    }
     const op =
       col.filterOp === 'eq'
         ? props.t('filters.equals')
@@ -414,11 +529,26 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
           : props.t('filters.lessOrEqual')
     return `${props.t(`filters.filterBy.${col.key}`)}: ${op} ${col.filterNumber || ''}`
   }
+  if (col.filterType === 'date') {
+    if (col.filterOp === 'between') {
+      return formatBetweenTooltip(props.t('filters.filterByDate'), col.filterDate, col.filterDateTo)
+    }
+    const op =
+      col.filterOp === 'eq'
+        ? props.t('filters.equals')
+        : col.filterOp === 'gte'
+          ? props.t('filters.greaterOrEqual')
+          : props.t('filters.lessOrEqual')
+    return `${props.t('filters.filterByDate')}: ${op} ${col.filterDate || ''}`
+  }
   return ''
 }
 
 function resolveFilterDialogType(col: ISongsAreaColumn): FilterDialogType {
-  return col.filterType === 'duration' || col.filterType === 'bpm' || col.filterType === 'number'
+  return col.filterType === 'duration' ||
+    col.filterType === 'bpm' ||
+    col.filterType === 'number' ||
+    col.filterType === 'date'
     ? col.filterType
     : 'text'
 }
@@ -560,7 +690,11 @@ const handleIndexActionClick = () => {
           :init-exclude-text="tempExcludeText"
           :init-op="tempOp"
           :init-duration="tempDuration"
+          :init-duration-to="tempDurationTo"
           :init-number="tempNumber"
+          :init-number-to="tempNumberTo"
+          :init-date="tempDate"
+          :init-date-to="tempDateTo"
           :number-title="resolveNumberFilterTitle(col)"
           :number-placeholder="resolveNumberFilterPlaceholder(col)"
           :show-curated-only="col.key === 'artist'"
@@ -574,9 +708,15 @@ const handleIndexActionClick = () => {
               } else if (payload.type === 'duration') {
                 tempOp = payload.op
                 tempDuration = payload.duration
+                tempDurationTo = payload.durationTo || ''
               } else if (payload.type === 'bpm' || payload.type === 'number') {
                 tempOp = payload.op
                 tempNumber = payload.value
+                tempNumberTo = payload.valueTo || ''
+              } else if (payload.type === 'date') {
+                tempOp = payload.op
+                tempDate = payload.date
+                tempDateTo = payload.dateTo || ''
               }
               applyFilterConfirm(col)
             }

@@ -3,9 +3,9 @@ import type { ISongInfo } from 'src/types/globals'
 
 const pad2 = (value: number): string => (value < 10 ? `0${value}` : String(value))
 
-export function formatDeletedAtMs(value?: number | null): string {
+export function formatTimestampMs(value?: number | null): string {
   const ts = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(ts)) return ''
+  if (!Number.isFinite(ts) || ts <= 0) return ''
   const date = new Date(ts)
   if (!Number.isFinite(date.getTime())) return ''
   const year = date.getFullYear()
@@ -15,6 +15,10 @@ export function formatDeletedAtMs(value?: number | null): string {
   const minute = pad2(date.getMinutes())
   const second = pad2(date.getSeconds())
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+}
+
+export function formatDeletedAtMs(value?: number | null): string {
+  return formatTimestampMs(value)
 }
 
 function getRecycleBinSourceLabel(sourceType?: string | null): string {

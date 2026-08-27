@@ -32,6 +32,7 @@ import {
   discardIncompatibleSongStructure,
   preserveBestAvailableSongStructure
 } from './songStructureCachePolicy'
+import { preserveCachedAddedAtMs } from '../../shared/songAddedAt'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -228,6 +229,17 @@ const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo 
   preserveCachedGridAnalysisFields(target, cachedInfo)
   preserveCachedEnergyAnalysisFields(target, cachedInfo)
   preserveBestAvailableSongStructure(target, cachedInfo)
+}
+
+const preserveCachedUserListFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
+  const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(cachedInfo?.playlistTrackNumber)
+  if (
+    normalizePlaylistTrackNumber(target.playlistTrackNumber) === undefined &&
+    cachedPlaylistTrackNumber !== undefined
+  ) {
+    target.playlistTrackNumber = cachedPlaylistTrackNumber
+  }
+  preserveCachedAddedAtMs(target, cachedInfo)
 }
 
 export const scheduleSongListPostScanTasks = async (
@@ -440,15 +452,7 @@ export async function scanSongList(
           if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
             nextInfo.analysisOnly = true
           }
-          const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(
-            cached.info.playlistTrackNumber
-          )
-          if (
-            normalizePlaylistTrackNumber(nextInfo.playlistTrackNumber) === undefined &&
-            cachedPlaylistTrackNumber !== undefined
-          ) {
-            nextInfo.playlistTrackNumber = cachedPlaylistTrackNumber
-          }
+          preserveCachedUserListFields(nextInfo, cached.info)
         }
         newEntriesMap.set(st.file, {
           size: st.size,
@@ -473,13 +477,7 @@ export async function scanSongList(
       if (cachedStatMatches) {
         preserveCachedAnalysisFields(info, cachedInfo)
       }
-      const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(cachedInfo.playlistTrackNumber)
-      if (
-        normalizePlaylistTrackNumber(info.playlistTrackNumber) === undefined &&
-        cachedPlaylistTrackNumber !== undefined
-      ) {
-        info.playlistTrackNumber = cachedPlaylistTrackNumber
-      }
+      preserveCachedUserListFields(info, cachedInfo)
     }
     if (cacheRoot) {
       const ensureResult = ensurePlaylistTrackNumbers(verifiedSongs, cacheRoot)
@@ -654,13 +652,7 @@ export async function scanSongList(
     if (cachedStatMatches) {
       preserveCachedAnalysisFields(info, cachedInfo)
     }
-    const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(cachedInfo.playlistTrackNumber)
-    if (
-      normalizePlaylistTrackNumber(info.playlistTrackNumber) === undefined &&
-      cachedPlaylistTrackNumber !== undefined
-    ) {
-      info.playlistTrackNumber = cachedPlaylistTrackNumber
-    }
+    preserveCachedUserListFields(info, cachedInfo)
   }
 
   // Windows 下 WAV：对缓存与新解析的结果做一次统一修正，避免列表残留 '0!0!0!' 或含 \x00 的值

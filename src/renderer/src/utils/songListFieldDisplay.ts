@@ -1,7 +1,11 @@
 import type { ISongInfo } from 'src/types/globals'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import { summarizeSongBeatGridV2Bpm } from '@shared/songBeatGridMapV2'
-import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
+import {
+  formatDeletedAtMs,
+  formatTimestampMs,
+  getOriginalPlaylistDisplay
+} from '@renderer/utils/recycleBinDisplay'
 import { t } from '@renderer/utils/translate'
 
 export type SongListFieldDisplayOptions = {
@@ -36,6 +40,9 @@ export const getSongListFieldDisplayValue = (
   }
   if (colKey === 'deletedAtMs') {
     return formatDeletedAtMs(song.deletedAtMs)
+  }
+  if (colKey === 'addedAtMs') {
+    return formatTimestampMs(song.addedAtMs)
   }
   if (colKey === 'originalPlaylistPath') {
     return getOriginalPlaylistDisplay(song)

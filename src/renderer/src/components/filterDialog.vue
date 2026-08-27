@@ -6,16 +6,23 @@ import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
+import DateTimePicker from '@renderer/components/DateTimePicker.vue'
+import { normalizeFilterDate, resolveFilterDateBounds } from '@shared/songAddedAt'
 
-type Op = 'eq' | 'gte' | 'lte'
+type CompareOp = 'eq' | 'gte' | 'lte'
+type Op = CompareOp | 'between'
 
 const props = defineProps<{
-  type: 'text' | 'duration' | 'bpm' | 'number'
+  type: 'text' | 'duration' | 'bpm' | 'number' | 'date'
   initText?: string
   initExcludeText?: string
   initOp?: Op
   initDuration?: string
+  initDurationTo?: string
   initNumber?: string
+  initNumberTo?: string
+  initDate?: string
+  initDateTo?: string
   numberTitle?: string
   numberPlaceholder?: string
   showCuratedOnly?: boolean
@@ -27,8 +34,9 @@ const emits = defineEmits<{
     e: 'confirm',
     payload:
       | { type: 'text'; text: string; excludeText: string; curatedOnly: boolean }
-      | { type: 'duration'; op: Op; duration: string }
-      | { type: 'bpm' | 'number'; op: Op; value: string }
+      | { type: 'duration'; op: Op; duration: string; durationTo?: string }
+      | { type: 'bpm' | 'number'; op: Op; value: string; valueTo?: string }
+      | { type: 'date'; op: Op; date: string; dateTo?: string }
   ): void
   (e: 'cancel'): void
   (e: 'clear'): void
@@ -39,8 +47,12 @@ const uuid = uuidV4()
 const text = ref(props.initText || '')
 const excludeText = ref(props.initExcludeText || '')
 const op = ref<Op>(props.initOp || 'gte')
-const duration = ref(props.initDuration || '00:00')
+const duration = ref(props.initDuration || (props.initOp === 'between' ? '' : '00:00'))
+const durationTo = ref(props.initDurationTo || '')
 const numberValue = ref(props.initNumber || '')
+const numberValueTo = ref(props.initNumberTo || '')
+const dateValue = ref(props.initDate || '')
+const dateValueTo = ref(props.initDateTo || '')
 const curatedOnly = ref(props.initCuratedOnly || false)
 
 watch(
@@ -49,7 +61,11 @@ watch(
     props.initExcludeText,
     props.initOp,
     props.initDuration,
+    props.initDurationTo,
     props.initNumber,
+    props.initNumberTo,
+    props.initDate,
+    props.initDateTo,
     props.initCuratedOnly,
     props.type
   ],
@@ -57,8 +73,12 @@ watch(
     text.value = props.initText || ''
     excludeText.value = props.initExcludeText || ''
     op.value = props.initOp || 'gte'
-    duration.value = props.initDuration || '00:00'
+    duration.value = props.initDuration || (props.initOp === 'between' ? '' : '00:00')
+    durationTo.value = props.initDurationTo || ''
     numberValue.value = props.initNumber || ''
+    numberValueTo.value = props.initNumberTo || ''
+    dateValue.value = props.initDate || ''
+    dateValueTo.value = props.initDateTo || ''
     curatedOnly.value = props.initCuratedOnly || false
   }
 )
@@ -87,7 +107,67 @@ function normalizeNumberInput(input: string): string {
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
+function durationToSeconds(mmss: string): number {
+  const normalized = normalizeMmSs(mmss)
+  const parts = normalized.split(':')
+  return Number(parts[0]) * 60 + Number(parts[1])
+}
+
+function orderDurationRange(
+  fromValue: string,
+  toValue: string
+): { from: string; to: string } | undefined {
+  if (!String(toValue || '').trim()) return undefined
+  const from = normalizeMmSs(fromValue)
+  const to = normalizeMmSs(toValue)
+  if (durationToSeconds(from) <= durationToSeconds(to)) return { from, to }
+  return { from: to, to: from }
+}
+
+function orderNumberRange(
+  fromValue: string,
+  toValue: string
+): { from: string; to: string } | undefined {
+  const from = normalizeNumberInput(fromValue)
+  const to = normalizeNumberInput(toValue)
+  if (!from || !to) return undefined
+  if (Number(from) <= Number(to)) return { from, to }
+  return { from: to, to: from }
+}
+
+function resolveDurationBounds(fromValue: string, toValue: string): { from: string; to: string } {
+  const from = String(fromValue || '').trim() ? normalizeMmSs(fromValue) : ''
+  const to = String(toValue || '').trim() ? normalizeMmSs(toValue) : ''
+  if (from && to) {
+    const ordered = orderDurationRange(from, to)
+    return ordered || { from, to }
+  }
+  return { from, to }
+}
+
+function resolveNumberBounds(fromValue: string, toValue: string): { from: string; to: string } {
+  const from = normalizeNumberInput(fromValue)
+  const to = normalizeNumberInput(toValue)
+  if (from && to) {
+    const ordered = orderNumberRange(from, to)
+    return ordered || { from, to }
+  }
+  return { from, to }
+}
+
 const handleConfirm = () => {
+  const dateBounds =
+    props.type === 'date' && op.value === 'between'
+      ? resolveFilterDateBounds(dateValue.value, dateValueTo.value)
+      : undefined
+  const durationBounds =
+    props.type === 'duration' && op.value === 'between'
+      ? resolveDurationBounds(duration.value, durationTo.value)
+      : undefined
+  const numberBounds =
+    (props.type === 'bpm' || props.type === 'number') && op.value === 'between'
+      ? resolveNumberBounds(numberValue.value, numberValueTo.value)
+      : undefined
   const payload =
     props.type === 'text'
       ? ({
@@ -97,12 +177,46 @@ const handleConfirm = () => {
           curatedOnly: curatedOnly.value
         } as const)
       : props.type === 'duration'
-        ? ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
-        : ({
-            type: props.type,
-            op: op.value,
-            value: normalizeNumberInput(numberValue.value)
-          } as const)
+        ? op.value === 'between'
+          ? ({
+              type: 'duration',
+              op: 'between',
+              duration: durationBounds?.from || '',
+              durationTo: durationBounds?.to || ''
+            } as const)
+          : ({
+              type: 'duration',
+              op: op.value,
+              duration: normalizeMmSs(duration.value),
+              durationTo: ''
+            } as const)
+        : props.type === 'date'
+          ? op.value === 'between'
+            ? ({
+                type: 'date',
+                op: 'between',
+                date: dateBounds?.from || '',
+                dateTo: dateBounds?.to || ''
+              } as const)
+            : ({
+                type: 'date',
+                op: op.value,
+                date: normalizeFilterDate(dateValue.value) || '',
+                dateTo: ''
+              } as const)
+          : op.value === 'between'
+            ? ({
+                type: props.type,
+                op: 'between',
+                value: numberBounds?.from || '',
+                valueTo: numberBounds?.to || ''
+              } as const)
+            : ({
+                type: props.type,
+                op: op.value,
+                value: normalizeNumberInput(numberValue.value),
+                valueTo: ''
+              } as const)
   closeWithAnimation(() => emits('confirm', payload))
 }
 const handleCancel = () => closeWithAnimation(() => emits('cancel'))
@@ -139,7 +253,12 @@ onUnmounted(() => {
     <div
       v-dialog-drag="'.dialog-title'"
       class="inner"
-      style="width: 420px; min-height: 240px; display: flex; flex-direction: column"
+      :style="{
+        width: '420px',
+        minHeight: op === 'between' ? '340px' : '240px',
+        display: 'flex',
+        flexDirection: 'column'
+      }"
     >
       <div class="dialog-title dialog-header">
         <span>
@@ -150,7 +269,9 @@ onUnmounted(() => {
                 ? t('filters.filterByDuration')
                 : props.type === 'bpm'
                   ? t('filters.filterByBpm')
-                  : props.numberTitle || t('filters.filterByNumber')
+                  : props.type === 'date'
+                    ? t('filters.filterByDate')
+                    : props.numberTitle || t('filters.filterByNumber')
           }}
         </span>
       </div>
@@ -202,21 +323,82 @@ onUnmounted(() => {
               ><input v-model="op" type="radio" value="eq" /><span class="dot"></span
               >{{ t('filters.equals') }}</label
             >
+            <label class="radio"
+              ><input v-model="op" type="radio" value="between" /><span class="dot"></span
+              >{{ t('filters.between') }}</label
+            >
           </div>
-          <input
-            v-model="duration"
-            class="filter-input"
-            type="text"
-            :placeholder="t('filters.durationPlaceholder')"
-            style="width: 100%"
-            @blur="duration = normalizeMmSs(duration)"
-            @keydown.enter.prevent.stop="handleConfirm"
-          />
-          <div style="margin-top: 8px; display: flex; gap: 8px">
-            <div class="tag" @click="duration = '01:30'">01:30</div>
-            <div class="tag" @click="duration = '03:00'">03:00</div>
-            <div class="tag" @click="duration = '05:00'">05:00</div>
+          <div v-if="op === 'between'" class="filter-range">
+            <div class="filter-field">
+              <div class="filter-label">{{ t('filters.rangeFrom') }}</div>
+              <input
+                v-model="duration"
+                class="filter-input"
+                type="text"
+                :placeholder="t('filters.durationPlaceholder')"
+                @blur="duration = duration.trim() ? normalizeMmSs(duration) : ''"
+                @keydown.enter.prevent.stop="handleConfirm"
+              />
+            </div>
+            <div class="filter-field">
+              <div class="filter-label">{{ t('filters.rangeTo') }}</div>
+              <input
+                v-model="durationTo"
+                class="filter-input"
+                type="text"
+                :placeholder="t('filters.durationPlaceholder')"
+                @blur="durationTo = durationTo.trim() ? normalizeMmSs(durationTo) : ''"
+                @keydown.enter.prevent.stop="handleConfirm"
+              />
+            </div>
           </div>
+          <template v-else>
+            <input
+              v-model="duration"
+              class="filter-input"
+              type="text"
+              :placeholder="t('filters.durationPlaceholder')"
+              style="width: 100%"
+              @blur="duration = normalizeMmSs(duration)"
+              @keydown.enter.prevent.stop="handleConfirm"
+            />
+            <div style="margin-top: 8px; display: flex; gap: 8px">
+              <div class="tag" @click="duration = '01:30'">01:30</div>
+              <div class="tag" @click="duration = '03:00'">03:00</div>
+              <div class="tag" @click="duration = '05:00'">05:00</div>
+            </div>
+          </template>
+        </template>
+        <template v-else-if="props.type === 'date'">
+          <div class="radio-group">
+            <label class="radio"
+              ><input v-model="op" type="radio" value="gte" /><span class="dot"></span
+              >{{ t('filters.greaterOrEqual') }}</label
+            >
+            <label class="radio"
+              ><input v-model="op" type="radio" value="lte" /><span class="dot"></span
+              >{{ t('filters.lessOrEqual') }}</label
+            >
+            <label class="radio"
+              ><input v-model="op" type="radio" value="eq" /><span class="dot"></span
+              >{{ t('filters.equals') }}</label
+            >
+            <label class="radio"
+              ><input v-model="op" type="radio" value="between" /><span class="dot"></span
+              >{{ t('filters.between') }}</label
+            >
+          </div>
+          <div v-if="op === 'between'" class="filter-range">
+            <div class="filter-field">
+              <div class="filter-label">{{ t('filters.rangeFrom') }}</div>
+              <DateTimePicker v-model="dateValue" />
+            </div>
+            <div class="filter-field">
+              <div class="filter-label">{{ t('filters.rangeTo') }}</div>
+              <DateTimePicker v-model="dateValueTo" />
+            </div>
+          </div>
+          <DateTimePicker v-else v-model="dateValue" />
         </template>
         <template v-else>
           <div class="radio-group">
@@ -232,8 +414,39 @@ onUnmounted(() => {
               ><input v-model="op" type="radio" value="eq" /><span class="dot"></span
               >{{ t('filters.equals') }}</label
             >
+            <label class="radio"
+              ><input v-model="op" type="radio" value="between" /><span class="dot"></span
+              >{{ t('filters.between') }}</label
+            >
+          </div>
+          <div v-if="op === 'between'" class="filter-range">
+            <div class="filter-field">
+              <div class="filter-label">{{ t('filters.rangeFrom') }}</div>
+              <input
+                v-model="numberValue"
+                class="filter-input"
+                type="text"
+                inputmode="decimal"
+                :placeholder="props.numberPlaceholder || t('filters.numberPlaceholder')"
+                @blur="numberValue = normalizeNumberInput(numberValue)"
+                @keydown.enter.prevent.stop="handleConfirm"
+              />
+            </div>
+            <div class="filter-field">
+              <div class="filter-label">{{ t('filters.rangeTo') }}</div>
+              <input
+                v-model="numberValueTo"
+                class="filter-input"
+                type="text"
+                inputmode="decimal"
+                :placeholder="props.numberPlaceholder || t('filters.numberPlaceholder')"
+                @blur="numberValueTo = normalizeNumberInput(numberValueTo)"
+                @keydown.enter.prevent.stop="handleConfirm"
+              />
+            </div>
           </div>
           <input
+            v-else
             v-model="numberValue"
             class="filter-input"
             type="text"
@@ -279,14 +492,24 @@ onUnmounted(() => {
     box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
   }
 }
+
 .filter-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+
+  .filter-input {
+    width: 100%;
+  }
 }
 .filter-label {
   font-size: 12px;
   color: var(--text-weak);
+}
+.filter-range {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .checkbox-text {
   font-size: 13px;
@@ -295,7 +518,8 @@ onUnmounted(() => {
 }
 .radio-group {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px 16px;
   margin-bottom: 10px;
   color: var(--text);
 }

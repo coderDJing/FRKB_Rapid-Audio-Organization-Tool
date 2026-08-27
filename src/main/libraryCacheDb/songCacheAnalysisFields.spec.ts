@@ -47,6 +47,7 @@ const createSongInfo = (): ISongInfo => {
       sections: []
     },
     playlistTrackNumber: 7,
+    addedAtMs: 1700000000000,
     hotCues: [{ slot: 1, sec: 32 }],
     memoryCues: [{ sec: 64, order: 1 }],
     mixOrder: 5
@@ -73,6 +74,7 @@ describe('stripSongCoreAnalysisFields', () => {
       genre: 'Techno',
       label: 'Label',
       playlistTrackNumber: 7,
+      addedAtMs: 1700000000000,
       hotCues: [{ slot: 1, sec: 32 }],
       memoryCues: [{ sec: 64, order: 1 }],
       mixOrder: 5

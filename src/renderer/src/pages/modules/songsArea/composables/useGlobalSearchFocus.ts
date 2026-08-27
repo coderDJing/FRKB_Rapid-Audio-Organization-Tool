@@ -74,7 +74,11 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
         Boolean(String(col.filterExcludeValue || '').trim()) ||
         Boolean(col.filterOp) ||
         Boolean(String(col.filterDuration || '').trim()) ||
-        Boolean(String(col.filterNumber || '').trim())
+        Boolean(String(col.filterDurationTo || '').trim()) ||
+        Boolean(String(col.filterNumber || '').trim()) ||
+        Boolean(String(col.filterNumberTo || '').trim()) ||
+        Boolean(String(col.filterDate || '').trim()) ||
+        Boolean(String(col.filterDateTo || '').trim())
     )
     if (!hasActiveFilter) return false
 
@@ -85,7 +89,11 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
       filterExcludeValue: undefined,
       filterOp: undefined,
       filterDuration: undefined,
-      filterNumber: undefined
+      filterDurationTo: undefined,
+      filterNumber: undefined,
+      filterNumberTo: undefined,
+      filterDate: undefined,
+      filterDateTo: undefined
     }))
     applyFiltersAndSorting()
     return true

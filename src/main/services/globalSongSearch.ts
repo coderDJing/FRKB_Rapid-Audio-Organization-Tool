@@ -9,6 +9,7 @@ import { log } from '../log'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 import { normalizePlaylistTrackNumber } from './playlistTrackNumbers'
+import { normalizeAddedAtMs } from '../../shared/songAddedAt'
 import { verifyPlaylistCacheOffMainThread } from './songListScanWorker'
 import { normalizeSongEnergyScore } from '../../shared/songEnergy'
 import {
@@ -358,6 +359,7 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     energyAlgorithmVersion,
     songStructure,
     playlistTrackNumber,
+    addedAtMs: normalizeAddedAtMs(rawInfo?.addedAtMs),
     hotCues: normalizeSongHotCues(rawInfo?.hotCues),
     memoryCues: normalizeSongMemoryCues(rawInfo?.memoryCues),
     analysisOnly: rawInfo?.analysisOnly === true ? true : undefined,

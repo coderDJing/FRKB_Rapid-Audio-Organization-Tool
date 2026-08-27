@@ -1,6 +1,7 @@
 import type { ISongInfo } from '../../../../types/globals'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
+import { normalizeAddedAtMs } from '@shared/songAddedAt'
 import {
   normalizeSongBeatGridMapV2,
   projectSongBeatGridMapV2ToFixedGrid,
@@ -14,6 +15,8 @@ type MixtapeSnapshotSongRaw = {
   originPlaylistUuid?: string | null
   originPathSnapshot?: string | null
   infoJson?: string | null
+  createdAtMs?: number | string | null
+  created_at_ms?: number | string | null
   canonicalGrid?: {
     beatGridMap?: SongBeatGridMapV2 | null
     timeBasisOffsetMs?: number
@@ -96,6 +99,7 @@ export const mapMixtapeSnapshotToSongInfo = (
         : undefined,
     mixOrder: Number(raw?.mixOrder) || fallbackIndex + 1,
     mixtapeItemId: raw?.id ? String(raw.id) : undefined,
+    addedAtMs: normalizeAddedAtMs(raw?.createdAtMs ?? raw?.created_at_ms),
     originalPlaylistPath: originByUuid || originPathSnapshot
   }
 }

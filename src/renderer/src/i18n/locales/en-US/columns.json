@@ -18,6 +18,7 @@
     "index": "Index",
     "mixOrder": "Recording order",
     "deletedAt": "Deleted At",
+    "addedAt": "Date Added",
     "originalPlaylist": "Original Playlist",
     "mixSource": "Source path"
   }

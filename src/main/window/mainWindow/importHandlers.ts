@@ -24,6 +24,7 @@ import {
   appendSongListTrackNumbers,
   isSupportedPlaylistTrackNumberListRoot
 } from '../../services/playlistTrackNumbers'
+import { stampPlaylistSongsAddedAt } from '../../services/playlistAddedAt'
 import { updateSetItemFilePathReferences } from '../../setListDb'
 import { isLibraryMergeMutationLocked } from '../../services/libraryMerge/runtime'
 import { beginImportSongsActivity } from '../../services/libraryMerge/operationActivity'
@@ -253,6 +254,10 @@ export function registerImportHandlers(
           appendedFilePaths: importedPaths
         })
       }
+      await stampPlaylistSongsAddedAt({
+        listRoot: targetSongListRoot,
+        filePaths: importedPaths
+      })
 
       markGlobalSongSearchDirty('importSongs', { songListUUID: formData.songListUUID })
       getWindow()?.webContents.send(
