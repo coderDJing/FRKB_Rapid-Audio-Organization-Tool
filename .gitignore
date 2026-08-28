@@ -51,6 +51,8 @@ vendor/demucs/bootstrap/*
 vendor/r3-stretch/*
 !vendor/r3-stretch/win32-x64/
 !vendor/r3-stretch/win32-x64/*.dll
+!vendor/r3-stretch/darwin-universal/
+!vendor/r3-stretch/darwin-universal/*.dylib
 
 .codex_tmp
 .playwright-mcp/

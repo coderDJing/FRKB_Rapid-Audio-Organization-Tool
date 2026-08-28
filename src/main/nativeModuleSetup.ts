@@ -1,12 +1,12 @@
 /**
- * 在加载原生模块之前设置 FFmpeg DLL 搜索路径（仅 Windows）
+ * 在加载原生模块之前设置原生媒体库搜索路径
  * 必须在任何 rust_package 导入之前执行
  *
  * Windows 的 LoadLibrary 搜索顺序包含 PATH 环境变量，
  * 所以把 DLL 目录加到 PATH 即可让 .node 找到 FFmpeg DLL。
  */
 
-if (process.platform === 'win32') {
+if (process.platform === 'win32' || process.platform === 'darwin') {
   const path = require('path') as typeof import('path')
   const fs = require('fs') as typeof import('fs')
 
@@ -16,12 +16,14 @@ if (process.platform === 'win32') {
       return path.dirname(configuredLibrary)
     }
 
+    const platformDir = process.platform === 'darwin' ? 'darwin-universal' : 'win32-x64'
+    const libraryName = process.platform === 'darwin' ? 'librubberband.3.dylib' : 'rubberband-2.dll'
     const candidates = [
-      path.join(process.cwd(), 'vendor', 'r3-stretch', 'win32-x64'),
-      path.join(path.dirname(process.execPath), 'resources', 'r3-stretch', 'win32-x64')
+      path.join(process.cwd(), 'vendor', 'r3-stretch', platformDir),
+      path.join(path.dirname(process.execPath), 'resources', 'r3-stretch', platformDir)
     ]
     for (const directory of candidates) {
-      const libraryPath = path.join(directory, 'rubberband-2.dll')
+      const libraryPath = path.join(directory, libraryName)
       if (!fs.existsSync(libraryPath)) continue
       process.env.FRKB_R3_STRETCH_LIBRARY = libraryPath
       return directory

@@ -119,6 +119,8 @@ mac:
       to: demucs/models
     - from: vendor/demucs/bootstrap
       to: demucs/bootstrap
+    - from: vendor/r3-stretch/darwin-universal
+      to: r3-stretch/darwin-universal
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
