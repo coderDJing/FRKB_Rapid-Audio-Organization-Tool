@@ -20,6 +20,9 @@ if (process.platform === 'win32' || process.platform === 'darwin') {
     const libraryName = process.platform === 'darwin' ? 'librubberband.3.dylib' : 'rubberband-2.dll'
     const candidates = [
       path.join(process.cwd(), 'vendor', 'r3-stretch', platformDir),
+      ...(process.platform === 'darwin' && process.resourcesPath
+        ? [path.join(process.resourcesPath, 'r3-stretch', platformDir)]
+        : []),
       path.join(path.dirname(process.execPath), 'resources', 'r3-stretch', platformDir)
     ]
     for (const directory of candidates) {
