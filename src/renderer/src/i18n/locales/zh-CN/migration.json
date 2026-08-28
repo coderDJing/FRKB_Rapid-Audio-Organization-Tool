@@ -1,15 +1,15 @@
 {
   "migration": {
-    "mergeLibrary": "合并 FRKB 库",
+    "mergeLibrary": "合并音乐库",
     "mergeCuratedLibrary": "合并精选库",
-    "moveLibrary": "移动 FRKB 库",
+    "moveLibrary": "移动音乐库",
     "mergePreparing": "正在准备…",
     "mergeFiles": "个文件",
     "mergeLockedHint": "合并期间当前库已锁定，请勿关闭 FRKB。",
     "mergeCuratedLockedHint": "合并期间当前库已锁定，请勿关闭 FRKB。",
     "mergeDialog": {
-      "title": "合并 FRKB 库",
-      "intro": "把另一个 FRKB 库合并到当前库。",
+      "title": "合并音乐库",
+      "intro": "把另一份音乐库合并到当前库。",
       "contentsTitle": "会合并什么",
       "contents": "歌单、曲目、分析/指纹、SET、Mixtape 及相关资源。不合并回收站。",
       "safetyTitle": "合并前与合并中",
@@ -17,21 +17,21 @@
       "playlistTitle": "同名歌单",
       "playlist": "两边都保留；来源同名歌单会加 “(from …)” 后缀。",
       "startSetup": "开始设置",
-      "sourceTitle": "选择来源库",
+      "sourceTitle": "选择来源音乐库",
       "sourceInstruction": "请选择来源库里的 FRKB.database.frkbdb。",
-      "selectSource": "选择来源库",
+      "selectSource": "选择来源音乐库",
       "sourceSelected": "已选择",
-      "sourceRequired": "请先选择来源库。",
-      "checkingSource": "正在校验来源库结构、数据库与磁盘空间…",
+      "sourceRequired": "请先选择来源音乐库。",
+      "checkingSource": "正在校验来源库结构与磁盘空间…",
       "sourceCheckPassed": "检查通过。",
       "sourceIssues": {
         "invalid-selection": {
-          "title": "请选择 FRKB 数据库文件",
+          "title": "请选择音乐库文件",
           "description": "请选择来源库根目录中的 FRKB.database.frkbdb。"
         },
         "same-library": {
           "title": "不能合并到自己",
-          "description": "请选择另一个 FRKB 库。"
+          "description": "请选择另一份音乐库。"
         },
         "nested-library": {
           "title": "两个库位置不能互相包含",
@@ -47,7 +47,7 @@
         },
         "invalid-library": {
           "title": "来源库无法安全合并",
-          "description": "请确认是完整、未手动改动的 FRKB 库，或先用 FRKB 打开检查。"
+          "description": "请确认是完整、未手动改动的音乐库，或先用 FRKB 打开检查。"
         },
         "empty-curated-library": {
           "title": "来源精选库为空",
@@ -107,7 +107,7 @@
     },
     "mergeCuratedDialog": {
       "title": "合并精选库",
-      "intro": "把另一个 FRKB 库的精选库导入到当前库。",
+      "intro": "把另一份音乐库的精选库导入到当前库。",
       "contentsTitle": "会导入什么",
       "contents": "只导入精选库下的文件夹、歌单、音频及曲目分析/指纹。不导入筛选库、SET、Mixtape、录音库、回收站和精选艺人。",
       "safetyTitle": "合并前与合并中",
@@ -115,12 +115,12 @@
       "playlistTitle": "同名歌单",
       "playlist": "同名文件夹会合并；同名歌单可在设置里选择保留两个或并入现有歌单。",
       "startSetup": "开始设置",
-      "sourceTitle": "选择来源库",
+      "sourceTitle": "选择来源音乐库",
       "sourceInstruction": "请选择来源库里的 FRKB.database.frkbdb。",
-      "selectSource": "选择来源库",
+      "selectSource": "选择来源音乐库",
       "sourceSelected": "已选择",
-      "sourceRequired": "请先选择来源库。",
-      "checkingSource": "正在校验来源精选库结构、数据库与磁盘空间…",
+      "sourceRequired": "请先选择来源音乐库。",
+      "checkingSource": "正在校验来源精选库结构与磁盘空间…",
       "sourceCheckPassed": "检查通过。",
       "duplicatePlaylistTitle": "同名歌单",
       "duplicateRenameMode": "保留两个",
@@ -129,12 +129,12 @@
       "duplicateMergeIntoDescription": "曲目写入当前同名歌单；文件名冲突时再加后缀。",
       "sourceIssues": {
         "invalid-selection": {
-          "title": "请选择 FRKB 数据库文件",
+          "title": "请选择音乐库文件",
           "description": "请选择来源库根目录中的 FRKB.database.frkbdb。"
         },
         "same-library": {
           "title": "不能合并到自己",
-          "description": "请选择另一个 FRKB 库。"
+          "description": "请选择另一份音乐库。"
         },
         "nested-library": {
           "title": "两个库位置不能互相包含",
@@ -150,7 +150,7 @@
         },
         "invalid-library": {
           "title": "来源库无法安全合并",
-          "description": "请确认是完整、未手动改动的 FRKB 库，或先用 FRKB 打开检查。"
+          "description": "请确认是完整、未手动改动的音乐库，或先用 FRKB 打开检查。"
         },
         "empty-curated-library": {
           "title": "来源精选库为空",
@@ -245,8 +245,8 @@
       "failed": "未提交不完整内容。"
     },
     "moveDialog": {
-      "title": "移动 FRKB 库",
-      "confirmLead": "把当前 FRKB 库整体搬到选定的新位置，完成后再删除原来的目录。",
+      "title": "移动音乐库",
+      "confirmLead": "把当前音乐库整体搬到选定的新位置，完成后再删除原来的目录。",
       "currentPath": "当前路径：{path}",
       "newPath": "新路径：{path}",
       "sizeSummary": "占用体积：{size}（{count} 个文件）",
@@ -255,34 +255,34 @@
       "confirmAction": "开始移动",
       "checking": "正在检查目标位置…",
       "busyBlockingTitle": "当前有进行中的任务",
-      "busyBlockingLead": "请先完成下列操作后再移动 FRKB 库：",
+      "busyBlockingLead": "请先完成下列操作后再移动音乐库：",
       "issues": {
         "MERGE_PENDING": "请先完成或恢复当前的合并库任务。",
         "LIBRARY_BUSY": "当前仍有进行中的任务，请等待结束后再移动。",
-        "RELOCATE_ACTIVE": "正在移动 FRKB 库，或还有未完成的移动任务。",
-        "SOURCE_NOT_READY": "当前 FRKB 库尚未打开或不存在。",
+        "RELOCATE_ACTIVE": "正在移动音乐库，或还有未完成的移动任务。",
+        "SOURCE_NOT_READY": "当前音乐库尚未打开或不存在。",
         "PARENT_MISSING": "所选父目录不存在或无法访问。",
         "PARENT_NOT_DIRECTORY": "请选择一个文件夹作为新位置的父目录。",
-        "PARENT_IS_LIBRARY": "所选目录已经是 FRKB 库，不能作为目标父目录。",
-        "PARENT_INSIDE_LIBRARY": "所选目录位于某个 FRKB 库内部，请选择库外的位置。",
+        "PARENT_IS_LIBRARY": "所选目录已经是音乐库，不能作为目标父目录。",
+        "PARENT_INSIDE_LIBRARY": "所选目录位于某个音乐库内部，请选择库外的位置。",
         "DEST_EXISTS": "目标目录已存在，请先处理该文件夹或另选位置。",
-        "NESTED_PATH": "不能把 FRKB 库移动到自己内部。",
-        "SAME_PATH": "新位置与当前 FRKB 库相同。",
+        "NESTED_PATH": "不能把音乐库移动到自己内部。",
+        "SAME_PATH": "新位置与当前音乐库相同。",
         "INSUFFICIENT_SPACE": "目标磁盘剩余空间不足。",
         "SPACE_UNAVAILABLE": "无法检查目标磁盘剩余空间。",
-        "CANCELED": "已取消移动 FRKB 库。",
-        "COPY_FAILED": "复制 FRKB 库失败。",
+        "CANCELED": "已取消移动音乐库。",
+        "COPY_FAILED": "复制音乐库失败。",
         "VERIFY_FAILED": "复制结果校验失败，未删除旧目录。",
-        "DELETE_SOURCE_FAILED": "FRKB 库已改到新位置，但旧目录删除失败，请手动删除。",
-        "JOURNAL_INVALID": "没有可继续的 FRKB 库移动任务。"
+        "DELETE_SOURCE_FAILED": "音乐库已改到新位置，但旧目录删除失败，请手动删除。",
+        "JOURNAL_INVALID": "没有可继续的音乐库移动任务。"
       }
     },
     "movePhase": {
-      "prompt": "检测到未完成的 FRKB 库移动",
-      "abortOnly": "无法继续移动 FRKB 库",
+      "prompt": "检测到未完成的音乐库移动",
+      "abortOnly": "无法继续移动音乐库",
       "preparing": "正在准备…",
-      "copying": "正在复制 FRKB 库…",
-      "renaming": "正在移动 FRKB 库…",
+      "copying": "正在复制音乐库…",
+      "renaming": "正在移动音乐库…",
       "verifying": "正在校验文件…",
       "switching": "正在切换到新位置…",
       "deletingSource": "正在删除旧目录…",
@@ -293,18 +293,18 @@
     },
     "moveHint": {
       "prompt": "上次移动尚未完成。继续将从中断处接着拷贝；放弃会清理不完整的新目录，并继续使用旧位置。",
-      "abortOnly": "旧 FRKB 库已不可访问。放弃后会清理不完整的新目录，然后重新选择 FRKB 库。",
+      "abortOnly": "旧音乐库已不可访问。放弃后会清理不完整的新目录，然后重新选择音乐库。",
       "locked": "移动期间请勿关闭 FRKB。中断后下次启动可以继续或放弃。",
       "sourceCleanupFailed": "请手动删除旧目录：",
-      "enterLibrary": "进入 FRKB 库",
+      "enterLibrary": "进入音乐库",
       "continue": "继续移动",
       "abort": "放弃迁移",
       "retry": "重试"
     },
-    "legacyTitle": "库升级",
+    "legacyTitle": "音乐库升级",
     "legacyInProgress": "检测到上次升级未完成，将重新执行。",
-    "legacyRequired": "检测到旧库，需要升级后继续使用。",
-    "legacyActions": "升级会整理库数据，升级后的库不兼容旧版本 FRKB，请勿在旧版本中打开。若库较大可能耗时较久，请勿强制退出。",
+    "legacyRequired": "检测到旧音乐库，需要升级后继续使用。",
+    "legacyActions": "升级会整理音乐库数据，升级后的音乐库不兼容旧版本 FRKB，请勿在旧版本中打开。若音乐库较大可能耗时较久，请勿强制退出。",
     "legacyConfirm": "开始升级",
     "legacyExit": "退出"
   }

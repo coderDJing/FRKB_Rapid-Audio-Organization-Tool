@@ -21,6 +21,6 @@
     "analysisFailedHint": " (usually corrupted or transfer error)",
     "playlistImported": "Imported to playlist: {count}",
     "fingerprintNotAdded": "Fingerprints not added: {count}",
-    "fingerprintNotAddedHint": " (already in library)"
+    "fingerprintNotAddedHint": " (already in the fingerprint library)"
   }
 }

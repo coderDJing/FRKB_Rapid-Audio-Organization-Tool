@@ -84,10 +84,10 @@ const runMerge = async (
   duplicatePlaylistPolicy: LibraryMergeDuplicatePlaylistPolicy
 ) => {
   if (isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) {
-    throw new LibraryMergeError('TARGET_NOT_READY', '正在移动 FRKB 库，暂时不能合并')
+    throw new LibraryMergeError('TARGET_NOT_READY', '正在移动音乐库，暂时不能合并')
   }
   const targetRoot = getTargetRoot()
-  if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前 FRKB 库尚未打开')
+  if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前音乐库尚未打开')
   const releaseMutationLock = await acquireLibraryMergeMutationLock(mainWindow.instance, {
     cancelCancellableTasks,
     scope
@@ -124,7 +124,12 @@ const runMerge = async (
 const selectSourceRoot = async (): Promise<string | null> => {
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
-    filters: [{ name: 'FRKB 数据库', extensions: ['frkbdb'] }]
+    filters: [
+      {
+        name: store.settingConfig?.language === 'enUS' ? 'Music library' : '音乐库',
+        extensions: ['frkbdb']
+      }
+    ]
   })
   if (result.canceled || !result.filePaths[0]) return null
   const manifestPath = result.filePaths[0]
@@ -174,7 +179,7 @@ export function registerLibraryMergeHandlers(): void {
     activeInspectAbort = abortController
     try {
       const targetRoot = getTargetRoot()
-      if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前 FRKB 库尚未打开')
+      if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前音乐库尚未打开')
       const summary = await inspectLibraryMergeSourceOffMainThread({
         sourceRoot,
         targetRoot,

@@ -142,7 +142,7 @@ export const migrateLibrarySchemaV38ToV39 = async (
   options: { backupPath?: string } = {}
 ): Promise<RekordboxExternalCacheCleanupResult> => {
   const normalizedPath = String(databasePath || '').trim()
-  if (!normalizedPath) throw new Error('数据库路径不能为空')
+  if (!normalizedPath) throw new Error('音乐库路径不能为空')
 
   const Database = require('better-sqlite3') as typeof import('better-sqlite3')
   const db = new Database(normalizedPath, { fileMustExist: true }) as BackupCapableDatabase

@@ -969,7 +969,7 @@ def _build_probe_payload(open_database: bool = True) -> Dict[str, Any]:
         config["trackTotal"] = db.get_content().count()
         return config
     except Exception as exc:
-        message = str(exc).strip() or "打开 Rekordbox 数据库失败。"
+        message = str(exc).strip() or "打开 Rekordbox 本机库失败。"
         lowered = message.lower()
         config["available"] = False
         config["errorCode"] = "REKORDBOX_DB_BUSY" if ("busy" in lowered or "lock" in lowered) else "REKORDBOX_DB_OPEN_FAILED"
@@ -1422,7 +1422,7 @@ def _commit_database(db: Any, error_code: str) -> None:
     try:
         db.commit()
     except Exception as exc:
-        message = str(exc).strip() or "提交 Rekordbox 数据库失败。"
+        message = str(exc).strip() or "写入 Rekordbox 本机库失败。"
         lowered = message.lower()
         if "rekordbox is running" in lowered:
             raise HelperCommandError(

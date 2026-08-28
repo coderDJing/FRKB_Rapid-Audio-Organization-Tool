@@ -29,15 +29,15 @@ const startupMessages: Record<StartupStage, { zhCN: string; enUS: string }> = {
   },
   'recovering-library': {
     zhCN: '正在检查并迁移音乐库数据…',
-    enUS: 'Checking and migrating library data…'
+    enUS: 'Checking and migrating music library data…'
   },
   'preparing-library': {
     zhCN: '正在准备音乐库…',
     enUS: 'Preparing music library…'
   },
   'loading-fingerprints': {
-    zhCN: '正在读取曲库索引…',
-    enUS: 'Loading library index…'
+    zhCN: '正在读取音乐库索引…',
+    enUS: 'Loading music library index…'
   },
   'opening-main-window': {
     zhCN: '正在打开主界面…',

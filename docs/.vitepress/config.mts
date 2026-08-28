@@ -13,7 +13,7 @@ export default defineConfig({
       lang: 'zh-CN',
       title: 'FRKB - 开源音频快速整理工具',
       description:
-        '内容感知去重、波形试听、Mixtape 自动录制、Stem 分轨与 Pioneer U 盘库整合在同一套音频工作流里。'
+        '内容感知去重、波形试听、Mixtape 自动录制、Stem 分轨与 Rekordbox U 盘库整合在同一套音频工作流里。'
     },
     en: {
       label: 'English',
@@ -21,7 +21,7 @@ export default defineConfig({
       link: '/en/',
       title: 'FRKB - Fast Audio Organization Tool',
       description:
-        'Content-aware dedup, waveform preview, Mixtape auto-recording, stem separation, and Pioneer USB libraries in one desktop workflow.'
+        'Content-aware dedup, waveform preview, Mixtape auto-recording, stem separation, and Rekordbox USB libraries in one desktop workflow.'
     }
   },
 

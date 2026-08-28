@@ -271,6 +271,6 @@ export const acquireLibraryMergeMutationLock = async (
 
 export const assertLibraryMergeMutationAllowed = (): void => {
   if (isLibraryMergeMutationLocked()) {
-    throw new LibraryMergeError('LIBRARY_MERGE_IN_PROGRESS', '正在合并 FRKB 库，暂时不能修改当前库')
+    throw new LibraryMergeError('LIBRARY_MERGE_IN_PROGRESS', '正在合并音乐库，暂时不能修改当前库')
   }
 }

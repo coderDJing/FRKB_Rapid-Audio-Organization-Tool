@@ -9,7 +9,7 @@
     "exportMode": "导出模式",
     "modeCopy": "复制",
     "modeMove": "移动",
-    "moveModeHint": "选择“移动”后，成功导出时源文件会被移出当前 FRKB 库。",
+    "moveModeHint": "选择“移动”后，成功导出时源文件会被移出当前音乐库。",
     "exportDirName": "导出子目录名",
     "xmlFileName": "XML 文件名",
     "xmlPlaylistName": "XML 播放列表名",
@@ -28,7 +28,7 @@
     "failedReason": "失败原因：{message}",
     "rollbackDone": "已尽量完成回滚。",
     "rollbackBestEffort": "回滚未完全成功，请检查导出目录与日志。",
-    "failureLibraryUnchanged": "FRKB 库未被程序逻辑修改。",
+    "failureLibraryUnchanged": "音乐库未被程序逻辑修改。",
     "failureLogHint": "可通过标题栏菜单打开日志继续排查：{path}",
     "unsupportedSource": "当前来源暂不支持导出到 Rekordbox XML。",
     "noTracksToExport": "没有可导出的曲目。"

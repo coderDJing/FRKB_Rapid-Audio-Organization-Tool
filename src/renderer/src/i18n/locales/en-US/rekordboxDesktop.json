@@ -60,7 +60,7 @@
     "writeCheckWriteHint": "The final write action has been blocked.",
     "preparing": "Preparing to write to Rekordbox...",
     "importingTracks": "Writing tracks into Rekordbox...",
-    "committingChanges": "Committing the Rekordbox database...",
+    "committingChanges": "Writing to the Rekordbox desktop library...",
     "successTitle": "Rekordbox playlist created",
     "appendSuccessTitle": "Rekordbox playlist written",
     "successPlaylistName": "Playlist: {name}",

@@ -221,7 +221,7 @@ export async function enqueueLibraryStemJob(params: {
       model,
       status: 'failed',
       errorCode: 'LIBRARY_MUTATION_LOCKED',
-      errorMessage: '资料库整理中，暂时不能开始 Stem 分离'
+      errorMessage: '音乐库整理中，暂时不能开始 Stem 分离'
     })
   }
 

@@ -123,7 +123,7 @@ const runRelocateSession = async (
       else await finishToInitWindow()
       return
     }
-    log.error('[library-relocate] 移动 FRKB 库失败', {
+    log.error('[library-relocate] 移动音乐库失败', {
       code: toRelocateErrorCode(error),
       message: toRelocateErrorMessage(error),
       sourcePath: preview.sourcePath,
@@ -209,7 +209,7 @@ export function registerLibraryRelocateHandlers(): void {
       enqueueRelocateSession(preview, { closeMain: true })
       return { success: true as const }
     } catch (error) {
-      log.error('[library-relocate] 无法开始移动 FRKB 库', {
+      log.error('[library-relocate] 无法开始移动音乐库', {
         code: toRelocateErrorCode(error),
         message: toRelocateErrorMessage(error)
       })
@@ -231,7 +231,7 @@ export function registerLibraryRelocateHandlers(): void {
     try {
       const journal = await readLibraryRelocateJournal()
       if (!journal) {
-        throw new LibraryRelocateError('JOURNAL_INVALID', '没有可继续的 FRKB 库移动任务')
+        throw new LibraryRelocateError('JOURNAL_INVALID', '没有可继续的音乐库移动任务')
       }
       const preview = await previewLibraryRelocate({
         sourcePath: journal.sourcePath,
@@ -241,7 +241,7 @@ export function registerLibraryRelocateHandlers(): void {
       enqueueRelocateSession(preview, { closeMain: false })
       return { success: true as const }
     } catch (error) {
-      log.error('[library-relocate] 无法继续移动 FRKB 库', {
+      log.error('[library-relocate] 无法继续移动音乐库', {
         code: toRelocateErrorCode(error),
         message: toRelocateErrorMessage(error)
       })
@@ -281,7 +281,7 @@ export function registerLibraryRelocateHandlers(): void {
       else await finishToInitWindow()
       return { success: true as const }
     } catch (error) {
-      log.error('[library-relocate] 放弃移动 FRKB 库失败', {
+      log.error('[library-relocate] 放弃移动音乐库失败', {
         code: toRelocateErrorCode(error),
         message: toRelocateErrorMessage(error)
       })
@@ -294,7 +294,7 @@ export function registerLibraryRelocateHandlers(): void {
       const journal = await readLibraryRelocateJournal()
       const progress = getLibraryRelocateProgress()
       if (!journal && !progress) {
-        throw new LibraryRelocateError('JOURNAL_INVALID', '没有可重试的 FRKB 库移动任务')
+        throw new LibraryRelocateError('JOURNAL_INVALID', '没有可重试的音乐库移动任务')
       }
       const preview = journal
         ? journalToPreview(journal)

@@ -387,7 +387,9 @@ const openDialog = async (item: string) => {
   if (item === '同步指纹库与精选表演者') item = 'cloudSync.syncFingerprints'
   if (item === '手动添加曲目指纹') item = 'fingerprints.manualAdd'
   if (item === '导出曲目指纹库文件') item = 'fingerprints.exportDatabase'
+  if (item === '导出指纹库文件') item = 'fingerprints.exportDatabase'
   if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'
+  if (item === '导入指纹库文件') item = 'fingerprints.importDatabase'
   if (item === '全局搜歌') item = 'menu.globalSongSearch'
 
   if (item === 'menu.fullBrowseMode') {

@@ -31,13 +31,13 @@ export const previewLibraryRelocate = async (
   const sourcePath = path.resolve(String(options.sourcePath || '').trim())
   const parentPath = path.resolve(String(options.parentPath || '').trim())
   if (!sourcePath) {
-    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前 FRKB 库路径无效')
+    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前音乐库路径无效')
   }
   if (!(await fs.pathExists(sourcePath))) {
-    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前 FRKB 库不存在或无法访问')
+    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前音乐库不存在或无法访问')
   }
   if (!(await isFrkbLibraryRoot(sourcePath))) {
-    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前路径不是有效的 FRKB 库')
+    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前路径不是有效的音乐库')
   }
 
   let parentStat: Stats | null = null
@@ -51,16 +51,13 @@ export const previewLibraryRelocate = async (
   }
 
   if (await isFrkbLibraryRoot(parentPath)) {
-    throw new LibraryRelocateError(
-      'PARENT_IS_LIBRARY',
-      '所选目录已经是 FRKB 库，不能作为目标父目录'
-    )
+    throw new LibraryRelocateError('PARENT_IS_LIBRARY', '所选目录已经是音乐库，不能作为目标父目录')
   }
   const enclosingRoot = await findLibraryRootUpwards(parentPath)
   if (enclosingRoot) {
     throw new LibraryRelocateError(
       'PARENT_INSIDE_LIBRARY',
-      '所选目录位于某个 FRKB 库内部，请选择库外的位置'
+      '所选目录位于某个音乐库内部，请选择库外的位置'
     )
   }
 
@@ -68,10 +65,10 @@ export const previewLibraryRelocate = async (
   const destPath = buildRelocateDestPath(parentPath, sourcePath)
   const nestedCode = assertNotNestedRelocate(sourcePath, destPath, parentPath)
   if (nestedCode === 'SAME_PATH') {
-    throw new LibraryRelocateError('SAME_PATH', '新位置与当前 FRKB 库相同')
+    throw new LibraryRelocateError('SAME_PATH', '新位置与当前音乐库相同')
   }
   if (nestedCode === 'NESTED_PATH') {
-    throw new LibraryRelocateError('NESTED_PATH', '不能把 FRKB 库移动到自己内部')
+    throw new LibraryRelocateError('NESTED_PATH', '不能把音乐库移动到自己内部')
   }
 
   const destExists = await fs.pathExists(destPath)

@@ -749,7 +749,7 @@ export async function buildLibraryMergePlan(params: {
   if (sourceIntegrityError) {
     throw new LibraryMergeError(
       'SOURCE_DATABASE_CORRUPT',
-      `来源数据库完整性检查失败：${sourceIntegrityError}`
+      `来源音乐库完整性检查失败：${sourceIntegrityError}`
     )
   }
   const sourceSchemaVersion = getUserVersion(params.sourceDb)
@@ -757,7 +757,7 @@ export async function buildLibraryMergePlan(params: {
   if (sourceSchemaVersion !== targetSchemaVersion) {
     throw new LibraryMergeError(
       'SOURCE_SCHEMA_UNSUPPORTED',
-      `来源库与当前库的数据库版本不一致（来源 ${sourceSchemaVersion}，当前 ${targetSchemaVersion}）。请先用当前 FRKB 打开来源库完成升级后再合并`
+      `来源库与当前库的版本不一致（来源 ${sourceSchemaVersion}，当前 ${targetSchemaVersion}）。请先用当前 FRKB 打开来源库完成升级后再合并`
     )
   }
   requireKnownTables(params.sourceDb)

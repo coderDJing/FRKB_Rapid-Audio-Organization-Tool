@@ -208,7 +208,7 @@ const zhContent = {
     {
       title: 'Rekordbox & Pioneer 生态接入',
       details:
-        '直接读取本机 Rekordbox 库与 Pioneer U 盘库，支持拖拽排序、Cue/Loop 保留、键盘多选、精选表演者导入和 XML 导出。'
+        '直接读取 Rekordbox 本机库与 Rekordbox U 盘库，支持拖拽排序、Cue/Loop 保留、键盘多选、精选表演者导入和 XML 导出。'
     },
     {
       title: '可控的分析流程',
@@ -273,21 +273,21 @@ const zhContent = {
     },
     {
       title: '外部库分析缓存',
-      details: 'Rekordbox、Pioneer U 盘和普通外部文件可复用分析结果，减少重复分析等待。'
+      details: 'Rekordbox、Rekordbox U 盘和普通外部文件可复用分析结果，减少重复分析等待。'
     },
     {
       title: '闲时分析调度',
       details: '后台分析统一走闲时调度与限流，保障前台操作绝对流畅。'
     },
     {
-      title: '合并 FRKB 库',
+      title: '合并音乐库',
       details:
-        '把另一个 FRKB 库合并进当前库，覆盖歌单、曲目、分析、SET 和 Mixtape；来源库本身不会被修改。'
+        '把另一份音乐库合并进当前库，覆盖歌单、曲目、分析、SET 和 Mixtape；来源库本身不会被修改。'
     },
     {
-      title: '移动 FRKB 库',
+      title: '移动音乐库',
       details:
-        '将当前 FRKB 库整体搬到新位置，支持同盘/跨盘和中断续传，也可在资源管理器或 Finder 中打开音乐库。'
+        '将当前音乐库整体搬到新位置，支持同盘/跨盘和中断续传，也可在资源管理器或 Finder 中打开音乐库。'
     },
     {
       title: '能量与段落分析',
@@ -363,7 +363,7 @@ const enContent = {
     {
       title: 'Rekordbox & Pioneer Integration',
       details:
-        'Directly read local Rekordbox and Pioneer USB libraries with drag-to-reorder, Cue/Loop preservation, keyboard multi-selection, curated artist import, and XML export.'
+        'Directly read the Rekordbox desktop library and Rekordbox USB libraries with drag-to-reorder, Cue/Loop preservation, keyboard multi-selection, curated artist import, and XML export.'
     },
     {
       title: 'Analysis Under Your Control',
@@ -434,7 +434,7 @@ const enContent = {
     {
       title: 'External Analysis Cache',
       details:
-        'Reuse analysis results for Rekordbox, Pioneer USB, and ordinary external files to avoid repeated waiting.'
+        'Reuse analysis results for Rekordbox, Rekordbox USB libraries, and ordinary external files to avoid repeated waiting.'
     },
     {
       title: 'Idle Analysis Scheduling',
@@ -442,14 +442,14 @@ const enContent = {
         'Background analysis runs through unified idle scheduling to guarantee absolute UI fluidity.'
     },
     {
-      title: 'Merge FRKB Libraries',
+      title: 'Merge Music Libraries',
       details:
-        'Merge another FRKB library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library.'
+        'Merge another music library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library.'
     },
     {
-      title: 'Move FRKB Library',
+      title: 'Move Music Library',
       details:
-        'Relocate the current FRKB library to a new location, including same-disk and cross-disk transfers with resume. You can also open the library folder in Explorer or Finder.'
+        'Relocate the current music library to a new location, including same-disk and cross-disk transfers with resume. You can also open the library folder in Explorer or Finder.'
     },
     {
       title: 'Energy & Section Analysis',

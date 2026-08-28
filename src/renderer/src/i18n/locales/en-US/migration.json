@@ -1,15 +1,15 @@
 {
   "migration": {
-    "mergeLibrary": "Merge FRKB Libraries",
+    "mergeLibrary": "Merge Music Libraries",
     "mergeCuratedLibrary": "Merge Curated Library",
-    "moveLibrary": "Move FRKB Library",
+    "moveLibrary": "Move Music Library",
     "mergePreparing": "Preparing…",
     "mergeFiles": "files",
     "mergeLockedHint": "Library locked during merge. Do not close FRKB.",
     "mergeCuratedLockedHint": "Library locked during merge. Do not close FRKB.",
     "mergeDialog": {
-      "title": "Merge FRKB Libraries",
-      "intro": "Merge another FRKB library into the current one.",
+      "title": "Merge Music Libraries",
+      "intro": "Merge another music library into the current one.",
       "contentsTitle": "What is merged",
       "contents": "Playlists, tracks, analysis/fingerprints, SET, Mixtape, and related resources. Recycle Bin is skipped.",
       "safetyTitle": "Before and during merge",
@@ -17,21 +17,21 @@
       "playlistTitle": "Same-name playlists",
       "playlist": "Both are kept; the source playlist gets a “(from …)” suffix.",
       "startSetup": "Set Up",
-      "sourceTitle": "Source library",
+      "sourceTitle": "Source music library",
       "sourceInstruction": "Select FRKB.database.frkbdb in the source library.",
       "selectSource": "Choose Source",
       "sourceSelected": "Selected",
-      "sourceRequired": "Choose a source library first.",
-      "checkingSource": "Checking source structure, database, and disk space…",
+      "sourceRequired": "Choose a source music library first.",
+      "checkingSource": "Checking source structure and disk space…",
       "sourceCheckPassed": "Check passed.",
       "sourceIssues": {
         "invalid-selection": {
-          "title": "Choose the FRKB database file",
+          "title": "Choose the music library file",
           "description": "Select FRKB.database.frkbdb in the source library root."
         },
         "same-library": {
           "title": "Cannot merge into itself",
-          "description": "Choose a different FRKB library."
+          "description": "Choose a different music library."
         },
         "nested-library": {
           "title": "Library paths cannot nest",
@@ -47,7 +47,7 @@
         },
         "invalid-library": {
           "title": "Source cannot be merged safely",
-          "description": "Use a complete, unmodified FRKB library, or open it in FRKB first."
+          "description": "Use a complete, unmodified music library, or open it in FRKB first."
         },
         "empty-curated-library": {
           "title": "Source curated library is empty",
@@ -107,7 +107,7 @@
     },
     "mergeCuratedDialog": {
       "title": "Merge Curated Library",
-      "intro": "Import the curated library from another FRKB library into the current one.",
+      "intro": "Import the curated library from another music library into the current one.",
       "contentsTitle": "What is imported",
       "contents": "Only curated folders, playlists, audio, and track analysis/fingerprints. Filter, SET, Mixtape, Recording, Recycle Bin, and curated artists are skipped.",
       "safetyTitle": "Before and during merge",
@@ -115,12 +115,12 @@
       "playlistTitle": "Same-name playlists",
       "playlist": "Same-name folders merge. For same-name playlists, choose keep both or merge into existing in setup.",
       "startSetup": "Set Up",
-      "sourceTitle": "Source library",
+      "sourceTitle": "Source music library",
       "sourceInstruction": "Select FRKB.database.frkbdb in the source library.",
       "selectSource": "Choose Source",
       "sourceSelected": "Selected",
-      "sourceRequired": "Choose a source library first.",
-      "checkingSource": "Checking curated structure, database, and disk space…",
+      "sourceRequired": "Choose a source music library first.",
+      "checkingSource": "Checking curated structure and disk space…",
       "sourceCheckPassed": "Check passed.",
       "duplicatePlaylistTitle": "Same-name playlists",
       "duplicateRenameMode": "Keep both",
@@ -129,12 +129,12 @@
       "duplicateMergeIntoDescription": "Tracks go into the current playlist; colliding files get a suffix.",
       "sourceIssues": {
         "invalid-selection": {
-          "title": "Choose the FRKB database file",
+          "title": "Choose the music library file",
           "description": "Select FRKB.database.frkbdb in the source library root."
         },
         "same-library": {
           "title": "Cannot merge into itself",
-          "description": "Choose a different FRKB library."
+          "description": "Choose a different music library."
         },
         "nested-library": {
           "title": "Library paths cannot nest",
@@ -150,7 +150,7 @@
         },
         "invalid-library": {
           "title": "Source cannot be merged safely",
-          "description": "Use a complete, unmodified FRKB library, or open it in FRKB first."
+          "description": "Use a complete, unmodified music library, or open it in FRKB first."
         },
         "empty-curated-library": {
           "title": "Source curated library is empty",
@@ -245,8 +245,8 @@
       "failed": "Incomplete content was not committed."
     },
     "moveDialog": {
-      "title": "Move FRKB Library",
-      "confirmLead": "This moves the current FRKB library to the selected location. The original folder is deleted after it finishes.",
+      "title": "Move Music Library",
+      "confirmLead": "This moves the current music library to the selected location. The original folder is deleted after it finishes.",
       "currentPath": "Current path: {path}",
       "newPath": "New path: {path}",
       "sizeSummary": "Size: {size} ({count} files)",
@@ -255,34 +255,34 @@
       "confirmAction": "Move now",
       "checking": "Checking destination…",
       "busyBlockingTitle": "A task is already running",
-      "busyBlockingLead": "Finish these first, then move the FRKB library:",
+      "busyBlockingLead": "Finish these first, then move the music library:",
       "issues": {
         "MERGE_PENDING": "Finish or recover the current library merge first.",
-        "LIBRARY_BUSY": "Wait for the current task to finish before moving the FRKB library.",
-        "RELOCATE_ACTIVE": "An FRKB library move is already running or unfinished.",
-        "SOURCE_NOT_READY": "The current FRKB library is not open or is missing.",
+        "LIBRARY_BUSY": "Wait for the current task to finish before moving the music library.",
+        "RELOCATE_ACTIVE": "An music library move is already running or unfinished.",
+        "SOURCE_NOT_READY": "The current music library is not open or is missing.",
         "PARENT_MISSING": "The selected parent folder is missing or inaccessible.",
         "PARENT_NOT_DIRECTORY": "Select a folder as the new parent location.",
-        "PARENT_IS_LIBRARY": "The selected folder is already an FRKB library.",
-        "PARENT_INSIDE_LIBRARY": "The selected folder is inside an FRKB library. Choose a location outside any library.",
+        "PARENT_IS_LIBRARY": "The selected folder is already a music library.",
+        "PARENT_INSIDE_LIBRARY": "The selected folder is inside a music library. Choose a location outside any library.",
         "DEST_EXISTS": "The destination folder already exists. Remove it or choose another location.",
-        "NESTED_PATH": "The FRKB library cannot be moved into itself.",
-        "SAME_PATH": "The new location is the same as the current FRKB library.",
+        "NESTED_PATH": "The music library cannot be moved into itself.",
+        "SAME_PATH": "The new location is the same as the current music library.",
         "INSUFFICIENT_SPACE": "Not enough free space on the destination disk.",
         "SPACE_UNAVAILABLE": "Could not check free space on the destination disk.",
-        "CANCELED": "FRKB library move canceled.",
-        "COPY_FAILED": "Failed to copy the FRKB library.",
+        "CANCELED": "music library move canceled.",
+        "COPY_FAILED": "Failed to copy the music library.",
         "VERIFY_FAILED": "Copy verification failed. The old folder was not deleted.",
         "DELETE_SOURCE_FAILED": "The app now uses the new location, but the old folder could not be deleted. Please delete it manually.",
-        "JOURNAL_INVALID": "There is no unfinished FRKB library move to continue."
+        "JOURNAL_INVALID": "There is no unfinished music library move to continue."
       }
     },
     "movePhase": {
-      "prompt": "Unfinished FRKB library move found",
-      "abortOnly": "Cannot continue the FRKB library move",
+      "prompt": "Unfinished music library move found",
+      "abortOnly": "Cannot continue the music library move",
       "preparing": "Preparing…",
-      "copying": "Copying FRKB library…",
-      "renaming": "Moving FRKB library…",
+      "copying": "Copying music library…",
+      "renaming": "Moving music library…",
       "verifying": "Verifying files…",
       "switching": "Switching to the new location…",
       "deletingSource": "Deleting the old folder…",
@@ -293,18 +293,18 @@
     },
     "moveHint": {
       "prompt": "The previous move did not finish. Continue resumes the copy; abort removes the incomplete new folder and keeps the old location.",
-      "abortOnly": "The old library is no longer accessible. Abort will clean up the incomplete new folder, then you can choose a library again.",
+      "abortOnly": "The old music library is no longer accessible. Abort will clean up the incomplete new folder, then you can choose a music library again.",
       "locked": "Do not close FRKB while moving. If interrupted, the next launch can continue or abort.",
       "sourceCleanupFailed": "Please delete the old folder manually:",
-      "enterLibrary": "Open FRKB library",
+      "enterLibrary": "Open music library",
       "continue": "Continue",
       "abort": "Abort move",
       "retry": "Retry"
     },
-    "legacyTitle": "Library Upgrade",
+    "legacyTitle": "Music library upgrade",
     "legacyInProgress": "Previous upgrade didn't finish. It will run again.",
-    "legacyRequired": "Legacy library detected. Upgrade required to continue.",
-    "legacyActions": "The upgrade will reorganize library data. The upgraded library won't work with older FRKB versions. Please don't open it with older versions. Large libraries may take longer. Please don't force quit.",
+    "legacyRequired": "A legacy music library was detected. Upgrade required to continue.",
+    "legacyActions": "The upgrade will reorganize music library data. The upgraded music library won't work with older FRKB versions. Please don't open it with older versions. Large music libraries may take longer. Please don't force quit.",
     "legacyConfirm": "Start upgrade",
     "legacyExit": "Exit"
   }

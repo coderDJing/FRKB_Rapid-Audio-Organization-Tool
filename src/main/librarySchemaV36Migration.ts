@@ -77,7 +77,7 @@ export const getLibrarySchemaMigrationAvailableBytes = async (
     const availableBytes = Number(stats.bavail) * Number(stats.bsize)
     if (Number.isFinite(availableBytes) && availableBytes >= 0) return availableBytes
   } catch {}
-  throw new LibrarySchemaV36MigrationError('CAPACITY_UNAVAILABLE', '无法读取数据库磁盘可用空间')
+  throw new LibrarySchemaV36MigrationError('CAPACITY_UNAVAILABLE', '无法读取音乐库磁盘可用空间')
 }
 
 export type LibrarySchemaV36MigrationResult = {
@@ -96,7 +96,7 @@ export const migrateLibrarySchemaV35ToV36 = async (
   } = {}
 ): Promise<LibrarySchemaV36MigrationResult> => {
   const normalizedPath = String(databasePath || '').trim()
-  if (!normalizedPath) throw new Error('数据库路径不能为空')
+  if (!normalizedPath) throw new Error('音乐库路径不能为空')
   const reportProgress = (
     phase: LibrarySchemaV36MigrationPhase,
     details: Omit<LibrarySchemaV36MigrationProgress, 'phase' | 'databasePath'> = {}
@@ -171,7 +171,7 @@ export const migrateLibrarySchemaV35ToV36 = async (
     })()
     reportProgress('validating', { backupPath })
     if (getSchemaVersion(db) !== SONG_BEAT_GRID_V2_SCHEMA_VERSION) {
-      throw new Error('数据库版本写入校验失败')
+      throw new Error('音乐库版本写入校验失败')
     }
     migrationValidated = true
     reportProgress('complete', { backupPath })
@@ -184,7 +184,7 @@ export const migrateLibrarySchemaV35ToV36 = async (
   } catch (error) {
     reportProgress('failed', {
       backupPath: backupPath || undefined,
-      message: error instanceof Error ? error.message : '数据库升级失败'
+      message: error instanceof Error ? error.message : '音乐库升级失败'
     })
     throw error
   } finally {

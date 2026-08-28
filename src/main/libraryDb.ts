@@ -28,7 +28,7 @@ export class DatabaseSchemaVersionError extends Error {
 
   constructor(databasePath: string, databaseVersion: number, maximumSupportedVersion: number) {
     super(
-      `数据库版本 ${databaseVersion} 高于当前软件支持上限 ${maximumSupportedVersion}：${databasePath}`
+      `音乐库版本 ${databaseVersion} 高于当前软件支持上限 ${maximumSupportedVersion}：${databasePath}`
     )
     this.name = 'DatabaseSchemaVersionError'
     this.databasePath = databasePath
@@ -42,7 +42,7 @@ export class DatabaseSchemaMigrationRequiredError extends Error {
     readonly databasePath: string,
     readonly databaseVersion: number
   ) {
-    super(`数据库需要先完成受保护升级：${databasePath}（当前版本 ${databaseVersion}）`)
+    super(`音乐库需要先完成受保护升级：${databasePath}（当前版本 ${databaseVersion}）`)
     this.name = 'DatabaseSchemaMigrationRequiredError'
   }
 }
@@ -129,7 +129,7 @@ const assertSupportedDatabaseSchemaVersion = (dbPath: string, userVersion: numbe
 // 只读预检必须发生在任何 WAL、迁移或业务查询之前。
 export function assertExistingDatabaseSchemaSupported(dbPath: string): number {
   const normalizedPath = String(dbPath || '').trim()
-  if (!normalizedPath) throw new Error('数据库路径不能为空')
+  if (!normalizedPath) throw new Error('音乐库路径不能为空')
   const Database = require('better-sqlite3') as SqliteDatabaseCtor
   const instance = new Database(normalizedPath, { readonly: true, fileMustExist: true })
   try {
@@ -1001,7 +1001,7 @@ const checkpointWal = (instance: SqliteDatabase): void => {
 // store、切换全局连接或影响正在使用的库。
 export function migrateStandaloneLibraryDb(dbPath: string): void {
   const normalizedPath = String(dbPath || '').trim()
-  if (!normalizedPath) throw new Error('数据库快照路径不能为空')
+  if (!normalizedPath) throw new Error('音乐库快照路径不能为空')
   const instance = runTracedSync('sqlite:createDatabase', () => createDatabase(normalizedPath))
   try {
     checkpointWal(instance)

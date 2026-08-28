@@ -67,7 +67,7 @@ export const validateExportRootDir = async (targetRootDir: string, databaseDir: 
     return {
       ok: false as const,
       code: 'TARGET_INSIDE_LIBRARY',
-      message: '导出目录不能位于当前 FRKB 库目录内部。'
+      message: '导出目录不能位于当前音乐库目录内部。'
     }
   }
   return { ok: true as const, resolvedTarget }

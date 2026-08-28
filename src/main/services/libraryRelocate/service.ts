@@ -81,7 +81,7 @@ const emitProgress = (
 
 const throwIfAborted = (signal?: AbortSignal) => {
   if (signal?.aborted) {
-    throw new LibraryRelocateError('CANCELED', '已取消移动 FRKB 库')
+    throw new LibraryRelocateError('CANCELED', '已取消移动音乐库')
   }
 }
 
@@ -179,7 +179,7 @@ const quiesceLibraryRuntime = async (): Promise<void> => {
 
 const assertRelocateReady = async (sourcePath: string): Promise<void> => {
   if (relocateActive) {
-    throw new LibraryRelocateError('RELOCATE_ACTIVE', '正在移动 FRKB 库')
+    throw new LibraryRelocateError('RELOCATE_ACTIVE', '正在移动音乐库')
   }
   if (isLibraryMergeActive()) {
     throw new LibraryRelocateError('MERGE_PENDING', '请先完成或恢复当前的合并库任务')
@@ -199,10 +199,10 @@ const assertRelocateReady = async (sourcePath: string): Promise<void> => {
 export const checkLibraryRelocateReady = async (): Promise<{ sourcePath: string }> => {
   const sourcePath = getSourceRoot()
   if (!sourcePath || !(await fs.pathExists(sourcePath))) {
-    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前 FRKB 库尚未打开或不存在')
+    throw new LibraryRelocateError('SOURCE_NOT_READY', '当前音乐库尚未打开或不存在')
   }
   if (await readLibraryRelocateJournal()) {
-    throw new LibraryRelocateError('RELOCATE_ACTIVE', '有未完成的 FRKB 库移动，请先继续或放弃')
+    throw new LibraryRelocateError('RELOCATE_ACTIVE', '有未完成的音乐库移动，请先继续或放弃')
   }
   await assertRelocateReady(sourcePath)
   return { sourcePath }
@@ -232,7 +232,7 @@ const deleteSourceAfterSwitch = async (
     throw new LibraryRelocateError('SAME_PATH', '源路径与目标路径相同，拒绝删除')
   }
   if (!(await isFrkbLibraryRoot(preview.destPath))) {
-    throw new LibraryRelocateError('VERIFY_FAILED', '目标目录不是完整 FRKB 库，拒绝删除旧目录')
+    throw new LibraryRelocateError('VERIFY_FAILED', '目标目录不是完整音乐库，拒绝删除旧目录')
   }
   try {
     await removeRelocateDirectory(preview.sourcePath)
@@ -528,7 +528,7 @@ export const autoFinishPendingRelocate = async (
 ): Promise<LibraryRelocateProgress> => {
   const journal = await readLibraryRelocateJournal()
   if (!journal) {
-    throw new LibraryRelocateError('JOURNAL_INVALID', '没有可恢复的 FRKB 库移动任务')
+    throw new LibraryRelocateError('JOURNAL_INVALID', '没有可恢复的音乐库移动任务')
   }
   relocateActive = true
   abortController = new AbortController()
@@ -543,7 +543,7 @@ export const autoFinishPendingRelocate = async (
   }
   try {
     if (!(await fs.pathExists(preview.destPath)) || !(await isFrkbLibraryRoot(preview.destPath))) {
-      throw new LibraryRelocateError('VERIFY_FAILED', '目标 FRKB 库不完整，无法完成收尾')
+      throw new LibraryRelocateError('VERIFY_FAILED', '目标音乐库不完整，无法完成收尾')
     }
     if (!pathsEqual(String(store.settingConfig.databaseUrl || ''), preview.destPath)) {
       await switchDatabaseUrl(preview.destPath)

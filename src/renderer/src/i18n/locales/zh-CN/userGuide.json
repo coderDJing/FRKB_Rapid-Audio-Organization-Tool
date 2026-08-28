@@ -41,32 +41,32 @@
         },
         "general": {
           "title": "浏览器模式",
-          "line1": "用于浏览曲库、播放与整理。双击即可播放。",
+          "line1": "用于浏览音乐库、播放与整理。双击即可播放。",
           "hint": "可切换至双轨横推或编辑模式。"
         }
       },
       "browserLibraries": {
         "rekordbox": {
-          "title": "资料库",
+          "title": "音乐库",
           "line1": "Rekordbox 无此侧栏。",
           "line2": "包括筛选库、精选库、SET 库、Mixtape 自动录制与回收站。",
           "hint": "点击图标切换。"
         },
         "general": {
-          "title": "资料库",
+          "title": "音乐库",
           "line1": "包括筛选库、精选库、SET 库、Mixtape 自动录制与回收站。",
           "hint": "点击图标切换。"
         }
       },
       "browserLibraryMenu": {
         "rekordbox": {
-          "title": "资料库右键菜单",
+          "title": "音乐库右键菜单",
           "line1": "Rekordbox 无此入口。",
           "line2": "右键图标可对该库批量处理，如自动填充元数据、转码、查找相似曲目。",
           "hint": "右键侧栏图标。"
         },
         "general": {
-          "title": "资料库右键菜单",
+          "title": "音乐库右键菜单",
           "line1": "右键侧栏图标，可对该库批量操作。",
           "line2": "包括自动填充元数据、转码、查找相似曲目；回收站可清空。",
           "hint": "右键侧栏图标。"
@@ -127,13 +127,13 @@
     },
     "rekordboxUsb": {
       "rekordboxUsbBody": {
-        "title": "Rekordbox 本机库与 U 盘库",
-        "line1": "左侧下方显示 Rekordbox 本机库，以及已接入的 Pioneer U 盘库。",
+        "title": "Rekordbox 本机库与 Rekordbox U 盘库",
+        "line1": "左侧下方显示 Rekordbox 本机库，以及已接入的 Rekordbox U 盘库。",
         "line2": "可浏览、试听。整理请复制到筛选库，不会修改源库。",
         "hint": "点击对应图标打开。"
       },
       "rekordboxUsbMenu": {
-        "title": "本机库与 U 盘右键菜单",
+        "title": "本机库与 Rekordbox U 盘右键菜单",
         "line1": "右键图标可导入艺人到精选库、扫描指纹或弹出 U 盘。",
         "line2": "打开后，在其歌单或曲目上右键，可复制到筛选库，不会修改源库。",
         "hint": "右键对应图标。"

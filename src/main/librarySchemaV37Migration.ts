@@ -138,7 +138,7 @@ export const migrateLibrarySchemaToV38 = async (
   } = {}
 ): Promise<LibrarySchemaV38MigrationResult> => {
   const normalizedPath = String(databasePath || '').trim()
-  if (!normalizedPath) throw new Error('数据库路径不能为空')
+  if (!normalizedPath) throw new Error('音乐库路径不能为空')
   const reportProgress = (
     phase: LibrarySchemaV36MigrationProgress['phase'],
     details: Omit<LibrarySchemaV36MigrationProgress, 'phase' | 'databasePath'> = {}
@@ -227,7 +227,7 @@ export const migrateLibrarySchemaToV38 = async (
     })()
     reportProgress('validating', { backupPath })
     if (getSchemaVersion(db) !== SONG_TIME_BASIS_REPAIR_SCHEMA_VERSION) {
-      throw new Error('数据库版本写入校验失败')
+      throw new Error('音乐库版本写入校验失败')
     }
     migrationValidated = true
     reportProgress('complete', { backupPath })
@@ -240,7 +240,7 @@ export const migrateLibrarySchemaToV38 = async (
   } catch (error) {
     reportProgress('failed', {
       backupPath: backupPath || undefined,
-      message: error instanceof Error ? error.message : '数据库升级失败'
+      message: error instanceof Error ? error.message : '音乐库升级失败'
     })
     throw error
   } finally {

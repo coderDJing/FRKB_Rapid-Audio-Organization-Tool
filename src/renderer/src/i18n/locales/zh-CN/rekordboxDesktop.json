@@ -60,7 +60,7 @@
     "writeCheckWriteHint": "当前已拦截正式写入。",
     "preparing": "正在准备写入 Rekordbox...",
     "importingTracks": "正在写入曲目到 Rekordbox...",
-    "committingChanges": "正在提交 Rekordbox 数据库...",
+    "committingChanges": "正在写入 Rekordbox 本机库...",
     "successTitle": "Rekordbox 播放列表创建完成",
     "appendSuccessTitle": "Rekordbox 播放列表写入完成",
     "successPlaylistName": "播放列表：{name}",

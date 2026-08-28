@@ -58,7 +58,7 @@ describe('previewLibraryRelocate', () => {
     expect(preview.totalFiles).toBeGreaterThan(0)
   })
 
-  it('拒绝所选父目录已经是 FRKB 库', async () => {
+  it('拒绝所选父目录已经是音乐库', async () => {
     const source = await makeLibrary('src3')
     const other = await makeLibrary('other')
     await expect(

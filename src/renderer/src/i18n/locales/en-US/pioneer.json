@@ -1,7 +1,7 @@
 {
   "pioneer": {
-    "loadTreeFailed": "Failed to load the Pioneer USB library.",
-    "loadingPlaylistTree": "Loading the Pioneer USB playlist tree...",
+    "loadTreeFailed": "Failed to load the Rekordbox USB library.",
+    "loadingPlaylistTree": "Loading the Rekordbox USB playlist tree...",
     "noMatchingPlaylists": "No matching playlists.",
     "emptyPlaylistTree": "There are no visible playlists on this USB drive yet.",
     "loadingPlaylistTracks": "Loading Pioneer playlist tracks...",

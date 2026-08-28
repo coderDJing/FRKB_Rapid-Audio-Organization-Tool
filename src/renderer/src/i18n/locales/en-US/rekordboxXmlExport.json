@@ -9,7 +9,7 @@
     "exportMode": "Export mode",
     "modeCopy": "Copy",
     "modeMove": "Move",
-    "moveModeHint": "When Move is selected, the source files will be moved out of the current FRKB library after a successful export.",
+    "moveModeHint": "When Move is selected, the source files will be moved out of the current music library after a successful export.",
     "exportDirName": "Export subfolder name",
     "xmlFileName": "XML file name",
     "xmlPlaylistName": "XML playlist name",
@@ -28,7 +28,7 @@
     "failedReason": "Reason: {message}",
     "rollbackDone": "Rollback finished as much as possible.",
     "rollbackBestEffort": "Rollback did not fully complete. Please inspect the export directory and the log.",
-    "failureLibraryUnchanged": "FRKB library data was not modified by the app logic.",
+    "failureLibraryUnchanged": "Music library data was not modified by the app logic.",
     "failureLogHint": "Open the log from the title-bar menu for more details: {path}",
     "unsupportedSource": "This source is not supported for Rekordbox XML export yet.",
     "noTracksToExport": "There are no tracks to export."

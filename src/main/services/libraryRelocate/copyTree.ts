@@ -12,7 +12,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const throwIfAborted = (signal?: AbortSignal) => {
   if (signal?.aborted) {
-    throw new LibraryRelocateError('CANCELED', '已取消移动 FRKB 库')
+    throw new LibraryRelocateError('CANCELED', '已取消移动音乐库')
   }
 }
 
@@ -140,7 +140,7 @@ export const renameLibraryRoot = async (params: {
     }
     throw new LibraryRelocateError(
       'COPY_FAILED',
-      error instanceof Error ? error.message : '无法移动 FRKB 库目录'
+      error instanceof Error ? error.message : '无法移动音乐库目录'
     )
   }
 }

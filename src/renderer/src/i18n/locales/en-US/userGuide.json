@@ -47,26 +47,26 @@
       },
       "browserLibraries": {
         "rekordbox": {
-          "title": "Libraries",
+          "title": "Music library",
           "line1": "Rekordbox does not have this sidebar.",
           "line2": "It includes Filter, Curated, SET Library, Mixtape Auto-Recording, and Recycle Bin.",
           "hint": "Click an icon to switch."
         },
         "general": {
-          "title": "Libraries",
+          "title": "Music library",
           "line1": "Includes Filter, Curated, SET Library, Mixtape Auto-Recording, and Recycle Bin.",
           "hint": "Click an icon to switch."
         }
       },
       "browserLibraryMenu": {
         "rekordbox": {
-          "title": "Library context menu",
+          "title": "Music library context menu",
           "line1": "Rekordbox does not have this entry.",
           "line2": "Right-click an icon for library-wide actions such as auto-fill metadata, convert format, or find similar tracks.",
           "hint": "Right-click a sidebar icon."
         },
         "general": {
-          "title": "Library context menu",
+          "title": "Music library context menu",
           "line1": "Right-click a sidebar icon for library-wide actions.",
           "line2": "Includes auto-fill metadata, convert format, and similar tracks. Recycle Bin can be emptied here.",
           "hint": "Right-click a sidebar icon."
@@ -127,13 +127,13 @@
     },
     "rekordboxUsb": {
       "rekordboxUsbBody": {
-        "title": "Rekordbox Desktop and USB libraries",
-        "line1": "The Rekordbox Desktop Library and connected Pioneer USB libraries appear in the lower left.",
+        "title": "Rekordbox Desktop Library and Rekordbox USB library",
+        "line1": "The Rekordbox Desktop Library and connected Rekordbox USB libraries appear in the lower left.",
         "line2": "You can browse and preview. Copy into Filter to organize; source libraries are not modified.",
         "hint": "Click the corresponding icon to open."
       },
       "rekordboxUsbMenu": {
-        "title": "Desktop and USB context menu",
+        "title": "Desktop Library and Rekordbox USB context menu",
         "line1": "Right-click an icon to import artists into Curated, scan fingerprints, or eject USB.",
         "line2": "After opening, right-click a playlist or track to copy into Filter. Source libraries are not modified.",
         "hint": "Right-click the corresponding icon."
