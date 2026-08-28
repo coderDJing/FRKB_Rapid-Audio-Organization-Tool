@@ -32,6 +32,7 @@ import {
   normalizeBrowserPlayerRightTrackInfo,
   type BrowserPlayerRightTrackInfoField
 } from '@shared/browserPlayerRightTrackInfo'
+import { formatSeekPercentModifierSettingValue } from '@shared/playerGlobalShortcuts'
 
 const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
@@ -84,6 +85,13 @@ const {
   ultraModelStatusText,
   removeUltraModel
 } = ctx
+
+const seekPercentModifierDisplay = computed(() => {
+  const formatted = formatSeekPercentModifierSettingValue(
+    runtime.setting.playerGlobalShortcuts?.seekPercentModifier || ''
+  )
+  return formatted || t('shortcuts.globalSeekPercentShortcutOff')
+})
 
 const fingerprintModeModel = computed<'pcm' | 'file'>({
   get: () => runtime.setting.fingerprintMode || 'pcm',
@@ -529,8 +537,24 @@ const rekordboxDesktopTrackStorageDirText = computed(
                     {{ runtime.setting.playerGlobalShortcuts.previousSong }}
                   </bubbleBoxTrigger>
                 </div>
+                <div class="playerShortcutRow">
+                  <div class="playerShortcutLabel">
+                    {{ t('shortcuts.globalSeekPercentShortcut') }}
+                  </div>
+                  <bubbleBoxTrigger
+                    tag="div"
+                    class="chooseDirDiv"
+                    :title="seekPercentModifierDisplay"
+                    @click="playerGlobalShortcutHandle('seekPercentModifier')"
+                  >
+                    {{ seekPercentModifierDisplay }}
+                  </bubbleBoxTrigger>
+                </div>
               </div>
               <div class="playerShortcutHint">{{ t('shortcuts.playerGlobalShortcutsHint') }}</div>
+              <div class="playerShortcutHint">
+                {{ t('shortcuts.globalSeekPercentShortcutHint') }}
+              </div>
             </div>
 
             <div class="setting-block">{{ t('player.fastForwardTime') }}：</div>

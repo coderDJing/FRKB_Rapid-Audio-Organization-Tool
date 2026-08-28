@@ -36,7 +36,10 @@ import { horizontalBrowseTransportBridge } from '../../ipc/horizontalBrowseTrans
 import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
 import {
   PLAYER_GLOBAL_SHORTCUT_ACTIONS,
-  sanitizePlayerGlobalShortcuts
+  buildSeekPercentAccelerators,
+  parseSeekPercentModifierInput,
+  sanitizePlayerGlobalShortcuts,
+  type PlayerGlobalShortcutIpcPayload
 } from '../../../shared/playerGlobalShortcuts'
 import {
   MAIN_WINDOW_MIN_HEIGHT,
@@ -118,6 +121,7 @@ const normalizeExistingExternalDragPaths = (rawPaths: unknown): string[] => {
   return existingPaths
 }
 const registeredPlaybackShortcuts = new Map<PlayerGlobalShortcutAction, string>()
+const registeredSeekPercentShortcuts = new Map<string, number>()
 const screenshotCss = `
   html,
   body,
@@ -167,6 +171,12 @@ const ensurePlayerShortcutConfig = (): IPlayerGlobalShortcuts => {
   return safeValue
 }
 
+const sendPlayerGlobalShortcut = (payload: PlayerGlobalShortcutIpcPayload) => {
+  try {
+    mainWindow?.webContents.send('player/global-shortcut', payload)
+  } catch {}
+}
+
 const registerPlaybackShortcut = (
   action: PlayerGlobalShortcutAction,
   accelerator: string
@@ -186,16 +196,12 @@ const registerPlaybackShortcut = (
     return true
   }
   const success = globalShortcut.register(accelerator, () => {
-    try {
-      mainWindow?.webContents.send('player/global-shortcut', action)
-    } catch {}
+    sendPlayerGlobalShortcut({ action })
   })
   if (!success) {
     if (prevShortcut) {
       const reverted = globalShortcut.register(prevShortcut, () => {
-        try {
-          mainWindow?.webContents.send('player/global-shortcut', action)
-        } catch {}
+        sendPlayerGlobalShortcut({ action })
       })
       if (reverted) {
         registeredPlaybackShortcuts.set(action, prevShortcut)
@@ -207,6 +213,64 @@ const registerPlaybackShortcut = (
   return true
 }
 
+const unregisterSeekPercentShortcuts = () => {
+  registeredSeekPercentShortcuts.forEach((_percent, accelerator) => {
+    try {
+      globalShortcut.unregister(accelerator)
+    } catch {}
+  })
+  registeredSeekPercentShortcuts.clear()
+}
+
+const restoreSeekPercentShortcuts = (snapshot: Map<string, number>) => {
+  unregisterSeekPercentShortcuts()
+  snapshot.forEach((percent, accelerator) => {
+    const restored = globalShortcut.register(accelerator, () => {
+      sendPlayerGlobalShortcut({ action: 'seekPercent', percent })
+    })
+    if (restored) {
+      registeredSeekPercentShortcuts.set(accelerator, percent)
+    }
+  })
+}
+
+const registerSeekPercentShortcuts = (
+  modifier: string
+): { success: boolean; conflictAccelerator?: string } => {
+  if (!mainWindow) return { success: false }
+  const previous = new Map(registeredSeekPercentShortcuts)
+  const bindings = buildSeekPercentAccelerators(modifier)
+  unregisterSeekPercentShortcuts()
+  if (bindings.length === 0) {
+    return { success: true }
+  }
+
+  const registeredNow: string[] = []
+  for (const binding of bindings) {
+    const percent = binding.percent
+    const success = globalShortcut.register(binding.accelerator, () => {
+      sendPlayerGlobalShortcut({ action: 'seekPercent', percent })
+    })
+    if (!success) {
+      // 反引号在部分键盘布局上可能对不上 OEM 映射，允许单独跳过。
+      if (binding.optional) {
+        continue
+      }
+      for (const accelerator of registeredNow) {
+        try {
+          globalShortcut.unregister(accelerator)
+        } catch {}
+      }
+      registeredSeekPercentShortcuts.clear()
+      restoreSeekPercentShortcuts(previous)
+      return { success: false, conflictAccelerator: binding.accelerator }
+    }
+    registeredNow.push(binding.accelerator)
+    registeredSeekPercentShortcuts.set(binding.accelerator, percent)
+  }
+  return { success: true }
+}
+
 const unregisterPlaybackGlobalShortcuts = () => {
   registeredPlaybackShortcuts.forEach((shortcut) => {
     try {
@@ -214,6 +278,7 @@ const unregisterPlaybackGlobalShortcuts = () => {
     } catch {}
   })
   registeredPlaybackShortcuts.clear()
+  unregisterSeekPercentShortcuts()
 }
 
 const registerPlaybackGlobalShortcuts = () => {
@@ -223,6 +288,7 @@ const registerPlaybackGlobalShortcuts = () => {
   playerShortcutActions.forEach((action) => {
     registerPlaybackShortcut(action, config[action])
   })
+  registerSeekPercentShortcuts(config.seekPercentModifier)
 }
 
 const formatScreenshotTimestamp = () => {
@@ -553,6 +619,29 @@ function createWindow() {
     }
   )
 
+  ipcMain.handle(
+    'playerGlobalShortcut:updateSeekPercentModifier',
+    async (_e, payload: { modifier?: unknown } | undefined) => {
+      const raw = typeof payload?.modifier === 'string' ? payload.modifier : ''
+      const parsed = parseSeekPercentModifierInput(raw)
+      if (!parsed.ok) {
+        return { success: false, reason: 'invalid' as const }
+      }
+      const result = registerSeekPercentShortcuts(parsed.modifier)
+      if (!result.success) {
+        return {
+          success: false,
+          reason: 'conflict' as const,
+          accelerator: result.conflictAccelerator || ''
+        }
+      }
+      const config = ensurePlayerShortcutConfig()
+      config.seekPercentModifier = parsed.modifier
+      await persistSettingConfig()
+      return { success: true }
+    }
+  )
+
   ipcMain.on('checkForUpdates', () => {
     if (updateWindow.instance === null) {
       updateWindow.createWindow()
@@ -579,6 +668,7 @@ function createWindow() {
     ipcMain.removeAllListeners('checkForUpdates')
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('playerGlobalShortcut:update')
+    ipcMain.removeHandler('playerGlobalShortcut:updateSeekPercentModifier')
     ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeAllListeners('startExternalSongDrag')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)

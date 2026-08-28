@@ -527,7 +527,9 @@ const globalCallShortcutHandle = async () => {
   await globalCallShortcutDialog()
 }
 
-const playerGlobalShortcutHandle = async (action: PlayerGlobalShortcutAction) => {
+const playerGlobalShortcutHandle = async (
+  action: PlayerGlobalShortcutAction | 'seekPercentModifier'
+) => {
   ensurePlayerGlobalShortcuts(runtime)
   await playerGlobalShortcutDialog(action)
 }

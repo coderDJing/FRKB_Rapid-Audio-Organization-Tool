@@ -642,6 +642,8 @@ interface IPlayerGlobalShortcuts {
   fastBackward: string
   nextSong: string
   previousSong: string
+  // 快速定位前缀修饰键；空串表示关闭。键位固定为 `/~、1-9、0。
+  seekPercentModifier: string
 }
 
 type TitleAudioVisualizerMode = 'bars' | 'line'

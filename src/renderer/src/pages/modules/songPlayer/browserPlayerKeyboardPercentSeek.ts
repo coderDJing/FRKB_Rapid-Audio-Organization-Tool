@@ -15,17 +15,21 @@ type KeyboardPercentSeekOptions = {
   isAllowed: () => boolean
 }
 
+type KeyboardPercentSeekRequestOptions = {
+  immediate?: boolean
+}
+
 const REQUEST_COMMIT_DELAY_MS = 80
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 
 export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentSeekOptions) => {
-  let timer: number | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
   let pending: KeyboardPercentSeekPending | null = null
 
   const clearTimer = () => {
     if (timer === null) return
-    window.clearTimeout(timer)
+    globalThis.clearTimeout(timer)
     timer = null
   }
 
@@ -63,12 +67,12 @@ export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentS
 
   const scheduleFlush = (delayMs: number) => {
     clearTimer()
-    timer = window.setTimeout(() => {
+    timer = globalThis.setTimeout(() => {
       flush()
     }, delayMs)
   }
 
-  const request = (percent: number) => {
+  const request = (percent: number, requestOptions?: KeyboardPercentSeekRequestOptions) => {
     if (!options.isAllowed()) return
 
     const player = options.getPlayer()
@@ -83,6 +87,11 @@ export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentS
     }
 
     player.deferMetadataPreloadsForManualSeek?.()
+
+    if (requestOptions?.immediate) {
+      flush()
+      return
+    }
 
     scheduleFlush(REQUEST_COMMIT_DELAY_MS)
   }

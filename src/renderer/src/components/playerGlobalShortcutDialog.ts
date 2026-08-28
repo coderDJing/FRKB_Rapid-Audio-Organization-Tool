@@ -3,7 +3,9 @@ import playerGlobalShortcutDialog from './playerGlobalShortcutDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 
-export default (actionKey: PlayerGlobalShortcutAction) => {
+export type PlayerGlobalShortcutDialogTarget = PlayerGlobalShortcutAction | 'seekPercentModifier'
+
+export default (target: PlayerGlobalShortcutDialogTarget) => {
   return new Promise((resolve) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
@@ -23,8 +25,10 @@ export default (actionKey: PlayerGlobalShortcutAction) => {
       resolve('cancel')
     }
 
+    const isModifierMode = target === 'seekPercentModifier'
     const vnode = createVNode(playerGlobalShortcutDialog, {
-      actionKey,
+      actionKey: isModifierMode ? undefined : target,
+      mode: isModifierMode ? 'seekPercentModifier' : 'action',
       confirmCallback,
       cancelCallback
     })

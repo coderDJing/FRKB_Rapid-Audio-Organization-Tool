@@ -741,7 +741,8 @@ const handleGlobalPlayerShortcut = createMainPlayerGlobalShortcutHandler({
   fastForward: playerActions.fastForward,
   fastBackward: playerActions.fastBackward,
   nextSong: handleUserNextSong,
-  previousSong: handleUserPreviousSong
+  previousSong: handleUserPreviousSong,
+  seekPercent: (percent) => keyboardPercentSeek.request(percent, { immediate: true })
 })
 
 watch(

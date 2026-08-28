@@ -61,7 +61,9 @@ export type SettingDialogContext = {
   clearCuratedArtistFavorites: () => Promise<void>
   openCuratedArtistFavoritesDialog: () => Promise<void>
   globalCallShortcutHandle: () => Promise<void>
-  playerGlobalShortcutHandle: (action: PlayerGlobalShortcutAction) => Promise<void>
+  playerGlobalShortcutHandle: (
+    action: PlayerGlobalShortcutAction | 'seekPercentModifier'
+  ) => Promise<void>
   reSelectLibrary: () => Promise<void>
   chooseRekordboxDesktopTrackStorageDir: () => Promise<void>
   hintIcon: string

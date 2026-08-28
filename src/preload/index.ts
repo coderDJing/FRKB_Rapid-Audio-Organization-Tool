@@ -60,6 +60,7 @@ const exactInvokeChannels = new Set([
   'persistSongCoverDisplayCache',
   'permanentlyDelSongs',
   'playerGlobalShortcut:update',
+  'playerGlobalShortcut:updateSeekPercentModifier',
   'playlist:batchTrackCount',
   'probe-database-dir',
   'reSelectLibrary',
