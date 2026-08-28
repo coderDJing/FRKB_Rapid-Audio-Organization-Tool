@@ -4,7 +4,11 @@ import { log } from '../log'
 import store from '../store'
 import url from '../url'
 import mainWindow from '../window/mainWindow'
-import type { IPlayerGlobalShortcuts, ISettingConfig } from '../../types/globals'
+import type { ISettingConfig } from '../../types/globals'
+import {
+  DEFAULT_PLAYER_GLOBAL_SHORTCUTS,
+  sanitizePlayerGlobalShortcuts
+} from '../../shared/playerGlobalShortcuts'
 import { persistSettingConfigSync } from '../settingsPersistence'
 import { normalizeTrackReanalysisSelection } from '../../shared/trackReanalysisSelection'
 import {
@@ -48,13 +52,6 @@ const defaultConvertDefaults: NonNullable<ISettingConfig['convertDefaults']> = {
   addFingerprint: false
 }
 
-const defaultPlayerGlobalShortcuts: IPlayerGlobalShortcuts = {
-  fastForward: 'Shift+Alt+Right',
-  fastBackward: 'Shift+Alt+Left',
-  nextSong: 'Shift+Alt+Down',
-  previousSong: 'Shift+Alt+Up'
-}
-
 const defaultSettings = {
   platform: (platform === 'darwin' ? 'darwin' : 'win32') as 'darwin' | 'win32',
   language: (is.dev ? 'zhCN' : '') as '' | 'enUS' | 'zhCN',
@@ -84,7 +81,7 @@ const defaultSettings = {
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
   enableWindowScreenshotShortcut: true,
-  playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
+  playerGlobalShortcuts: { ...DEFAULT_PLAYER_GLOBAL_SHORTCUTS },
   hiddenPlayControlArea: false,
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
@@ -170,23 +167,7 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
       )
     ) as StoredSettings)
   }
-  const sanitizeShortcut = (value: unknown, fallback: string) =>
-    typeof value === 'string' && value.trim() ? value : fallback
-  const sanitizePlayerShortcuts = (
-    value: Partial<IPlayerGlobalShortcuts> | undefined
-  ): IPlayerGlobalShortcuts => {
-    const base = { ...defaultPlayerGlobalShortcuts }
-    if (!value || typeof value !== 'object') {
-      return base
-    }
-    return {
-      fastForward: sanitizeShortcut(value.fastForward, base.fastForward),
-      fastBackward: sanitizeShortcut(value.fastBackward, base.fastBackward),
-      nextSong: sanitizeShortcut(value.nextSong, base.nextSong),
-      previousSong: sanitizeShortcut(value.previousSong, base.previousSong)
-    }
-  }
-  mergedSettings.playerGlobalShortcuts = sanitizePlayerShortcuts(
+  mergedSettings.playerGlobalShortcuts = sanitizePlayerGlobalShortcuts(
     mergedSettings.playerGlobalShortcuts
   )
 

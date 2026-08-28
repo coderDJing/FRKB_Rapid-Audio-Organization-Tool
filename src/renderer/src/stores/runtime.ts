@@ -18,6 +18,7 @@ import type {
   CloudSyncSummary
 } from 'src/types/cloudSync'
 import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '@shared/browserPlayerRightTrackInfo'
+import { DEFAULT_PLAYER_GLOBAL_SHORTCUTS } from '@shared/playerGlobalShortcuts'
 import type { MiniPlayerSession } from '@shared/miniPlayerWindow'
 export type LibrarySelection =
   | 'FilterLibrary'
@@ -403,12 +404,7 @@ export const useRuntimeStore = defineStore('runtime', {
         databaseUrl: '',
         globalCallShortcut: '',
         enableWindowScreenshotShortcut: true,
-        playerGlobalShortcuts: {
-          fastForward: 'Shift+Alt+Right',
-          fastBackward: 'Shift+Alt+Left',
-          nextSong: 'Shift+Alt+Down',
-          previousSong: 'Shift+Alt+Up'
-        },
+        playerGlobalShortcuts: { ...DEFAULT_PLAYER_GLOBAL_SHORTCUTS },
         nextCheckUpdateTime: '',
         hiddenPlayControlArea: false,
         waveformMode: 'half',

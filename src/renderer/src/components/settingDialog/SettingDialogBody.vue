@@ -470,6 +470,19 @@ const rekordboxDesktopTrackStorageDirText = computed(
               <div class="playerShortcutList">
                 <div class="playerShortcutRow">
                   <div class="playerShortcutLabel">
+                    {{ t('shortcuts.globalPlayPauseShortcut') }}
+                  </div>
+                  <bubbleBoxTrigger
+                    tag="div"
+                    class="chooseDirDiv"
+                    :title="runtime.setting.playerGlobalShortcuts.togglePlayPause"
+                    @click="playerGlobalShortcutHandle('togglePlayPause')"
+                  >
+                    {{ runtime.setting.playerGlobalShortcuts.togglePlayPause }}
+                  </bubbleBoxTrigger>
+                </div>
+                <div class="playerShortcutRow">
+                  <div class="playerShortcutLabel">
                     {{ t('shortcuts.globalFastForwardShortcut') }}
                   </div>
                   <bubbleBoxTrigger

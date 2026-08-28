@@ -1,6 +1,7 @@
 import { ILayoutConfig, ISettingConfig } from 'src/types/globals'
 import { defaultLayoutConfig } from './layoutConfigDefaults'
 import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '../shared/browserPlayerRightTrackInfo'
+import { DEFAULT_PLAYER_GLOBAL_SHORTCUTS } from '../shared/playerGlobalShortcuts'
 
 let songFingerprintList: string[] = [] //声音指纹列表（基于音频内容哈希）
 let databaseDir: string = '' //数据库目录
@@ -35,12 +36,7 @@ let settingConfig: ISettingConfig = {
   databaseUrl: '',
   globalCallShortcut: '',
   enableWindowScreenshotShortcut: true,
-  playerGlobalShortcuts: {
-    fastForward: 'Shift+Alt+Right',
-    fastBackward: 'Shift+Alt+Left',
-    nextSong: 'Shift+Alt+Down',
-    previousSong: 'Shift+Alt+Up'
-  },
+  playerGlobalShortcuts: { ...DEFAULT_PLAYER_GLOBAL_SHORTCUTS },
   nextCheckUpdateTime: '',
   hiddenPlayControlArea: false,
   waveformMode: 'half',

@@ -35,6 +35,10 @@ import {
 import { horizontalBrowseTransportBridge } from '../../ipc/horizontalBrowseTransportBridge'
 import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
 import {
+  PLAYER_GLOBAL_SHORTCUT_ACTIONS,
+  sanitizePlayerGlobalShortcuts
+} from '../../../shared/playerGlobalShortcuts'
+import {
   MAIN_WINDOW_MIN_HEIGHT,
   MAIN_WINDOW_MIN_WIDTH,
   mergeLayoutConfig,
@@ -64,19 +68,8 @@ const stopHorizontalBrowseTransportForMainWindowClose = () => {
   notifyPlaybackStateChange(false)
 }
 
-const playerShortcutActions: PlayerGlobalShortcutAction[] = [
-  'fastForward',
-  'fastBackward',
-  'nextSong',
-  'previousSong'
-]
+const playerShortcutActions: PlayerGlobalShortcutAction[] = [...PLAYER_GLOBAL_SHORTCUT_ACTIONS]
 const playerShortcutActionsSet = new Set<PlayerGlobalShortcutAction>(playerShortcutActions)
-const fallbackPlayerShortcuts: IPlayerGlobalShortcuts = {
-  fastForward: 'Shift+Alt+Right',
-  fastBackward: 'Shift+Alt+Left',
-  nextSong: 'Shift+Alt+Down',
-  previousSong: 'Shift+Alt+Up'
-}
 const transparentDragIcon = nativeImage.createFromDataURL(
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGD4DwABBAEAHFqRSgAAAABJRU5ErkJggg=='
 )
@@ -169,16 +162,7 @@ const isWindowScreenshotShortcutEnabled = () =>
   store.settingConfig.enableWindowScreenshotShortcut !== false
 
 const ensurePlayerShortcutConfig = (): IPlayerGlobalShortcuts => {
-  const current = store.settingConfig.playerGlobalShortcuts
-  const safeValue: IPlayerGlobalShortcuts =
-    current && typeof current === 'object'
-      ? {
-          fastForward: current.fastForward || fallbackPlayerShortcuts.fastForward,
-          fastBackward: current.fastBackward || fallbackPlayerShortcuts.fastBackward,
-          nextSong: current.nextSong || fallbackPlayerShortcuts.nextSong,
-          previousSong: current.previousSong || fallbackPlayerShortcuts.previousSong
-        }
-      : { ...fallbackPlayerShortcuts }
+  const safeValue = sanitizePlayerGlobalShortcuts(store.settingConfig.playerGlobalShortcuts)
   store.settingConfig.playerGlobalShortcuts = safeValue
   return safeValue
 }

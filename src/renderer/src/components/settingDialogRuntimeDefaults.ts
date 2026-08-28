@@ -1,4 +1,5 @@
 import type { IPlayerGlobalShortcuts, ISettingConfig } from 'src/types/globals'
+import { sanitizePlayerGlobalShortcuts } from '@shared/playerGlobalShortcuts'
 import { normalizeAnalysisBpmRangeId } from '@shared/analysisBpmRange'
 import { normalizeTrackReanalysisSelection } from '@shared/trackReanalysisSelection'
 import {
@@ -17,14 +18,9 @@ type SettingDialogRuntime = {
 export const ensurePlayerGlobalShortcuts = (
   runtime: SettingDialogRuntime
 ): IPlayerGlobalShortcuts => {
-  if (!runtime?.setting?.playerGlobalShortcuts) {
-    runtime.setting.playerGlobalShortcuts = {
-      fastForward: 'Shift+Alt+Right',
-      fastBackward: 'Shift+Alt+Left',
-      nextSong: 'Shift+Alt+Down',
-      previousSong: 'Shift+Alt+Up'
-    }
-  }
+  runtime.setting.playerGlobalShortcuts = sanitizePlayerGlobalShortcuts(
+    runtime.setting.playerGlobalShortcuts
+  )
   return runtime.setting.playerGlobalShortcuts
 }
 

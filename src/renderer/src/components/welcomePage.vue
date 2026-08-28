@@ -113,6 +113,10 @@ const browserShortcutRows = computed<ShortcutRow[]>(() => [
     hint: t('player.seekPercentHint')
   },
   {
+    title: t('shortcuts.globalPlayPause'),
+    keys: ['Shift', 'Alt', 'Space']
+  },
+  {
     title: t('shortcuts.globalPreviousNext'),
     keys: ['Shift', 'Alt', 'Up / Down']
   },

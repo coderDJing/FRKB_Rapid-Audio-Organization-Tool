@@ -629,9 +629,15 @@ interface ILayoutConfig {
   miniPlayerWindowAlwaysOnTop?: boolean
 }
 
-type PlayerGlobalShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'
+type PlayerGlobalShortcutAction =
+  | 'togglePlayPause'
+  | 'fastForward'
+  | 'fastBackward'
+  | 'nextSong'
+  | 'previousSong'
 
 interface IPlayerGlobalShortcuts {
+  togglePlayPause: string
   fastForward: string
   fastBackward: string
   nextSong: string

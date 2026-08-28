@@ -737,6 +737,7 @@ const handleGlobalPlayerShortcut = createMainPlayerGlobalShortcutHandler({
   selectSongListDialogShow,
   waveformShow,
   isGlobalSelectSongListDialogVisible: () => runtime.selectSongListDialogShow,
+  togglePlayPause: handleUserTogglePlayPause,
   fastForward: playerActions.fastForward,
   fastBackward: playerActions.fastBackward,
   nextSong: handleUserNextSong,

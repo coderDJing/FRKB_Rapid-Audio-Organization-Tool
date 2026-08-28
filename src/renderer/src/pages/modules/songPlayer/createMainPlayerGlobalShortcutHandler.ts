@@ -1,19 +1,19 @@
 import type { IpcRendererEvent } from 'electron'
 import type { Ref } from 'vue'
-
-type GlobalPlayerShortcutAction = 'fastForward' | 'fastBackward' | 'nextSong' | 'previousSong'
+import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 
 export function createMainPlayerGlobalShortcutHandler(params: {
   previewHotkeysActive: Ref<boolean>
   selectSongListDialogShow: Ref<boolean>
   waveformShow: Ref<boolean>
   isGlobalSelectSongListDialogVisible: () => boolean
+  togglePlayPause: () => void
   fastForward: () => void
   fastBackward: () => void
   nextSong: () => void
   previousSong: () => void
 }) {
-  return (_event: IpcRendererEvent, action: GlobalPlayerShortcutAction) => {
+  return (_event: IpcRendererEvent, action: PlayerGlobalShortcutAction) => {
     if (params.previewHotkeysActive.value || params.isGlobalSelectSongListDialogVisible()) {
       return
     }
@@ -26,6 +26,7 @@ export function createMainPlayerGlobalShortcutHandler(params: {
     ) {
       return
     }
+    if (action === 'togglePlayPause') params.togglePlayPause()
     if (action === 'fastForward') params.fastForward()
     if (action === 'fastBackward') params.fastBackward()
     if (action === 'nextSong') params.nextSong()

@@ -7,6 +7,7 @@ import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirmDialog from '@renderer/components/confirmDialog'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
+import { sanitizePlayerGlobalShortcuts } from '@shared/playerGlobalShortcuts'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
 const props = defineProps<{
@@ -16,19 +17,15 @@ const props = defineProps<{
 }>()
 
 const runtime = useRuntimeStore()
-if (!runtime.setting.playerGlobalShortcuts) {
-  runtime.setting.playerGlobalShortcuts = {
-    fastForward: 'Shift+Alt+Right',
-    fastBackward: 'Shift+Alt+Left',
-    nextSong: 'Shift+Alt+Down',
-    previousSong: 'Shift+Alt+Up'
-  }
-}
+runtime.setting.playerGlobalShortcuts = sanitizePlayerGlobalShortcuts(
+  runtime.setting.playerGlobalShortcuts
+)
 
 const uuid = uuidV4()
 const shortcutValue = ref(runtime.setting.playerGlobalShortcuts[props.actionKey])
 
 const actionLabelMap: Record<PlayerGlobalShortcutAction, string> = {
+  togglePlayPause: t('player.playPause'),
   fastForward: t('player.fastForward'),
   fastBackward: t('player.fastBackward'),
   nextSong: t('player.next'),
@@ -72,7 +69,8 @@ const normalizeKey = (event: KeyboardEvent): string | null => {
     ArrowUp: 'Up',
     ArrowDown: 'Down',
     ArrowLeft: 'Left',
-    ArrowRight: 'Right'
+    ArrowRight: 'Right',
+    ' ': 'Space'
   }
   if (specialMap[event.key]) {
     return specialMap[event.key]
@@ -99,6 +97,10 @@ function handleKeyDown(event: KeyboardEvent) {
   if (event.shiftKey) modifiers.push('Shift')
   if (event.metaKey) {
     modifiers.push(runtime.setting.platform === 'darwin' ? 'Command' : 'Super')
+  }
+  // 空格被几乎所有软件占用，全局快捷键必须带修饰键
+  if (normalizedKey === 'Space' && modifiers.length === 0) {
+    return
   }
   modifiers.push(normalizedKey)
   shortcutValue.value = modifiers.join('+')
