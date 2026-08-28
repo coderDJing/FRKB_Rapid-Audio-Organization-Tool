@@ -30,6 +30,14 @@ import {
   type DragState
 } from '../../utils/dragUtils'
 import {
+  getLibraryTreeSortRule,
+  isLibraryTreeManualSort,
+  libraryTreeSortRuleVersion,
+  libraryTreeTrackCountVersion,
+  sortLibraryTreeChildren
+} from '@renderer/utils/libraryTreeSort'
+import { showNearMouseTip } from '@renderer/utils/nearMouseTip'
+import {
   clearPendingMixtapeProjectMode,
   consumePendingMixtapeProjectMode,
   persistMixtapeProjectMode,
@@ -499,7 +507,26 @@ const dragState = reactive<DragState>({
   dragApproach: ''
 })
 
+const dialogLibraryName = computed(() => String(props.libraryName || ''))
+const isTreeReorderAllowed = computed(() => {
+  void libraryTreeSortRuleVersion.value
+  return isLibraryTreeManualSort(dialogLibraryName.value)
+})
+const canStartDialogItemDrag = computed(() => {
+  return !!dirData?.dirName && !renameDivShow.value && isTreeReorderAllowed.value
+})
+
+const notifyAutoSortBlocksDrag = (clientX: number, clientY: number) => {
+  if (isTreeReorderAllowed.value) return
+  showNearMouseTip(clientX, clientY, t('playlist.sortAutoBlocksDrag'))
+}
+
 const dragstart = async (event: DragEvent) => {
+  if (!isTreeReorderAllowed.value) {
+    event.preventDefault()
+    notifyAutoSortBlocksDrag(event.clientX, event.clientY)
+    return
+  }
   await handleDragStart(event, props.uuid)
   event.target?.addEventListener(
     'dragend',
@@ -511,10 +538,20 @@ const dragstart = async (event: DragEvent) => {
 }
 
 const dragover = (e: DragEvent) => {
+  if (runtime.dragItemData && !isTreeReorderAllowed.value) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    dragState.dragApproach = ''
+    return
+  }
   handleDragOver(e, dirData, dragState)
 }
 
 const dragenter = (e: DragEvent) => {
+  if (runtime.dragItemData && !isTreeReorderAllowed.value) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    dragState.dragApproach = ''
+    return
+  }
   handleDragEnter(e, dirData, dragState)
 }
 
@@ -523,6 +560,11 @@ const dragleave = () => {
 }
 
 const drop = async (e: DragEvent) => {
+  if (runtime.dragItemData && !isTreeReorderAllowed.value) {
+    dragState.dragApproach = ''
+    runtime.dragItemData = null
+    return
+  }
   await handleDrop(e, dirData, dragState, fatherDirData)
 }
 
@@ -635,6 +677,14 @@ watch(keyword, () => {
   }
 })
 
+const displayedFolderChildren = computed(() => {
+  const children = dirData?.children
+  if (!children?.length) return []
+  void libraryTreeSortRuleVersion.value
+  void libraryTreeTrackCountVersion.value
+  return sortLibraryTreeChildren(children, getLibraryTreeSortRule(String(props.libraryName || '')))
+})
+
 // 选中项变化时，若当前组件对应项被选中，使其滚动到可视区域内（对话框）
 // 当 suppressHighlight 为 true（近期区高亮）时，不在树区触发自动滚动
 watch(
@@ -657,7 +707,7 @@ watch(
     class="mainBody"
     style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + (props.needPaddingLeft ? indentWidth : 0) + 'px'"
-    :draggable="dirData.dirName && !renameDivShow ? true : false"
+    :draggable="canStartDialogItemDrag"
     :class="{
       rightClickBorder: rightClickMenuShow,
       borderTop: dragState.dragApproach == 'top',
@@ -798,7 +848,7 @@ watch(
     v-show="dirChildShow"
     style="width: 100%; box-sizing: border-box"
   >
-    <template v-for="item of dirData.children" :key="item.uuid">
+    <template v-for="item of displayedFolderChildren" :key="item.uuid">
       <dialogLibraryItem
         :uuid="item.uuid"
         :library-name="props.libraryName"

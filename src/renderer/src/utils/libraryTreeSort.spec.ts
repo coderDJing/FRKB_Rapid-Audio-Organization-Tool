@@ -171,4 +171,16 @@ describe('libraryTreeSort track counts', () => {
     })
     expect(mod.libraryTreeTrackCountMap.pending).toBeUndefined()
   })
+
+  it('builds the shared sort menu with a check mark on the current rule', async () => {
+    installGlobals()
+    const mod = await loadModule()
+    const menu = mod.buildLibraryTreeSortMenuArr('nameAsc')
+    expect(menu[0]?.[0]).toEqual({ menuName: 'playlist.sortMenuManual', shortcutKey: undefined })
+    expect(menu[1]?.[0]).toEqual({ menuName: 'playlist.sortMenuNameAsc', shortcutKey: '✓' })
+    expect(mod.resolveLibraryTreeSortRuleFromMenuName('playlist.sortMenuCountDesc')).toBe(
+      'countDesc'
+    )
+    expect(mod.resolveLibraryTreeSortRuleFromMenuName('unknown')).toBeNull()
+  })
 })

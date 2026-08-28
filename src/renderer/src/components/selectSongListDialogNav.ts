@@ -1,4 +1,5 @@
 import type { IDir } from 'src/types/globals'
+import { sortLibraryTreeChildren, type LibraryTreeSortRule } from '@renderer/utils/libraryTreeSort'
 
 type DialogNavArea = 'recent' | 'tree'
 type DialogLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'SetLibrary' | 'MixtapeLibrary'
@@ -28,14 +29,16 @@ export const isDialogListNode = (node: IDir | null | undefined, libraryName: str
 
 export const collectDialogSongLists = (
   root: IDir | null | undefined,
-  libraryName: DialogLibraryName | string
+  libraryName: DialogLibraryName | string,
+  sortRule: LibraryTreeSortRule = 'manual'
 ) => {
   const result: IDir[] = []
   const traverse = (node?: IDir) => {
     if (!node) return
     if (isDialogListNode(node, libraryName)) result.push(node)
-    if (node.children?.length) {
-      for (const child of node.children) traverse(child)
+    const children = sortLibraryTreeChildren(node.children, sortRule)
+    if (children.length) {
+      for (const child of children) traverse(child)
     }
   }
   traverse(root || undefined)

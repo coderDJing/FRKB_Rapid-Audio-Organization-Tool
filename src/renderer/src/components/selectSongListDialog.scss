@@ -21,6 +21,45 @@
   padding: 2px 4px 6px 4px;
 }
 
+.sectionHeaderActions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.titleActionButton {
+  color: var(--text);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 5px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--hover);
+  }
+
+  &.isActive {
+    color: var(--accent);
+  }
+
+  .sortIcon {
+    width: 16px;
+    height: 16px;
+    background-color: currentColor;
+    mask-image: var(--sort-icon-mask);
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    -webkit-mask-image: var(--sort-icon-mask);
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+  }
+}
+
 .sectionTitle {
   display: flex;
   align-items: center;
@@ -55,6 +94,36 @@
 .libraryDropSpace {
   flex-grow: 1;
   min-height: 30px;
+}
+
+.borderTop {
+  box-shadow: inset 0 1px 0 0 var(--accent);
+}
+
+.trackCountSortLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 8px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.trackCountSortLoadingSpinner {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: trackCountSortLoadingSpin 0.75s linear infinite;
+}
+
+@keyframes trackCountSortLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .recentLibraryItem {

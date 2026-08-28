@@ -1,5 +1,5 @@
 import { reactive, ref } from 'vue'
-import type { IDir } from 'src/types/globals'
+import type { IDir, IMenu } from 'src/types/globals'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 export type LibraryTreeSortRule = 'manual' | 'nameAsc' | 'nameDesc' | 'countAsc' | 'countDesc'
@@ -399,4 +399,30 @@ export const libraryTreeSortRuleMenuKey = (rule: LibraryTreeSortRule) => {
     default:
       return 'playlist.sortMenuManual'
   }
+}
+
+/** 歌单区 / 选择歌单 dialog 共用的排序菜单分组 */
+export const buildLibraryTreeSortMenuArr = (currentRule: LibraryTreeSortRule): IMenu[][] => {
+  const check = (value: LibraryTreeSortRule): string | undefined =>
+    currentRule === value ? '✓' : undefined
+  return [
+    [{ menuName: libraryTreeSortRuleMenuKey('manual'), shortcutKey: check('manual') }],
+    [
+      { menuName: libraryTreeSortRuleMenuKey('nameAsc'), shortcutKey: check('nameAsc') },
+      { menuName: libraryTreeSortRuleMenuKey('nameDesc'), shortcutKey: check('nameDesc') }
+    ],
+    [
+      { menuName: libraryTreeSortRuleMenuKey('countAsc'), shortcutKey: check('countAsc') },
+      { menuName: libraryTreeSortRuleMenuKey('countDesc'), shortcutKey: check('countDesc') }
+    ]
+  ]
+}
+
+export const resolveLibraryTreeSortRuleFromMenuName = (
+  menuName: string
+): LibraryTreeSortRule | null => {
+  for (const rule of LIBRARY_TREE_SORT_RULES) {
+    if (menuName === libraryTreeSortRuleMenuKey(rule)) return rule
+  }
+  return null
 }

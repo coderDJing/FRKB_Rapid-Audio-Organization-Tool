@@ -27,6 +27,11 @@ import type { IDir } from 'src/types/globals'
 import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import { useLibraryTreeSortUi } from '@renderer/composables/useLibraryTreeSortUi'
+import {
+  isLibraryTreeManualSort,
+  libraryTreeTrackCountVersion
+} from '@renderer/utils/libraryTreeSort'
 import {
   chooseMixtapeProjectModeForCreate,
   persistMixtapeProjectMode,
@@ -135,6 +140,19 @@ const libraryData: ComputedRef<IDir> = computed(() => {
   }
   return data
 })
+const {
+  currentSortRule,
+  isManualSort,
+  showSortButton,
+  sortButtonBubbleTitle,
+  sortIconMaskStyle,
+  displayedChildren,
+  isAwaitingTrackCounts,
+  openSortMenu
+} = useLibraryTreeSortUi({
+  libraryName: () => props.libraryName,
+  libraryRoot: libraryData
+})
 const dialogTreeVersion = ref(0)
 watch(
   () => runtime.libraryTree,
@@ -146,7 +164,8 @@ watch(
 
 // 扁平化当前库下的全部歌单（不关心折叠状态）
 const allSongListArr = computed<IDir[]>(() => {
-  return collectDialogSongLists(libraryData.value, props.libraryName)
+  void libraryTreeTrackCountVersion.value
+  return collectDialogSongLists(libraryData.value, props.libraryName, currentSortRule.value)
 })
 
 // 组合“最近使用歌单”+“全部歌单”（保留重复项，便于在两个区域都可停留）
@@ -228,6 +247,7 @@ watch(
 // libraryData 已提前定义
 
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
+const sortButtonRef = useTemplateRef<HTMLDivElement>('sortButtonRef')
 const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef')
 
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
@@ -346,6 +366,7 @@ const searchKeyword = computed(() =>
     .trim()
     .toLowerCase()
 )
+// 最近使用只按选择时间排，不跟全部歌单的名称/数量规则
 const filteredRecentSongListArr = computed(() => {
   const base = recentSongListArr.value.filter((item) => isDialogListType(item))
   return filterSongListsByKeyword(base, searchKeyword.value)
@@ -395,7 +416,13 @@ const createNow = async () => {
   playlistSearch.value = ''
 }
 
+const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
+  if (!isLibraryTreeManualSort(props.libraryName)) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    dragApproach.value = ''
+    return
+  }
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
@@ -404,8 +431,14 @@ const dragover = (e: DragEvent) => {
     return
   }
   e.dataTransfer.dropEffect = 'move'
+  dragApproach.value = 'top'
 }
 const dragenter = (e: DragEvent) => {
+  if (!isLibraryTreeManualSort(props.libraryName)) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    dragApproach.value = ''
+    return
+  }
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
   }
@@ -414,16 +447,23 @@ const dragenter = (e: DragEvent) => {
     return
   }
   e.dataTransfer.dropEffect = 'move'
+  dragApproach.value = 'top'
 }
 const dragleave = () => {
   if (runtime.dragItemData === null) {
     return
   }
+  dragApproach.value = ''
 }
 const drop = async () => {
+  if (!isLibraryTreeManualSort(props.libraryName)) {
+    runtime.dragItemData = null
+    return
+  }
   if (runtime.dragItemData === null || !libraryData.value) {
     return
   }
+  dragApproach.value = ''
   try {
     await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
   } catch (error) {
@@ -762,28 +802,46 @@ watch(
                     <span class="sectionAccent sectionAccent--all"></span>
                     <span>{{ t('library.allPlaylists') }}</span>
                   </div>
+                  <div v-if="showSortButton" class="sectionHeaderActions">
+                    <div
+                      ref="sortButtonRef"
+                      class="titleActionButton"
+                      :class="{ isActive: !isManualSort }"
+                      @click.stop="openSortMenu"
+                    >
+                      <span class="sortIcon" :style="sortIconMaskStyle"></span>
+                    </div>
+                    <bubbleBox :dom="sortButtonRef || undefined" :title="sortButtonBubbleTitle" />
+                  </div>
                 </div>
                 <div class="sectionBody">
-                  <template
-                    v-for="item of libraryData?.children"
-                    :key="`${item.uuid}-${dialogTreeVersion}`"
-                  >
-                    <dialogLibraryItem
-                      :uuid="item.uuid"
-                      :library-name="props.libraryName"
-                      :filter-text="playlistSearch"
-                      :suppress-highlight="selectedArea === 'recent'"
-                      @dbl-click-song-list="confirmHandle()"
-                      @mark-tree-selected="selectedArea = 'tree'"
-                    />
+                  <div v-if="isAwaitingTrackCounts" class="trackCountSortLoading" role="status">
+                    <span class="trackCountSortLoadingSpinner" aria-hidden="true"></span>
+                    <span>{{ t('common.loading') }}</span>
+                  </div>
+                  <template v-else>
+                    <template
+                      v-for="item of displayedChildren"
+                      :key="`${item.uuid}-${dialogTreeVersion}`"
+                    >
+                      <dialogLibraryItem
+                        :uuid="item.uuid"
+                        :library-name="props.libraryName"
+                        :filter-text="playlistSearch"
+                        :suppress-highlight="selectedArea === 'recent'"
+                        @dbl-click-song-list="confirmHandle()"
+                        @mark-tree-selected="selectedArea = 'tree'"
+                      />
+                    </template>
+                    <div
+                      class="libraryDropSpace"
+                      :class="{ borderTop: dragApproach == 'top' }"
+                      @dragover.stop.prevent="dragover"
+                      @dragenter.stop.prevent="dragenter"
+                      @drop.stop="drop"
+                      @dragleave.stop="dragleave"
+                    ></div>
                   </template>
-                  <div
-                    class="libraryDropSpace"
-                    @dragover.stop.prevent="dragover"
-                    @dragenter.stop.prevent="dragenter"
-                    @drop.stop="drop"
-                    @dragleave.stop="dragleave"
-                  ></div>
                 </div>
               </div>
             </div>

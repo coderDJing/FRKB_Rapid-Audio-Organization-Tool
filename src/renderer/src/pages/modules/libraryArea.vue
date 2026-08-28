@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -11,31 +11,15 @@ import emitter from '../../utils/mitt'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import sortManualIconAsset from '@renderer/assets/librarySortManual.svg?asset'
-import sortNameAscIconAsset from '@renderer/assets/librarySortNameAsc.svg?asset'
-import sortNameDescIconAsset from '@renderer/assets/librarySortNameDesc.svg?asset'
-import sortCountAscIconAsset from '@renderer/assets/librarySortCountAsc.svg?asset'
-import sortCountDescIconAsset from '@renderer/assets/librarySortCountDesc.svg?asset'
 import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
+import { useLibraryTreeSortUi } from '@renderer/composables/useLibraryTreeSortUi'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import {
   persistMixtapeProjectMode,
   setPendingMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
-import {
-  getLibraryTreeSortRule,
-  isLibraryTreeManualSort,
-  libraryTreeSortRuleVersion,
-  libraryTreeTrackCountVersion,
-  libraryTreeSortRuleLabelKey,
-  libraryTreeSortRuleMenuKey,
-  hasCompleteLibraryTreeTrackCounts,
-  prefetchLibraryTreeTrackCounts,
-  setLibraryTreeSortRule,
-  sortLibraryTreeChildren,
-  type LibraryTreeSortRule
-} from '@renderer/utils/libraryTreeSort'
-import type { IDir, IMenu } from 'src/types/globals'
+import { isLibraryTreeManualSort } from '@renderer/utils/libraryTreeSort'
+import type { IDir } from 'src/types/globals'
 
 const runtime = useRuntimeStore()
 const props = defineProps({
@@ -54,81 +38,20 @@ const libraryData = computed(() => {
 
 const libraryName = computed(() => libraryData.value.dirName)
 const isRecycleBin = computed(() => runtime.libraryAreaSelected === 'RecycleBin')
-const currentSortRule = computed(() => {
-  void libraryTreeSortRuleVersion.value
-  return isRecycleBin.value ? 'manual' : getLibraryTreeSortRule(libraryName.value)
+const {
+  isManualSort,
+  showSortButton,
+  sortButtonBubbleTitle,
+  sortIconMaskStyle,
+  displayedChildren,
+  isAwaitingTrackCounts,
+  openSortMenu
+} = useLibraryTreeSortUi({
+  libraryName,
+  libraryRoot: libraryData,
+  forceManual: isRecycleBin,
+  reverseChildren: isRecycleBin
 })
-const isManualSort = computed(() => currentSortRule.value === 'manual')
-const sortButtonBubbleTitle = computed(() => t(libraryTreeSortRuleLabelKey(currentSortRule.value)))
-const showSortButton = computed(() => !isRecycleBin.value)
-const sortIconByRule: Record<LibraryTreeSortRule, string> = {
-  manual: sortManualIconAsset,
-  nameAsc: sortNameAscIconAsset,
-  nameDesc: sortNameDescIconAsset,
-  countAsc: sortCountAscIconAsset,
-  countDesc: sortCountDescIconAsset
-}
-const sortIconMaskStyle = computed(() => ({
-  '--sort-icon-mask': `url("${sortIconByRule[currentSortRule.value]}")`
-}))
-
-const isCountSortRule = computed(
-  () => currentSortRule.value === 'countAsc' || currentSortRule.value === 'countDesc'
-)
-
-const displayedChildren = computed(() => {
-  const children = libraryData.value.children
-  if (!children) return children
-  if (isRecycleBin.value) {
-    return [...children].reverse()
-  }
-  // 依赖曲目数缓存版本，确保 count 规则在预取完成后重排
-  void libraryTreeTrackCountVersion.value
-  return sortLibraryTreeChildren(children, currentSortRule.value)
-})
-
-/**
- * 按曲目数排序且尚无任何数量数据时，先不渲染列表：
- * 否则会先按手动序闪一帧、再随统计结果整体重排。
- * 有持久化缓存的正常情况下这里立刻为 false，不会引入额外等待。
- */
-const isAwaitingTrackCounts = ref(false)
-const refreshTrackCountReadiness = () => {
-  if (isRecycleBin.value || !isCountSortRule.value) {
-    isAwaitingTrackCounts.value = false
-    return
-  }
-  isAwaitingTrackCounts.value = !hasCompleteLibraryTreeTrackCounts(libraryData.value)
-}
-
-watch(
-  () =>
-    [
-      libraryName.value,
-      currentSortRule.value,
-      libraryData.value.children?.length,
-      runtime.setting.showPlaylistTrackCount
-    ] as const,
-  () => {
-    refreshTrackCountReadiness()
-    if (isRecycleBin.value) return
-    // 数量徽标和按数量排序都依赖这份数据，统一走一次批量预取：
-    // 既刷新掉可能过期的持久化缓存，也避免每个歌单各自发一次 IPC
-    if (!isCountSortRule.value && !runtime.setting.showPlaylistTrackCount) return
-    void prefetchLibraryTreeTrackCounts(libraryData.value).then(() => {
-      refreshTrackCountReadiness()
-    })
-  },
-  { immediate: true }
-)
-
-// 曲目数落地后解除等待（缓存命中时首帧就已解除，不会额外等待）
-watch(
-  () => [libraryTreeTrackCountVersion.value, currentSortRule.value] as const,
-  () => {
-    refreshTrackCountReadiness()
-  }
-)
 
 const showHint = computed(() => {
   const children = libraryData.value.children
@@ -389,44 +312,6 @@ const collapseButtonHandleClick = async () => {
 
 const sortButtonRef = useTemplateRef<HTMLDivElement>('sortButtonRef')
 const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
-
-const openSortMenu = async (event: MouseEvent) => {
-  if (isRecycleBin.value) return
-  const rule = currentSortRule.value
-  const check = (value: LibraryTreeSortRule): string | undefined =>
-    rule === value ? '✓' : undefined
-  const menuArr: IMenu[][] = [
-    [{ menuName: libraryTreeSortRuleMenuKey('manual'), shortcutKey: check('manual') }],
-    [
-      { menuName: libraryTreeSortRuleMenuKey('nameAsc'), shortcutKey: check('nameAsc') },
-      { menuName: libraryTreeSortRuleMenuKey('nameDesc'), shortcutKey: check('nameDesc') }
-    ],
-    [
-      { menuName: libraryTreeSortRuleMenuKey('countAsc'), shortcutKey: check('countAsc') },
-      { menuName: libraryTreeSortRuleMenuKey('countDesc'), shortcutKey: check('countDesc') }
-    ]
-  ]
-  const result = await rightClickMenu({ menuArr, clickEvent: event })
-  if (result === 'cancel') return
-  const selected = result.menuName
-  const nextRule: LibraryTreeSortRule | null =
-    selected === libraryTreeSortRuleMenuKey('manual')
-      ? 'manual'
-      : selected === libraryTreeSortRuleMenuKey('nameAsc')
-        ? 'nameAsc'
-        : selected === libraryTreeSortRuleMenuKey('nameDesc')
-          ? 'nameDesc'
-          : selected === libraryTreeSortRuleMenuKey('countAsc')
-            ? 'countAsc'
-            : selected === libraryTreeSortRuleMenuKey('countDesc')
-              ? 'countDesc'
-              : null
-  if (!nextRule) return
-  setLibraryTreeSortRule(libraryName.value, nextRule)
-  if (nextRule === 'countAsc' || nextRule === 'countDesc') {
-    void prefetchLibraryTreeTrackCounts(libraryData.value)
-  }
-}
 
 const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
