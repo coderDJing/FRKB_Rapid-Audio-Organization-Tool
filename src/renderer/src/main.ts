@@ -4,6 +4,7 @@ import App from './App.vue'
 import 'overlayscrollbars/overlayscrollbars.css'
 import './styles/main.scss'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { applyLibrarySetupState } from '@renderer/utils/librarySetupRuntime'
 import { i18n } from '@renderer/i18n'
 import dialogDrag from './directives/dialogDrag'
 import {
@@ -76,6 +77,13 @@ const normalizeCuratedArtistFavorites = (payload: unknown): ICuratedArtistFavori
 const initializeApp = async () => {
   const runtime = useRuntimeStore()
   runtime.setting = await window.electron.ipcRenderer.invoke('getSetting')
+  try {
+    const setupState = await window.electron.ipcRenderer.invoke('library-setup:getState')
+    applyLibrarySetupState(setupState)
+  } catch {}
+  window.electron.ipcRenderer.on('library-setup:state', (_e, payload) => {
+    applyLibrarySetupState(payload)
+  })
   const curatedArtistSnapshot = await window.electron.ipcRenderer.invoke('curatedArtists:get')
   runtime.curatedArtistFavorites = normalizeCuratedArtistFavorites(curatedArtistSnapshot)
   const { cleanedSetting, needsCleanup } = initUiSettings(runtime.setting)

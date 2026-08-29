@@ -22,6 +22,8 @@
     "exit": "Exit",
     "retry": "Retry",
     "skip": "Skip",
+    "next": "Next",
+    "back": "Back",
     "required": "Required",
     "loading": "Loading...",
     "unknownError": "Unknown error"

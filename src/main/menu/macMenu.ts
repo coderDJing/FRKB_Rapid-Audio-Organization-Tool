@@ -15,6 +15,7 @@ import mainWindow from '../window/mainWindow'
 import { openLogFile } from '../log'
 import { openLibraryMergeDialog } from '../ipc/libraryMergeHandlers'
 import { openLibraryRelocateDialog } from '../services/libraryRelocate/openDialog'
+import { isLibrarySetupActive, onLibrarySetupChanged } from '../librarySetupState'
 
 type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 
@@ -88,8 +89,9 @@ const buildAppOnlyMenu = () =>
     }
   ])
 
-const buildFullMenu = () =>
-  Menu.buildFromTemplate([
+const buildFullMenu = () => {
+  const librarySetupActive = isLibrarySetupActive()
+  return Menu.buildFromTemplate([
     {
       label: 'FRKB',
       submenu: [
@@ -105,6 +107,7 @@ const buildFullMenu = () =>
     },
     {
       label: sanitizeLabelForMac(tMenu('menu.file')),
+      enabled: !librarySetupActive,
       submenu: [
         {
           label: labelImportTo('library.filter'),
@@ -136,6 +139,7 @@ const buildFullMenu = () =>
     },
     {
       label: sanitizeLabelForMac(tMenu('menu.browseMode')),
+      enabled: !librarySetupActive,
       submenu: [
         {
           label: tMenu('menu.fullBrowseMode'),
@@ -171,6 +175,7 @@ const buildFullMenu = () =>
     },
     {
       label: sanitizeLabelForMac(tMenu('menu.migration')),
+      enabled: !librarySetupActive,
       submenu: [
         {
           label: tMenu('fingerprints.exportDatabase'),
@@ -212,6 +217,7 @@ const buildFullMenu = () =>
     },
     {
       label: sanitizeLabelForMac(tMenu('menu.cloudSync')),
+      enabled: !librarySetupActive,
       submenu: [
         {
           label: tMenu('cloudSync.syncFingerprints'),
@@ -253,17 +259,22 @@ const buildFullMenu = () =>
             await openLogFile()
           }
         },
-        {
-          label: tMenu('menu.userGuide'),
-          click: () => mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.userGuide')
-        },
+        ...(librarySetupActive
+          ? []
+          : [
+              {
+                label: tMenu('menu.userGuide'),
+                click: () =>
+                  mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.userGuide')
+              }
+            ]),
         {
           label: tMenu('menu.thirdPartyNotices'),
           click: () =>
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.thirdPartyNotices')
         },
         // 仅 dev 模式显示开发 trace 菜单
-        ...(is.dev
+        ...(!librarySetupActive && is.dev
           ? [
               { type: 'separator' as const },
               {
@@ -292,12 +303,16 @@ const buildFullMenu = () =>
       ]
     }
   ])
+}
 
 // 应在 app ready 后调用：初始化仅 FRKB 菜单，并随焦点在 App-only 与 Full 之间切换
 export const setupMacMenus = () => {
   if (process.platform !== 'darwin') return
   try {
     Menu.setApplicationMenu(buildAppOnlyMenu())
+    onLibrarySetupChanged(() => {
+      rebuildMacMenusForCurrentFocus()
+    })
     app.on('browser-window-focus', (_e, win) => {
       if (win && mainWindow.instance && win.id === mainWindow.instance.id) {
         Menu.setApplicationMenu(buildFullMenu())

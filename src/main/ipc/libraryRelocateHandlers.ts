@@ -3,7 +3,7 @@ import path from 'node:path'
 import { log } from '../log'
 import store from '../store'
 import mainWindow from '../window/mainWindow'
-import databaseInitWindow from '../window/databaseInitWindow'
+import { openLibrarySetupWindow } from '../librarySetup'
 import libraryRelocateWindow from '../window/libraryRelocateWindow'
 import startupWindow from '../window/startupWindow'
 import { mergeLayoutConfig, persistLayoutConfig } from '../layoutConfig'
@@ -85,7 +85,13 @@ const finishToMainWindow = async () => {
 }
 
 const finishToInitWindow = async () => {
-  databaseInitWindow.createWindow({ needErrorHint: true })
+  openLibrarySetupWindow({
+    mode: 'required',
+    errorHint: {
+      kind: 'cannot-read',
+      databaseUrl: String(store.settingConfig.databaseUrl || '')
+    }
+  })
   libraryRelocateWindow.closeWindow()
 }
 

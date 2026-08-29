@@ -51,6 +51,7 @@ import { useCloudSyncEvents } from '@renderer/composables/useCloudSyncEvents'
 import { useUserGuide } from '@renderer/composables/useUserGuide'
 import UserGuideIdentityOverlay from '@renderer/components/userGuide/UserGuideIdentityOverlay.vue'
 import UserGuideCard from '@renderer/components/userGuide/UserGuideCard.vue'
+import LibrarySetupOverlay from '@renderer/components/librarySetup/LibrarySetupOverlay.vue'
 import type { MainWindowBrowseMode } from '@renderer/utils/mainWindowPlaybackHandoff'
 import {
   handleSongsRemovedForGlobalSearchUpdate,
@@ -64,6 +65,14 @@ import {
 import { stopWindowAudio } from '@renderer/utils/windowAudioCleanup'
 import { pruneLibraryTreeTrackCounts } from '@renderer/utils/libraryTreeSort'
 
+const LIBRARY_SETUP_ALLOWED_DIALOGS = new Set([
+  'menu.about',
+  'menu.thirdPartyNotices',
+  'menu.visitGithub',
+  'menu.visitWebsite',
+  'menu.checkUpdate',
+  'menu.whatsNew'
+])
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
@@ -274,6 +283,10 @@ const handleCtrlDoubleTapKeyUp = (event: KeyboardEvent) => {
     ctrlComboDirty = false
     return
   }
+  if (runtime.librarySetupActive) {
+    ctrlTapAt = 0
+    return
+  }
   if (isEditableElement(event.target) || runtime.confirmShow) {
     ctrlTapAt = 0
     ctrlComboDirty = false
@@ -377,6 +390,7 @@ const requestMainWindowClose = async () => {
 const openDialog = async (item: string) => {
   if (item === '关于') item = 'menu.about'
   if (item === '第三方许可') item = 'menu.thirdPartyNotices'
+  if (runtime.librarySetupActive && !LIBRARY_SETUP_ALLOWED_DIALOGS.has(item)) return
   if (item === '访问 GitHub') item = 'menu.visitGithub'
   if (item === '访问官网') item = 'menu.visitWebsite'
   if (item === '检查更新') item = 'menu.checkUpdate'
@@ -539,6 +553,7 @@ const closeMainWindowBrowseModeMenu = () => {
 }
 
 const toggleMainWindowBrowseModeMenu = () => {
+  if (runtime.librarySetupActive) return
   mainWindowBrowseModeMenuOpen.value = !mainWindowBrowseModeMenuOpen.value
 }
 
@@ -555,6 +570,7 @@ const selectMainWindowBrowseMode = async (mode: MainWindowBrowseMode) => {
 }
 
 const openSettingsDialog = () => {
+  if (runtime.librarySetupActive) return
   activeDialog.value = 'settings'
 }
 
@@ -614,6 +630,7 @@ const handleBeforeUnload = () => {
 }
 
 const getLibrary = async () => {
+  if (runtime.librarySetupActive) return
   runtime.libraryTreeLoading = true
   try {
     runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
@@ -630,9 +647,11 @@ const handleOpenDialogFromTray = async (_e: unknown, key: string) => {
   await openDialog(key)
 }
 const handleOpenGlobalSongSearch = async () => {
+  if (runtime.librarySetupActive) return
   await openDialog('menu.globalSongSearch')
 }
 const handleTrayAction = async (_e: unknown, action: string) => {
+  if (runtime.librarySetupActive && action !== 'exit') return
   if (action === 'import-new-filter') {
     await openNewSongsImport('FilterLibrary')
     return
@@ -647,6 +666,7 @@ const handleTrayAction = async (_e: unknown, action: string) => {
   }
 }
 const handleExternalOpenImported = async (_e: unknown, payload: { paths?: string[] }) => {
+  if (runtime.librarySetupActive) return
   try {
     const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
     const songs = await replaceExternalPlaylistFromPaths(rawPaths)
@@ -729,6 +749,7 @@ onMounted(() => {
   }, 1000)
   songSearchWarmupTimer = setTimeout(() => {
     songSearchWarmupTimer = null
+    if (runtime.librarySetupActive) return
     void window.electron.ipcRenderer.invoke('song-search:warmup').catch(() => {})
   }, 5000)
   emitter.on(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
@@ -784,7 +805,9 @@ onMounted(() => {
   window.electron.ipcRenderer.on('open-global-song-search', handleOpenGlobalSongSearch)
   window.electron.ipcRenderer.on('tray-action', handleTrayAction)
   window.electron.ipcRenderer.on('external-open/imported', handleExternalOpenImported)
-  window.electron.ipcRenderer.send('external-open:renderer-ready')
+  if (!runtime.librarySetupActive) {
+    window.electron.ipcRenderer.send('external-open:renderer-ready')
+  }
   window.electron.ipcRenderer.on('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
   window.electron.ipcRenderer.on('library-merge:open-dialog', openLibraryMergeDialog)
@@ -813,6 +836,7 @@ onMounted(() => {
   window.electron.ipcRenderer.on('cloudSync/error', handleCloudSyncError)
   window.electron.ipcRenderer.on('mainWindowBlur', handleMainWindowBlur)
   void (async () => {
+    if (runtime.librarySetupActive) return
     await waitForUserGuideIdentity()
     beginUserGuide()
     await waitForUserGuideIdle()
@@ -1064,6 +1088,7 @@ onBeforeUnmount(() => {
     scope="curated"
     @close="curatedLibraryMergeDialogVisible = false"
   />
+  <LibrarySetupOverlay v-if="runtime.librarySetupActive" />
   <cloudSyncSummaryDialog
     v-if="runtime.cloudSync.summaryVisible"
     :summary="runtime.cloudSync.summary"

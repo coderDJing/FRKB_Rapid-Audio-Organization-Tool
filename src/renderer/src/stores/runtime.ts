@@ -20,6 +20,7 @@ import type {
 import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '@shared/browserPlayerRightTrackInfo'
 import { DEFAULT_PLAYER_GLOBAL_SHORTCUTS } from '@shared/playerGlobalShortcuts'
 import type { MiniPlayerSession } from '@shared/miniPlayerWindow'
+import type { LibrarySetupErrorHint, LibrarySetupMode } from '@shared/librarySetup'
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
@@ -209,6 +210,9 @@ interface Runtime {
   manualKeyAnalysisPendingFilePaths: string[]
   playlistAnalysisPromptDismissedSongListUUIDs: string[]
   confirmShow: boolean
+  librarySetupActive: boolean
+  librarySetupMode: LibrarySetupMode | null
+  librarySetupErrorHint: LibrarySetupErrorHint | null
   hotkeysScopesHeap: string[]
   curatedArtistFavorites: ICuratedArtistFavorite[]
   setting: ISettingConfig
@@ -373,6 +377,9 @@ export const useRuntimeStore = defineStore('runtime', {
       manualKeyAnalysisPendingFilePaths: [],
       playlistAnalysisPromptDismissedSongListUUIDs: [],
       confirmShow: false, //是否有确认框正在显示
+      librarySetupActive: false,
+      librarySetupMode: null,
+      librarySetupErrorHint: null,
       hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项
       curatedArtistFavorites: [],
       setting: {

@@ -6,6 +6,7 @@ import whatsNewWindow, { type WhatsNewReleasePayload } from '../window/whatsNewW
 import type { ISettingConfig } from '../../types/globals'
 import { persistSettingConfig } from '../settingsPersistence'
 import { fetchWithSystemProxy } from '../fetchWithSystemProxy'
+import { isLibrarySetupActive } from '../librarySetupState'
 
 const WHATS_NEW_RELEASE_URL =
   'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
@@ -63,6 +64,7 @@ async function fetchLatestStableRelease(
 }
 
 export async function maybeShowWhatsNew() {
+  if (isLibrarySetupActive()) return
   const currentVersion = app.getVersion()
   if (is.dev || currentVersion.includes('-')) {
     return

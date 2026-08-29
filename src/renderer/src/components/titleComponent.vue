@@ -149,84 +149,90 @@ const buildMenuArr = (configs: MenuConfig[]): Menu[] => {
   }))
 }
 
-const defaultMenuConfigs = computed<MenuConfig[]>(() => [
-  {
-    name: 'menu.file',
-    subMenu: [
-      [
-        {
-          name: 'library.importNewTracks',
-          shortcutKey: 'Alt+Q',
-          i18nParams: { libraryTypeKey: 'library.filter' },
-          action: 'import-new-filter'
-        },
-        {
-          name: 'library.importNewTracks',
-          shortcutKey: 'Alt+E',
-          i18nParams: { libraryTypeKey: 'library.curated' },
-          action: 'import-new-curated'
-        }
-      ],
-      [{ name: 'menu.globalSongSearch', shortcutKey: 'Ctrl,Ctrl' }],
-      [{ name: 'menu.formatConversionTool' }],
-      [{ name: 'fingerprints.manualAdd', action: 'manual-add-fingerprint' }],
-      [{ name: 'menu.exit', action: 'exit' }]
-    ]
-  },
-  {
-    name: 'menu.migration',
-    subMenu: [
-      [{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }],
-      [
-        { name: 'migration.mergeLibrary', action: 'library-merge' },
-        { name: 'migration.mergeCuratedLibrary', action: 'curated-library-merge' }
-      ],
-      [{ name: 'migration.moveLibrary', action: 'library-relocate' }]
-    ]
-  },
-  {
-    name: 'menu.cloudSync',
-    subMenu: [[{ name: 'cloudSync.syncFingerprints' }], [{ name: 'cloudSync.settings' }]]
-  },
-  {
-    name: 'menu.help',
-    subMenu: [
-      [{ name: 'menu.visitGithub', shortcutKey: 'F1' }, { name: 'menu.visitWebsite' }],
-      [
-        { name: 'menu.checkUpdate' },
-        ...(!runtime.analysisRuntime.available && !analysisRuntimeBusy.value
-          ? [{ name: 'menu.downloadAnalysisRuntime', action: 'download-analysis-runtime' }]
-          : []),
-        { name: 'menu.openLog', action: 'open-log' },
-        { name: 'menu.whatsNew' },
-        { name: 'menu.userGuide' },
-        { name: 'menu.thirdPartyNotices' },
-        { name: 'menu.about' }
-      ],
-      ...(isWindowScreenshotFeatureVisible.value
-        ? [
-            [
-              {
-                name: 'menu.enableWindowScreenshotShortcut',
-                action: 'toggle-window-screenshot-shortcut',
-                shortcutKey: WINDOW_SCREENSHOT_SHORTCUT,
-                checked: isWindowScreenshotShortcutEnabled.value
-              }
-            ]
-          ]
+const defaultMenuConfigs = computed<MenuConfig[]>(() => {
+  const librarySetupActive = runtime.librarySetupActive
+  const helpSubMenu: MenuItem[][] = [
+    [{ name: 'menu.visitGithub', shortcutKey: 'F1' }, { name: 'menu.visitWebsite' }],
+    [
+      { name: 'menu.checkUpdate' },
+      ...(!librarySetupActive && !runtime.analysisRuntime.available && !analysisRuntimeBusy.value
+        ? [{ name: 'menu.downloadAnalysisRuntime', action: 'download-analysis-runtime' }]
         : []),
-      // 仅 dev 模式显示开发用 trace 菜单
-      ...(isDevMode.value
-        ? [
-            [
-              { name: 'menu.startSongListTrace', action: 'dev-songlist-trace-start' },
-              { name: 'menu.stopSongListTrace', action: 'dev-songlist-trace-stop' }
-            ]
+      { name: 'menu.openLog', action: 'open-log' },
+      { name: 'menu.whatsNew' },
+      ...(librarySetupActive ? [] : [{ name: 'menu.userGuide' }]),
+      { name: 'menu.thirdPartyNotices' },
+      { name: 'menu.about' }
+    ],
+    ...(isWindowScreenshotFeatureVisible.value
+      ? [
+          [
+            {
+              name: 'menu.enableWindowScreenshotShortcut',
+              action: 'toggle-window-screenshot-shortcut',
+              shortcutKey: WINDOW_SCREENSHOT_SHORTCUT,
+              checked: isWindowScreenshotShortcutEnabled.value
+            }
           ]
-        : [])
-    ]
-  }
-])
+        ]
+      : []),
+    ...(!librarySetupActive && isDevMode.value
+      ? [
+          [
+            { name: 'menu.startSongListTrace', action: 'dev-songlist-trace-start' },
+            { name: 'menu.stopSongListTrace', action: 'dev-songlist-trace-stop' }
+          ]
+        ]
+      : [])
+  ]
+  return [
+    {
+      name: 'menu.file',
+      disabled: librarySetupActive,
+      subMenu: [
+        [
+          {
+            name: 'library.importNewTracks',
+            shortcutKey: 'Alt+Q',
+            i18nParams: { libraryTypeKey: 'library.filter' },
+            action: 'import-new-filter'
+          },
+          {
+            name: 'library.importNewTracks',
+            shortcutKey: 'Alt+E',
+            i18nParams: { libraryTypeKey: 'library.curated' },
+            action: 'import-new-curated'
+          }
+        ],
+        [{ name: 'menu.globalSongSearch', shortcutKey: 'Ctrl,Ctrl' }],
+        [{ name: 'menu.formatConversionTool' }],
+        [{ name: 'fingerprints.manualAdd', action: 'manual-add-fingerprint' }],
+        [{ name: 'menu.exit', action: 'exit' }]
+      ]
+    },
+    {
+      name: 'menu.migration',
+      disabled: librarySetupActive,
+      subMenu: [
+        [{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }],
+        [
+          { name: 'migration.mergeLibrary', action: 'library-merge' },
+          { name: 'migration.mergeCuratedLibrary', action: 'curated-library-merge' }
+        ],
+        [{ name: 'migration.moveLibrary', action: 'library-relocate' }]
+      ]
+    },
+    {
+      name: 'menu.cloudSync',
+      disabled: librarySetupActive,
+      subMenu: [[{ name: 'cloudSync.syncFingerprints' }], [{ name: 'cloudSync.settings' }]]
+    },
+    {
+      name: 'menu.help',
+      subMenu: helpSubMenu
+    }
+  ]
+})
 
 const resolvedMenuConfigs = computed<MenuConfig[]>(() => {
   if (Array.isArray(props.menuOverride) && props.menuOverride.length > 0) {
@@ -252,7 +258,7 @@ watch(
 if (props.enableMenuHotkeys) {
   hotkeys('alt+f', 'windowGlobal', () => {
     menuArr.value.forEach((item) => {
-      if (item.name === 'menu.file') {
+      if (item.name === 'menu.file' && !item.disabled) {
         item.show = true
         return
       }
@@ -260,7 +266,7 @@ if (props.enableMenuHotkeys) {
   })
   hotkeys('alt+g', 'windowGlobal', () => {
     menuArr.value.forEach((item) => {
-      if (item.name === 'menu.migration') {
+      if (item.name === 'menu.migration' && !item.disabled) {
         item.show = true
         return
       }
@@ -268,7 +274,7 @@ if (props.enableMenuHotkeys) {
   })
   hotkeys('alt+c', 'windowGlobal', () => {
     menuArr.value.forEach((item) => {
-      if (item.name === 'menu.cloudSync') {
+      if (item.name === 'menu.cloudSync' && !item.disabled) {
         item.show = true
         return
       }
@@ -276,7 +282,7 @@ if (props.enableMenuHotkeys) {
   })
   hotkeys('alt+h', 'windowGlobal', () => {
     menuArr.value.forEach((item) => {
-      if (item.name === 'menu.help') {
+      if (item.name === 'menu.help' && !item.disabled) {
         item.show = true
         return
       }
@@ -284,12 +290,14 @@ if (props.enableMenuHotkeys) {
   })
 
   hotkeys('alt+q', 'windowGlobal', () => {
+    if (runtime.librarySetupActive) return
     ;(async () => {
       await openNewSongsImport('FilterLibrary')
     })()
   })
 
   hotkeys('alt+e', 'windowGlobal', () => {
+    if (runtime.librarySetupActive) return
     ;(async () => {
       await openNewSongsImport('CuratedLibrary')
     })()
@@ -375,21 +383,20 @@ const menuButtonClick = async (item: MenuItem) => {
 }
 
 const switchMenu = (direction: 'next' | 'prev', menuName: string) => {
+  const total = menuArr.value.length
   let index = menuArr.value.findIndex((item) => item.name === menuName)
-  if (direction === 'next') {
-    if (menuArr.value.length - 1 === index) {
-      index = 0
+  if (index < 0 || total === 0) return
+  for (let i = 0; i < total; i++) {
+    if (direction === 'next') {
+      index = index === total - 1 ? 0 : index + 1
     } else {
-      index++
+      index = index === 0 ? total - 1 : index - 1
     }
-  } else if (direction === 'prev') {
-    if (index === 0) {
-      index = menuArr.value.length - 1
-    } else {
-      index--
+    if (!menuArr.value[index].disabled) {
+      menuArr.value[index].show = true
+      return
     }
   }
-  menuArr.value[index].show = true
 }
 const titleMenuButtonMouseEnter = (item: Menu) => {
   if (item.disabled) return

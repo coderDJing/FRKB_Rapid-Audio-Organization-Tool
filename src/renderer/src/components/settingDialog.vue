@@ -559,6 +559,7 @@ const reSelectLibrary = async () => {
   })
   if (res === 'confirm') {
     setSetting()
+    emits('cancel')
     await window.electron.ipcRenderer.invoke('reSelectLibrary')
   }
 }

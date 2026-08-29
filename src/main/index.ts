@@ -18,7 +18,6 @@ import errorReport from './errorReport'
 import { saveList } from './fingerprintStore'
 import mainWindow from './window/mainWindow'
 import mixtapeWindow from './window/mixtapeWindow'
-import databaseInitWindow from './window/databaseInitWindow'
 import startupWindow from './window/startupWindow'
 import databaseSchemaMigrationWindow from './window/databaseSchemaMigrationWindow'
 import libraryRelocateWindow from './window/libraryRelocateWindow'
@@ -80,6 +79,7 @@ import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew
 import { registerPlaybackForegroundActivityHandlers } from './services/playbackForegroundActivity'
 import { registerLibraryMergeHandlers } from './ipc/libraryMergeHandlers'
 import { registerLibraryRelocateHandlers } from './ipc/libraryRelocateHandlers'
+import { registerLibrarySetupHandlers } from './ipc/librarySetupHandlers'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
 import fs from 'fs-extra'
@@ -111,6 +111,7 @@ import {
 } from './services/devExternalOpenHandoff'
 import { terminateRegisteredChildProcesses } from './services/childProcessRegistry'
 import { closeLibraryDb } from './libraryDb'
+import { isLibrarySetupActive } from './librarySetupState'
 import { openSafeExternalUrl } from './window/externalNavigation'
 
 const devRuntime = configureDevRuntime(is.dev, log)
@@ -207,7 +208,6 @@ const attachExternalOpenRendererLifecycle = (): void => {
 const ensurePrimaryWindowVisible = async (): Promise<void> => {
   if (focusWindowIfPossible(databaseSchemaMigrationWindow.instance)) return
   if (focusWindowIfPossible(libraryRelocateWindow.instance)) return
-  if (focusWindowIfPossible(databaseInitWindow.instance)) return
   if (focusWindowIfPossible(mainWindow.instance)) return
   await prepareAndOpenMainWindow()
   attachExternalOpenRendererLifecycle()
@@ -320,6 +320,7 @@ registerWhatsNewHandlers()
 registerPlaybackForegroundActivityHandlers()
 registerLibraryMergeHandlers()
 registerLibraryRelocateHandlers()
+registerLibrarySetupHandlers()
 registerSettingsHandlers({
   loadFingerprintList: async (mode) => {
     const FingerprintStore = require('./fingerprintStore')
@@ -517,7 +518,10 @@ registerBackgroundForegroundBusyProvider(
   () => isMixtapeStemQueueBusy() || isMixtapeWaveformQueueBusy() || isMixtapeRawWaveformQueueBusy()
 )
 
-if (is.dev && devDatabase) {
+// FORCE 只清内存中的库路径，不回写设置文件；看完初始化画面后关掉开关即可回到原库。
+if (is.dev && String(process.env.FRKB_DEV_FORCE_LIBRARY_SETUP || '').trim() === '1') {
+  store.settingConfig.databaseUrl = ''
+} else if (is.dev && devDatabase) {
   store.settingConfig.databaseUrl = devDatabase
 }
 
@@ -654,12 +658,15 @@ app.whenReady().then(async () => {
   await prepareAndOpenMainWindow()
   attachExternalOpenRendererLifecycle()
   startBackgroundOrchestrator()
-  startKeyAnalysisBackground()
+  if (!isLibrarySetupActive()) {
+    startKeyAnalysisBackground()
+    void globalSongSearchEngine.warmup().catch(() => {})
+  }
   startMixtapeStemBackgroundResume()
-  void globalSongSearchEngine.warmup().catch(() => {})
   LibraryCacheDb.scheduleCacheKeyMigration()
   await processExternalOpenQueue()
   setTimeout(() => {
+    if (isLibrarySetupActive()) return
     maybeShowWhatsNew().catch((error) => {
       log.error('[whatsNew] maybeShowWhatsNew 异常', error)
     })

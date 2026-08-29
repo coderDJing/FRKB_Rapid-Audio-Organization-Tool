@@ -14,7 +14,6 @@ import fs = require('fs-extra')
 import store from '../../store'
 import { log } from '../../log'
 import updateWindow from '../updateWindow'
-import databaseInitWindow from '../databaseInitWindow'
 import { registerAudioDecodeHandlers } from './audioDecodeHandlers'
 import { registerFingerprintHandlers } from './fingerprintHandlers'
 import { registerImportHandlers } from './importHandlers'
@@ -22,10 +21,6 @@ import { registerMainWindowFilesystemHandlers } from './mainWindowFilesystemHand
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { registerSetListHandlers } from '../../ipc/setListHandlers'
 import { isLibraryMergeActive } from '../../services/libraryMerge'
-import {
-  hasLibraryRelocateJournalSync,
-  isLibraryRelocateActive
-} from '../../services/libraryRelocate'
 import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
 import {
@@ -56,6 +51,7 @@ import { restrictExternalNavigation } from '../externalNavigation'
 import startupWindow from '../startupWindow'
 import { attachMainWindowResponsivenessDiagnostics } from './responsivenessDiagnostics'
 import miniPlayerWindow from '../miniPlayerWindow'
+import { getLibrarySetupState, isLibrarySetupActive } from '../../librarySetupState'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -473,7 +469,9 @@ function createWindow() {
     startupWindow.closeWindow()
     mainWindow?.show()
     globalShortcut.register(store.settingConfig.globalCallShortcut, handleGlobalCallShortcut)
-    registerPlaybackGlobalShortcuts()
+    if (!isLibrarySetupActive()) {
+      registerPlaybackGlobalShortcuts()
+    }
     syncWindowScreenshotShortcut()
   })
 
@@ -521,9 +519,14 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.webContents.send('mainWin-max', !!mainWindow?.isMaximized())
     mainWindow?.webContents.send('layoutConfigReaded', store.layoutConfig)
+    mainWindow?.webContents.send('library-setup:state', getLibrarySetupState())
+    if (!isLibrarySetupActive()) {
+      registerPlaybackGlobalShortcuts()
+    }
     // 启动后台分析和清理任务
     // 延迟启动，避免影响初始加载性能
     setTimeout(() => {
+      if (isLibrarySetupActive()) return
       startKeyAnalysisBackground()
     }, 5000)
   })
@@ -653,13 +656,6 @@ function createWindow() {
     }
   })
 
-  ipcMain.handle('reSelectLibrary', async () => {
-    if (isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) return
-    databaseInitWindow.createWindow()
-    await persistMainWindowLayout()
-    mainWindow?.close()
-  })
-
   mainWindow.on('closed', () => {
     stopLibraryTreeWatcher()
     ipcMain.removeAllListeners('toggle-maximize')
@@ -669,7 +665,6 @@ function createWindow() {
     ipcMain.removeHandler('changeGlobalShortcut')
     ipcMain.removeHandler('playerGlobalShortcut:update')
     ipcMain.removeHandler('playerGlobalShortcut:updateSeekPercentModifier')
-    ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeAllListeners('startExternalSongDrag')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
     unregisterPlaybackGlobalShortcuts()

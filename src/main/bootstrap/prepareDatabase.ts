@@ -2,9 +2,9 @@ import { app } from 'electron'
 import fs = require('fs-extra')
 import path = require('path')
 import store from '../store'
-import databaseInitWindow from '../window/databaseInitWindow'
 import databaseSchemaMigrationWindow from '../window/databaseSchemaMigrationWindow'
 import mainWindow from '../window/mainWindow'
+import { openLibrarySetupWindow } from '../librarySetup'
 import startupWindow from '../window/startupWindow'
 import { initDatabaseStructure } from '../initDatabase'
 import {
@@ -51,10 +51,10 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     startupWindow.closeWindow()
   }
 
-  // 未配置数据库路径：进入初始化
+  // 未配置数据库路径：进入主窗口引导
   if (!store.settingConfig.databaseUrl) {
     startupWindow.setStage('selecting-library')
-    databaseInitWindow.createWindow()
+    openLibrarySetupWindow({ mode: 'required' })
     startupWindow.closeWindow()
     return
   }
@@ -69,13 +69,25 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     const libraryExists = fs.pathExistsSync(libraryRoot)
     if (!rootExists || !libraryExists) {
       startupWindow.setStage('selecting-library')
-      databaseInitWindow.createWindow({ needErrorHint: true })
+      openLibrarySetupWindow({
+        mode: 'required',
+        errorHint: {
+          kind: 'cannot-read',
+          databaseUrl: store.settingConfig.databaseUrl
+        }
+      })
       startupWindow.closeWindow()
       return
     }
   } catch (_e) {
     startupWindow.setStage('selecting-library')
-    databaseInitWindow.createWindow({ needErrorHint: true })
+    openLibrarySetupWindow({
+      mode: 'required',
+      errorHint: {
+        kind: 'cannot-read',
+        databaseUrl: store.settingConfig.databaseUrl
+      }
+    })
     startupWindow.closeWindow()
     return
   }
@@ -149,7 +161,6 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     databaseSchemaMigrationWindow.close()
     mainWindow.createWindow()
     libraryRelocateWindow.closeWindow()
-    databaseInitWindow.instance?.close()
   } catch (error) {
     if (databaseSchemaMigrationWindow.hasFailedMigration()) return
     databaseSchemaMigrationWindow.close()
@@ -165,7 +176,8 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     }
     startupWindow.setStage('selecting-library')
     if (isDatabaseSchemaVersionError(error)) {
-      databaseInitWindow.createWindow({
+      openLibrarySetupWindow({
+        mode: 'required',
         errorHint: {
           kind: 'schema-too-new',
           databaseUrl: store.settingConfig.databaseUrl,
@@ -176,7 +188,13 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
       startupWindow.closeWindow()
       return
     }
-    databaseInitWindow.createWindow({ needErrorHint: true })
+    openLibrarySetupWindow({
+      mode: 'required',
+      errorHint: {
+        kind: 'cannot-read',
+        databaseUrl: store.settingConfig.databaseUrl
+      }
+    })
     startupWindow.closeWindow()
   }
 }
