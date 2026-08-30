@@ -296,18 +296,6 @@ const rekordboxDesktopTrackStorageDirText = computed(
               />
             </div>
 
-            <div class="setting-block">{{ t('userGuide.settingTitle') }}：</div>
-            <div class="setting-control">
-              <singleRadioGroup
-                v-model="rekordboxUserMode"
-                name="userGuideIdentity"
-                :options="rekordboxUserModeOptions"
-                :option-font-size="12"
-                @change="setSetting()"
-              />
-              <div class="setting-hint">{{ t('userGuide.settingHint') }}</div>
-            </div>
-
             <div class="setting-block">{{ t('player.audioOutputDevice') }}：</div>
             <div class="setting-control">
               <BaseSelect
@@ -426,6 +414,141 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 </div>
               </template>
             </template>
+          </div>
+
+          <div class="settings-section">
+            <div class="section-title">{{ t('settings.layout.sectionLibraryTitle') }}</div>
+
+            <label class="setting-block" for="setting-checkbox-curatedArtistTracking"
+              >{{ t('settings.curatedArtistTracking.title') }}：</label
+            >
+            <div class="setting-control">
+              <singleCheckbox
+                id="setting-checkbox-curatedArtistTracking"
+                v-model="runtime.setting.enableCuratedArtistTracking"
+                @change="setSetting()"
+              />
+              <div class="setting-hint">{{ t('settings.curatedArtistTracking.desc') }}</div>
+              <div class="setting-hint">
+                {{
+                  t('settings.curatedArtistTracking.clearDesc', {
+                    count: curatedArtistFavoritesCount
+                  })
+                }}
+              </div>
+              <div class="buttonRow">
+                <div
+                  class="button settings-inline-button"
+                  @click="openCuratedArtistFavoritesDialog()"
+                >
+                  {{ t('settings.curatedArtistTracking.managerButton') }}
+                </div>
+                <div
+                  class="dangerButton settings-inline-button"
+                  @click="clearCuratedArtistFavorites()"
+                >
+                  {{ t('settings.curatedArtistTracking.clearButton') }}
+                </div>
+              </div>
+            </div>
+
+            <label class="setting-block" for="setting-checkbox-persistFiltersAfterRestart"
+              >{{ t('filters.persistFiltersAfterRestart') }}：</label
+            >
+            <div class="setting-control">
+              <singleCheckbox
+                id="setting-checkbox-persistFiltersAfterRestart"
+                v-model="runtime.setting.persistSongFilters"
+                @change="setSetting()"
+              />
+            </div>
+
+            <label class="setting-block" for="setting-checkbox-showPlaylistTrackCount"
+              >{{ t('settings.showPlaylistTrackCount') }}：</label
+            >
+            <div class="setting-control">
+              <singleCheckbox
+                id="setting-checkbox-showPlaylistTrackCount"
+                v-model="runtime.setting.showPlaylistTrackCount"
+                @change="setSetting()"
+              />
+            </div>
+
+            <template v-if="isWindowsPlatform">
+              <label class="setting-block" for="setting-checkbox-enableExplorerContextMenu"
+                >{{ t('settings.enableExplorerContextMenu') }}：</label
+              >
+              <div class="setting-control">
+                <singleCheckbox
+                  id="setting-checkbox-enableExplorerContextMenu"
+                  v-model="enableExplorerContextMenuModel"
+                  @change="setSetting()"
+                />
+              </div>
+            </template>
+
+            <div class="setting-block">{{ t('settings.songListBubble.title') }}：</div>
+            <div class="setting-control">
+              <singleRadioGroup
+                v-model="songListBubbleMode"
+                name="songListBubble"
+                :options="[
+                  { label: t('settings.songListBubble.overflowOnly'), value: 'overflowOnly' },
+                  { label: t('settings.songListBubble.always'), value: 'always' }
+                ]"
+                :option-font-size="12"
+                @change="setSetting()"
+              >
+                <template #option="{ opt }">
+                  <span class="label">{{ opt.label }}</span>
+                </template>
+              </singleRadioGroup>
+              <div class="setting-hint">{{ t('settings.songListBubble.hint') }}</div>
+            </div>
+
+            <div class="setting-block">{{ t('settings.currentLibraryPath') }}：</div>
+            <div class="setting-control">
+              <bubbleBoxTrigger tag="div" class="path-display" :title="currentLibraryPathText">
+                {{ currentLibraryPathText }}
+              </bubbleBoxTrigger>
+              <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
+              <div class="buttonRow">
+                <div class="button settings-inline-button" @click="openCurrentLibraryInExplorer()">
+                  {{ t('settings.openCurrentLibraryInExplorer') }}
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-block">{{ t('database.reselectLocation') }}：</div>
+            <div class="setting-control">
+              <div class="button settings-inline-button" @click="reSelectLibrary()">
+                {{ t('dialog.reselect') }}
+              </div>
+            </div>
+
+            <div class="setting-block">
+              {{ t('settings.rekordboxDesktopTrackStorageDir.title') }}：
+            </div>
+            <div class="setting-control">
+              <bubbleBoxTrigger
+                tag="div"
+                class="path-display"
+                :title="rekordboxDesktopTrackStorageDirText"
+              >
+                {{ rekordboxDesktopTrackStorageDirText }}
+              </bubbleBoxTrigger>
+              <div class="setting-hint">
+                {{ t('settings.rekordboxDesktopTrackStorageDir.hint') }}
+              </div>
+              <div class="buttonRow">
+                <div
+                  class="button settings-inline-button"
+                  @click="chooseRekordboxDesktopTrackStorageDir()"
+                >
+                  {{ t('settings.rekordboxDesktopTrackStorageDir.chooseButton') }}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="settings-section">
@@ -741,137 +864,18 @@ const rekordboxDesktopTrackStorageDirText = computed(
           </div>
 
           <div class="settings-section">
-            <div class="section-title">{{ t('settings.layout.sectionLibraryTitle') }}</div>
+            <div class="section-title">{{ t('settings.layout.sectionUserGuideTitle') }}</div>
 
-            <label class="setting-block" for="setting-checkbox-persistFiltersAfterRestart"
-              >{{ t('filters.persistFiltersAfterRestart') }}：</label
-            >
-            <div class="setting-control">
-              <singleCheckbox
-                id="setting-checkbox-persistFiltersAfterRestart"
-                v-model="runtime.setting.persistSongFilters"
-                @change="setSetting()"
-              />
-            </div>
-
-            <label class="setting-block" for="setting-checkbox-curatedArtistTracking"
-              >{{ t('settings.curatedArtistTracking.title') }}：</label
-            >
-            <div class="setting-control">
-              <singleCheckbox
-                id="setting-checkbox-curatedArtistTracking"
-                v-model="runtime.setting.enableCuratedArtistTracking"
-                @change="setSetting()"
-              />
-              <div class="setting-hint">{{ t('settings.curatedArtistTracking.desc') }}</div>
-              <div class="setting-hint">
-                {{
-                  t('settings.curatedArtistTracking.clearDesc', {
-                    count: curatedArtistFavoritesCount
-                  })
-                }}
-              </div>
-              <div class="buttonRow">
-                <div
-                  class="button settings-inline-button"
-                  @click="openCuratedArtistFavoritesDialog()"
-                >
-                  {{ t('settings.curatedArtistTracking.managerButton') }}
-                </div>
-                <div
-                  class="dangerButton settings-inline-button"
-                  @click="clearCuratedArtistFavorites()"
-                >
-                  {{ t('settings.curatedArtistTracking.clearButton') }}
-                </div>
-              </div>
-            </div>
-
-            <label class="setting-block" for="setting-checkbox-showPlaylistTrackCount"
-              >{{ t('settings.showPlaylistTrackCount') }}：</label
-            >
-            <div class="setting-control">
-              <singleCheckbox
-                id="setting-checkbox-showPlaylistTrackCount"
-                v-model="runtime.setting.showPlaylistTrackCount"
-                @change="setSetting()"
-              />
-            </div>
-
-            <template v-if="isWindowsPlatform">
-              <label class="setting-block" for="setting-checkbox-enableExplorerContextMenu"
-                >{{ t('settings.enableExplorerContextMenu') }}：</label
-              >
-              <div class="setting-control">
-                <singleCheckbox
-                  id="setting-checkbox-enableExplorerContextMenu"
-                  v-model="enableExplorerContextMenuModel"
-                  @change="setSetting()"
-                />
-              </div>
-            </template>
-
-            <div class="setting-block">{{ t('settings.songListBubble.title') }}：</div>
+            <div class="setting-block">{{ t('userGuide.settingTitle') }}：</div>
             <div class="setting-control">
               <singleRadioGroup
-                v-model="songListBubbleMode"
-                name="songListBubble"
-                :options="[
-                  { label: t('settings.songListBubble.overflowOnly'), value: 'overflowOnly' },
-                  { label: t('settings.songListBubble.always'), value: 'always' }
-                ]"
+                v-model="rekordboxUserMode"
+                name="userGuideIdentity"
+                :options="rekordboxUserModeOptions"
                 :option-font-size="12"
                 @change="setSetting()"
-              >
-                <template #option="{ opt }">
-                  <span class="label">{{ opt.label }}</span>
-                </template>
-              </singleRadioGroup>
-              <div class="setting-hint">{{ t('settings.songListBubble.hint') }}</div>
-            </div>
-
-            <div class="setting-block">{{ t('settings.currentLibraryPath') }}：</div>
-            <div class="setting-control">
-              <bubbleBoxTrigger tag="div" class="path-display" :title="currentLibraryPathText">
-                {{ currentLibraryPathText }}
-              </bubbleBoxTrigger>
-              <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
-              <div class="buttonRow">
-                <div class="button settings-inline-button" @click="openCurrentLibraryInExplorer()">
-                  {{ t('settings.openCurrentLibraryInExplorer') }}
-                </div>
-              </div>
-            </div>
-
-            <div class="setting-block">{{ t('database.reselectLocation') }}：</div>
-            <div class="setting-control">
-              <div class="button settings-inline-button" @click="reSelectLibrary()">
-                {{ t('dialog.reselect') }}
-              </div>
-            </div>
-
-            <div class="setting-block">
-              {{ t('settings.rekordboxDesktopTrackStorageDir.title') }}：
-            </div>
-            <div class="setting-control">
-              <bubbleBoxTrigger
-                tag="div"
-                class="path-display"
-                :title="rekordboxDesktopTrackStorageDirText"
-              >
-                {{ rekordboxDesktopTrackStorageDirText }}
-              </bubbleBoxTrigger>
-              <div class="setting-hint">
-                {{ t('settings.rekordboxDesktopTrackStorageDir.hint') }}
-              </div>
-              <div class="buttonRow">
-                <div
-                  class="button settings-inline-button"
-                  @click="chooseRekordboxDesktopTrackStorageDir()"
-                >
-                  {{ t('settings.rekordboxDesktopTrackStorageDir.chooseButton') }}
-                </div>
-              </div>
+              />
+              <div class="setting-hint">{{ t('userGuide.settingHint') }}</div>
             </div>
           </div>
 
