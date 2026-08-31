@@ -8,6 +8,7 @@ import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 import type { HorizontalBrowsePlaybackRangeOverlay } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditPlaybackRange'
+import type { AudioEditClip, AudioEditRange } from '@shared/audioEditTimeline'
 
 type DeckToolbarState = {
   disabled: boolean
@@ -62,7 +63,16 @@ const props = defineProps<{
   hideSyncControls?: boolean
   showEnergy?: boolean
   showLargeShiftButtons?: boolean
+  hideTransportActions?: boolean
+  showQuantizeAction?: boolean
+  sectionSeekMode?: 'seek' | 'seek-play'
   playbackRange?: HorizontalBrowsePlaybackRangeOverlay | null
+  audioEditHasEdits?: boolean
+  audioEditClips?: AudioEditClip[] | null
+  audioEditSelection?: AudioEditRange | null
+  audioEditPendingStartSec?: number | null
+  audioEditPendingEndSec?: number | null
+  audioEditInsertedRanges?: AudioEditRange[] | null
 }>()
 
 const emit = defineEmits<{
@@ -152,8 +162,14 @@ const isTop = props.position === 'top'
         :memory-cues="props.memoryCues"
         marker-anchor="top"
         :loop-range="props.loopRange"
-        section-seek-mode="seek-play"
+        :section-seek-mode="props.sectionSeekMode || 'seek-play'"
         :playback-range="props.playbackRange"
+        :audio-edit-has-edits="props.audioEditHasEdits"
+        :audio-edit-clips="props.audioEditClips"
+        :audio-edit-selection="props.audioEditSelection"
+        :audio-edit-pending-start-sec="props.audioEditPendingStartSec"
+        :audio-edit-pending-end-sec="props.audioEditPendingEndSec"
+        :audio-edit-inserted-ranges="props.audioEditInsertedRanges"
         @seek="emit('seek', $event)"
         @seek-play="emit('seek-play', $event)"
       />
@@ -189,6 +205,8 @@ const isTop = props.position === 'top'
         :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
         :can-toggle-metronome="props.toolbarState.canToggleMetronome"
         :show-large-shift-buttons="props.showLargeShiftButtons"
+        :hide-transport-actions="props.hideTransportActions"
+        :show-quantize-action="props.showQuantizeAction"
         @set-downbeat-line="emit('set-downbeat-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
@@ -211,7 +229,14 @@ const isTop = props.position === 'top'
         @tempo-nudge-start="emit('tempo-nudge-start', $event)"
         @tempo-nudge-end="emit('tempo-nudge-end', $event)"
         @select-move-target="(target, actionMode) => emit('select-move-target', target, actionMode)"
-      />
+      >
+        <template v-if="$slots['toolbar-leading']" #leading>
+          <slot name="toolbar-leading" />
+        </template>
+        <template v-if="$slots['toolbar-tools']" #tools>
+          <slot name="toolbar-tools" />
+        </template>
+      </HorizontalBrowseDeckToolbarRow>
     </div>
   </section>
 </template>

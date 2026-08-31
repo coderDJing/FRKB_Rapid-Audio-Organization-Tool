@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
@@ -31,6 +30,17 @@ import type {
   HorizontalBrowseLinkedGridVisualTransactionDeckState
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualTransaction'
 import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailExpose'
+import { useHorizontalBrowseAudioEditDetailRaw } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseAudioEditDetailRaw'
+import {
+  createPioneerDetailRawWaveform,
+  type PioneerDetailWaveformData
+} from '@renderer/composables/horizontalBrowse/horizontalBrowsePioneerDetailWaveform'
+import { useHorizontalBrowseRawWaveformAudioEditOverlay } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformAudioEditOverlay'
+import {
+  useHorizontalBrowseRawWaveformDetailLifecycle,
+  watchHorizontalBrowseRawWaveformLoadingChange
+} from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformDetailLifecycle'
+import { resolveAudioEditDisplayBeatGridMap } from '@shared/audioEditBeatGrid'
 import {
   createHorizontalBrowsePlaybackDiscontinuityDetector,
   normalizeHorizontalBrowseTimelineSeconds
@@ -43,7 +53,6 @@ import { createHorizontalBrowseDetailPresentationState } from '@renderer/composa
 import { createHorizontalBrowseDetailPresentationActions } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationActions'
 import { createHorizontalBrowseDetailGridPersistence } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailGridPersistence'
 import { createHorizontalBrowseDetailPresentationConsumer } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationConsumer'
-import { watchHorizontalBrowseDetailPlaybackPosition } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPlaybackPositionWatch'
 import { useHorizontalBrowseDynamicBeatGridEdit } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
 import {
   getRekordboxDetailWaveformRequestChannel,
@@ -55,7 +64,6 @@ import {
   createHorizontalBrowseRawWaveformDynamicGridSelectionState,
   watchHorizontalBrowseRawWaveformDynamicGridSelection
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDynamicGridSelection'
-import { watchHorizontalBrowseRawWaveformPlaybackToggle } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformPlaybackToggleWatch'
 import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 const HORIZONTAL_BROWSE_TIMELINE_TAIL_TOLERANCE_SEC = 0.75
@@ -63,6 +71,7 @@ const props = defineProps<HorizontalBrowseRawWaveformDetailProps>()
 const emit = defineEmits<HorizontalBrowseRawWaveformDetailEmit>()
 const runtime = useRuntimeStore()
 const rawData = ref<RawWaveformData | null>(null)
+const sourceRawData = ref<RawWaveformData | null>(null)
 const mixxxData = ref<MixxxWaveformData | null>(null)
 const previewLoading = ref(false)
 const previewStartSec = ref(0)
@@ -119,129 +128,11 @@ const externalDetailWaveformUnavailable = computed(
   () => isRekordboxReadOnlySong.value && !rawData.value
 )
 
-type PioneerDetailWaveformColumn = {
-  height?: number
-  bandLow?: number
-  band_low?: number
-  bandMid?: number
-  band_mid?: number
-  bandHigh?: number
-  band_high?: number
-  colorR?: number
-  color_r?: number
-  colorG?: number
-  color_g?: number
-  colorB?: number
-  color_b?: number
-}
-
-type PioneerDetailWaveformData = {
-  style?: string
-  detailRate?: number
-  detail_rate?: number
-  columns?: PioneerDetailWaveformColumn[]
-}
-
-const createPioneerDetailRawWaveform = (
-  columns: PioneerDetailWaveformColumn[],
-  trackDuration: number,
-  detailRate: number | undefined,
-  style?: string
-): RawWaveformData | null => {
-  if (!columns.length || !Number.isFinite(trackDuration) || trackDuration <= 0) return null
-  const frames = columns.length
-  const nativeDetailRate = Number(detailRate)
-  const rate =
-    Number.isFinite(nativeDetailRate) && nativeDetailRate > 0
-      ? nativeDetailRate
-      : frames / trackDuration
-  const duration = frames / rate
-  const minLeft = new Float32Array(frames)
-  const maxLeft = new Float32Array(frames)
-  const minRight = new Float32Array(frames)
-  const maxRight = new Float32Array(frames)
-  const colorRed = new Uint8Array(frames)
-  const colorGreen = new Uint8Array(frames)
-  const colorBlue = new Uint8Array(frames)
-  const colorLow = new Uint8Array(frames)
-  const colorMid = new Uint8Array(frames)
-  const colorHigh = new Uint8Array(frames)
-  const colorIndex = new Uint8Array(frames)
-  const isNativeTriBand = style === 'triband-detail' || style === 'triband-preview'
-  const isNativeRekordbox = isNativeTriBand || style === 'rgb' || style === 'blue'
-  const nativeAmplitudeMax = isNativeTriBand ? 127 : 255
-  const nativeColorMax = isNativeTriBand ? 127 : 255
-  for (let index = 0; index < frames; index += 1) {
-    const column = columns[index]
-    const height = Math.max(0, Math.min(1, Number(column?.height) / nativeAmplitudeMax || 0))
-    minLeft[index] = -height
-    maxLeft[index] = height
-    minRight[index] = -height
-    maxRight[index] = height
-    if (isNativeTriBand) {
-      colorLow[index] = Math.round(
-        Math.max(
-          0,
-          Math.min(1, Number(column?.bandLow ?? column?.band_low) / nativeColorMax || 0)
-        ) * 255
-      )
-      colorMid[index] = Math.round(
-        Math.max(
-          0,
-          Math.min(1, Number(column?.bandMid ?? column?.band_mid) / nativeColorMax || 0)
-        ) * 255
-      )
-      colorHigh[index] = Math.round(
-        Math.max(
-          0,
-          Math.min(1, Number(column?.bandHigh ?? column?.band_high) / nativeColorMax || 0)
-        ) * 255
-      )
-    } else {
-      colorRed[index] = Math.round(
-        Math.max(0, Math.min(1, Number(column?.colorR ?? column?.color_r) / nativeColorMax || 0)) *
-          255
-      )
-      colorGreen[index] = Math.round(
-        Math.max(0, Math.min(1, Number(column?.colorG ?? column?.color_g) / nativeColorMax || 0)) *
-          255
-      )
-      colorBlue[index] = Math.round(
-        Math.max(0, Math.min(1, Number(column?.colorB ?? column?.color_b) / nativeColorMax || 0)) *
-          255
-      )
-    }
-    colorIndex[index] = 1
-  }
-  return {
-    duration,
-    sampleRate: Math.max(1, Math.round(rate)),
-    rate,
-    frames,
-    startSec: 0,
-    loadedFrames: frames,
-    minLeft,
-    maxLeft,
-    minRight,
-    maxRight,
-    compactColorIndex: colorIndex,
-    compactColorLow: colorLow,
-    compactColorMid: colorMid,
-    compactColorHigh: colorHigh,
-    compactColorRed: colorRed,
-    compactColorGreen: colorGreen,
-    compactColorBlue: colorBlue,
-    compactColorRateDivisor: 1,
-    compactColorStartFrame: 0,
-    nativeWaveformKind: isNativeRekordbox
-      ? isNativeTriBand
-        ? 'rekordbox-triband'
-        : 'rekordbox-rgb'
-      : undefined
-  }
-}
 const gridEditingEnabled = computed(
-  () => props.gridEditMode === true && !isRekordboxReadOnlySong.value
+  () =>
+    props.gridEditMode === true &&
+    props.interactionDisabled !== true &&
+    !isRekordboxReadOnlySong.value
 )
 const presentationLinkedDragActive = computed(
   () => Boolean(props.linkedDragActive) || props.presentationState?.owner === 'linked-drag'
@@ -287,7 +178,6 @@ const resolveWaveformPlaybackRate = () => Math.max(0.25, Number(props.playbackRa
 const resolveGridEditVisibleFromSec = () =>
   gridEditingEnabled.value ? selectedDynamicGridVisibleFromSec.value : null
 
-let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 const playbackDiscontinuityDetector = createHorizontalBrowsePlaybackDiscontinuityDetector()
 let linkedGridVisualTransactionCommitted = false
@@ -328,6 +218,33 @@ const {
   publishLinkedGridVisualPhaseSample
 } = presentationState
 
+const resolveDetailBeatGridMap = () =>
+  resolveAudioEditDisplayBeatGridMap({
+    sourceMap:
+      previewBeatGridMap.value ??
+      normalizeSongBeatGridMapV2(props.song?.beatGridMap, { allowSingleClip: true }) ??
+      null,
+    clips: props.audioEditClips,
+    sourceDurationSec: Number(sourceRawData.value?.duration) || 0,
+    fallback: {
+      bpm: previewBpm.value,
+      firstBeatMs: previewFirstBeatMs.value,
+      downbeatBeatOffset: previewDownbeatBeatOffset.value
+    }
+  })
+
+watch(
+  () => [
+    resolveDetailBeatGridMap()?.signature || '',
+    props.audioEditClips?.map((clip) => `${clip.sourceStartSec}:${clip.sourceEndSec}`).join('|') ||
+      ''
+  ],
+  () => {
+    emit('display-beat-grid-change', resolveDetailBeatGridMap())
+  },
+  { immediate: true }
+)
+
 const {
   wrapRef,
   waveformSurfaceRef,
@@ -342,6 +259,8 @@ const {
   resolvePreviewAnchorSec,
   clampPreviewStart,
   resolvePlaybackAlignedStart,
+  displayViewportStartSec,
+  displayViewportDurationSec,
   resetWaveformRenderState,
   clearCanvas,
   invalidateWaveformTiles,
@@ -370,10 +289,14 @@ const {
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
   direction: () => props.direction,
-  cueSeconds: () => props.cueSeconds,
+  cueSeconds: () => (props.song ? props.cueSeconds : undefined),
   hotCues: () => props.hotCues,
   memoryCues: () => props.memoryCues,
   loopRange: () => props.loopRange,
+  // 音频编辑选区由 DOM 层绘制，避免 worker 帧延迟和双重叠色。
+  audioEditSelection: () => null,
+  audioEditPendingStartSec: () => null,
+  audioEditPendingEndSec: () => null,
   currentSeconds: resolveWaveformCurrentSeconds,
   playbackRate: () => props.playbackRate,
   visualPlaybackRate: resolveCanvasVisualPlaybackRate,
@@ -388,10 +311,7 @@ const {
   previewBpm: visualGridRenderBpm,
   previewFirstBeatMs: visualGridFirstBeatMs,
   previewDownbeatBeatOffset: visualGridDownbeatBeatOffset,
-  beatGridMap: () =>
-    previewBeatGridMap.value ??
-    normalizeSongBeatGridMapV2(props.song?.beatGridMap, { allowSingleClip: true }) ??
-    null,
+  beatGridMap: resolveDetailBeatGridMap,
   rekordboxGridEntries: () =>
     isRekordboxExternalPlaybackSource('', props.song)
       ? props.song?.rekordboxGridEntries
@@ -399,6 +319,7 @@ const {
   beatGridEditMode: () => gridEditingEnabled.value,
   beatGridVisibleFromSec: resolveGridEditVisibleFromSec,
   beatGridSelectedBoundarySec: () => selectedDynamicGridBoundarySec.value,
+  showGridClipBoundaries: () => !props.audioEditClips,
   previewTimeBasisOffsetMs: visualGridTimeBasisOffsetMs,
   dragging,
   allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
@@ -547,7 +468,10 @@ const {
   previewTimeBasisOffsetMs,
   previewBeatGridMap,
   resolvePreviewDurationSec,
-  bpmTapTimestamps
+  bpmTapTimestamps,
+  deferPersistToDisk: () => props.deferGridPersist === true,
+  onDirtyChange: (dirty) => emit('grid-dirty-change', dirty),
+  resolvePersistBeatGridMap: () => resolveDetailBeatGridMap()
 })
 
 const forceDynamicGridFrameRefresh = () => {
@@ -582,13 +506,10 @@ const dynamicBeatGridEdit = useHorizontalBrowseDynamicBeatGridEdit({
 })
 
 const detailVisible = computed(() => true)
-watch(
-  () => previewLoading.value,
-  () => emit('edit-waveform-loading-change', false),
-  {
-    immediate: true
-  }
-)
+watchHorizontalBrowseRawWaveformLoadingChange({
+  previewLoading,
+  emitLoadingChange: (loading) => emit('edit-waveform-loading-change', loading)
+})
 
 const {
   handlePreviewMouseDownForGridTargetSelect,
@@ -631,10 +552,7 @@ const {
   outputMode: 'external',
   syncExternalState: syncNativeMetronomeState,
   resolveAnchorSec: () => Math.max(0, Number(props.currentSeconds) || 0),
-  beatGridMap: () =>
-    previewBeatGridMap.value ??
-    normalizeSongBeatGridMapV2(props.song?.beatGridMap, { allowSingleClip: true }) ??
-    null,
+  beatGridMap: resolveDetailBeatGridMap,
   resolveDurationSec: resolvePreviewDurationSec
 })
 
@@ -706,6 +624,22 @@ const syncGridStateFromSongForDisplay = () => {
   }
 }
 
+const { commitSource: commitAudioEditSourceRaw } = useHorizontalBrowseAudioEditDetailRaw({
+  clips: () => props.audioEditClips,
+  sourceRawData,
+  displayRawData: rawData,
+  mixxxData,
+  replaceLiveWaveformRaw,
+  resetPlaybackRenderState: (resetOptions) =>
+    resetWaveformRenderState({
+      preserveDisplay: resetOptions?.preserveDisplay !== false
+    }),
+  reanchorViewport: () => {
+    previewStartSec.value = resolvePlaybackAlignedStart(resolveWaveformCurrentSeconds())
+  },
+  scheduleDraw
+})
+
 const {
   requestCompactVisualWaveformStrip,
   maybeContinueCompactVisualWaveformStrip,
@@ -714,14 +648,14 @@ const {
 } = useHorizontalBrowseCompactVisualWaveformStrip({
   song: () => props.song,
   active: compactVisualWaveformActive,
-  rawData,
+  rawData: sourceRawData,
   mixxxData,
   previewLoading,
   previewZoom,
   resolveVisibleDurationSec,
   resolvePreviewAnchorSec,
   clampPreviewStart,
-  replaceLiveWaveformRaw,
+  replaceLiveWaveformRaw: (data) => commitAudioEditSourceRaw(data),
   resetPlaybackRenderState: () => resetWaveformRenderState({ preserveDisplay: true }),
   scheduleDraw
 })
@@ -819,7 +753,7 @@ const { stopDragging, handlePointerDown, handleWheel } =
     previewZoom,
     previewMaxZoom,
     direction: () => props.direction,
-    hasSong: () => Boolean(props.song?.filePath),
+    hasSong: () => Boolean(props.song?.filePath) && props.interactionDisabled !== true,
     resolvePreviewDurationSec,
     resolveVisibleDurationSec,
     resolvePreviewAnchorSec,
@@ -860,9 +794,7 @@ const loadWaveform = async () => {
   invalidateWaveformTiles()
   previewLoading.value = false
   compactVisualWaveformActive.value = false
-  rawData.value = null
-  mixxxData.value = null
-  replaceLiveWaveformRaw(null)
+  commitAudioEditSourceRaw(null)
   previewStartSec.value = 0
   resetLiveWaveformData()
   resetGridRenderer()
@@ -891,9 +823,7 @@ const loadWaveform = async () => {
           detailData?.style
         )
         if (detailRaw) {
-          rawData.value = detailRaw
-          mixxxData.value = createRawPlaceholderMixxxData(detailRaw)
-          replaceLiveWaveformRaw(detailRaw)
+          commitAudioEditSourceRaw(detailRaw)
           compactVisualWaveformActive.value = true
           scheduleDraw({ preferPreviewStart: true })
         }
@@ -917,296 +847,149 @@ const loadWaveform = async () => {
     if (currentToken !== loadToken) return
     previewLoading.value = false
     compactVisualWaveformActive.value = true
-    rawData.value = null
-    mixxxData.value = null
-    replaceLiveWaveformRaw(null)
+    commitAudioEditSourceRaw(null)
     resetGridRenderer()
     clearCanvas()
     syncGridStateFromSongForDisplay()
   }
 }
 
-watch(
-  () => props.song?.filePath ?? '',
-  () => {
-    void loadWaveform()
+useHorizontalBrowseRawWaveformDetailLifecycle({
+  props,
+  state: {
+    presentationLinkedGridVisualPending,
+    presentationLinkedGridActive,
+    visualGridRenderBpm,
+    visualGridFirstBeatMs,
+    visualGridDownbeatBeatOffset,
+    waveformPlaybackActive,
+    compactVisualWaveformActive,
+    canAdjustGrid,
+    canAdjustBpmInput,
+    previewBpm,
+    previewRenderBpm,
+    previewFirstBeatMs,
+    previewDownbeatBeatOffset,
+    previewTimeBasisOffsetMs,
+    metronomeEnabled,
+    metronomeVolumeLevel,
+    canToggleMetronome
   },
-  { immediate: true }
-)
-
-watch(
-  () => [resolveWaveformLayout(), resolveWaveformRenderStyle()] as const,
-  ([layout, renderStyle], previous) => {
-    if (previous && layout === previous[0] && renderStyle === previous[1]) return
-    void loadWaveform()
+  runtimeThemeMode: () => runtime.setting?.themeMode,
+  resolveWaveformLayout,
+  resolveWaveformRenderStyle,
+  resolveDetailDeck,
+  loadWaveform,
+  buildSongGridSignature,
+  shouldDeferSongGridSync,
+  syncGridStateFromSongForDisplay,
+  emitToolbarState,
+  scheduleGridOverlayDraw,
+  scheduleDraw,
+  invalidateWaveformTiles,
+  resetGridRenderer,
+  publishLinkedGridVisualPhaseSample,
+  resolveIncomingPreviewTimeScale,
+  applyIncomingPreviewTimeScale,
+  handleSharedZoomState,
+  handlePresentationState,
+  applyPresentationSeekTarget,
+  syncVisualGridStateFromPreview,
+  playbackToggleWatch: {
+    playbackActive: () => waveformPlaybackActive.value,
+    previewPlaying,
+    linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
+    dragging,
+    compactVisualWaveformActive,
+    dragPresentationReleaseActive,
+    resolveCurrentSeconds: resolveWaveformCurrentSeconds,
+    resolvePlaybackRate: resolveWaveformPlaybackRate,
+    stopLiveWaveformPlayback,
+    stopStableCanvasPlayback,
+    suppressStablePlaybackReanchor: stablePlaybackReanchorGate.suppress,
+    holdStablePlaybackToggleRender,
+    measureStableCanvasPresentation,
+    shouldRenderStableCanvasForPlaybackToggle,
+    applyPreviewPlaybackPosition,
+    freezeStableCanvasPlaybackTogglePosition,
+    startStableCanvasPlayback,
+    maybeContinueWaveformSource
+  },
+  playbackPositionWatch: {
+    direction: () => props.direction,
+    currentSeconds: () => props.currentSeconds,
+    playbackActive: () => waveformPlaybackActive.value,
+    songKey: () => props.song?.filePath ?? '',
+    playbackSyncRevision: () => playbackSyncRevision.value,
+    seekRevision: () => props.seekRevision,
+    seekTargetSeconds: () => props.seekTargetSeconds,
+    playbackRate: () => props.playbackRate,
+    linkedGridActive: () => presentationLinkedGridActive.value,
+    linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
+    linkedGridVisualTransactionCommitted: () => linkedGridVisualTransactionCommitted,
+    setLinkedGridVisualTransactionCommitted: (value) => {
+      linkedGridVisualTransactionCommitted = value
+    },
+    dragging,
+    compactVisualWaveformActive,
+    dragPresentationReleaseActive,
+    syncDragPresentationReleaseViewportStart,
+    consumeDragPresentationReleaseRequiresFreshFrame,
+    normalizePreviewTimelineSeconds,
+    playbackDiscontinuityDetector,
+    applyPreviewPlaybackPosition,
+    dragReleaseHandoff,
+    applyStablePresentationSeekTarget,
+    startStableSeekSyncHandoff,
+    isStableSeekSyncHandoffActive,
+    forceRenderStableSeekTarget,
+    isStablePlaybackToggleRenderHeld,
+    stopStableCanvasPlayback,
+    consumeDragReleaseStablePresentationOffsetLimit,
+    measureStableCanvasPresentation,
+    hideStableCanvasPresentation,
+    applyStableCanvasPresentation,
+    reanchorStableCanvasPlayback,
+    resolveWaveformPlaybackRate,
+    maybeContinueWaveformSource,
+    stablePlaybackReanchorCanReanchor: stablePlaybackReanchorGate.canReanchor
+  },
+  mount: {
+    mountWaveformCanvasWorker,
+    resolveWrapElement: () => wrapRef.value,
+    invalidateWaveformTiles,
+    resetGridRenderer,
+    emitToolbarState,
+    scheduleDraw
+  },
+  unmount: {
+    invalidateLoad: () => {
+      loadToken += 1
+    },
+    resetCompactVisualWaveformStrip,
+    clearPersistTimer,
+    clearBpmTapResetTimer,
+    clearPlaybackStableFrameRenderTimer,
+    clearStableSeekRenderRaf,
+    stopDragging,
+    disposeWaveformCanvas,
+    disposeCompactVisualWaveformStrip
   }
-)
-
-watch(
-  () =>
-    [
-      props.song?.bpm,
-      props.song?.firstBeatMs,
-      props.song?.downbeatBeatOffset,
-      props.song?.beatGridMap?.signature,
-      props.song?.timeBasisOffsetMs,
-      presentationLinkedGridVisualPending.value
-    ] as const,
-  ([, , , , , linkedGridVisualPending]) => {
-    if (linkedGridVisualPending) {
-      emitToolbarState()
-      return
-    }
-    const songGridSignature = buildSongGridSignature()
-    if (shouldDeferSongGridSync(songGridSignature)) return
-    syncGridStateFromSongForDisplay()
-    if (!linkedGridVisualPending) {
-      scheduleGridOverlayDraw()
-    }
-  }
-)
-
-watch(
-  () =>
-    [
-      Number(props.cueSeconds) || 0,
-      props.loopRange?.startSec ?? null,
-      props.loopRange?.endSec ?? null
-    ] as const,
-  () => {
-    scheduleDraw()
-  }
-)
-
-watch(
-  () => props.hotCues,
-  () => {
-    scheduleDraw()
-  },
-  { deep: true }
-)
-
-watch(
-  () => props.memoryCues,
-  () => {
-    scheduleDraw()
-  },
-  { deep: true }
-)
-
-watch(
-  () => props.direction,
-  () => {
-    invalidateWaveformTiles()
-    resetGridRenderer()
-    scheduleDraw()
-  }
-)
-
-watch(
-  () =>
-    [
-      presentationLinkedGridActive.value,
-      props.direction,
-      props.song?.filePath ?? '',
-      visualGridRenderBpm.value,
-      visualGridFirstBeatMs.value,
-      visualGridDownbeatBeatOffset.value,
-      props.currentSeconds,
-      props.playbackRate,
-      waveformPlaybackActive.value,
-      resolveWaveformLayout()
-    ] as const,
-  () => {
-    publishLinkedGridVisualPhaseSample()
-  },
-  { immediate: true, flush: 'sync' }
-)
-
-watch(
-  () => [resolveIncomingPreviewTimeScale(), presentationLinkedGridVisualPending.value] as const,
-  ([, linkedGridVisualPending]) => {
-    if (linkedGridVisualPending) {
-      return
-    }
-    applyIncomingPreviewTimeScale()
-  }
-)
-
-watch(
-  () => {
-    const numeric = Number(props.waveformGain)
-    if (!Number.isFinite(numeric)) return 1
-    return clampNumber(numeric, 0, 16)
-  },
-  () => {
-    invalidateWaveformTiles({ preserveDisplay: compactVisualWaveformActive.value })
-    scheduleDraw()
-  }
-)
-
-watch(
-  () => props.sharedZoomState,
-  (state) => {
-    handleSharedZoomState(state)
-  },
-  { immediate: true }
-)
-
-watch(
-  () => props.presentationState?.revision ?? 0,
-  () => {
-    handlePresentationState(props.presentationState)
-  },
-  { immediate: true, flush: 'sync' }
-)
-
-watchHorizontalBrowseRawWaveformPlaybackToggle({
-  playbackActive: () => waveformPlaybackActive.value,
-  previewPlaying,
-  linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
-  dragging,
-  compactVisualWaveformActive,
-  dragPresentationReleaseActive,
-  resolveCurrentSeconds: resolveWaveformCurrentSeconds,
-  resolvePlaybackRate: resolveWaveformPlaybackRate,
-  stopLiveWaveformPlayback,
-  stopStableCanvasPlayback,
-  suppressStablePlaybackReanchor: stablePlaybackReanchorGate.suppress,
-  holdStablePlaybackToggleRender,
-  measureStableCanvasPresentation,
-  shouldRenderStableCanvasForPlaybackToggle,
-  applyPreviewPlaybackPosition,
-  freezeStableCanvasPlaybackTogglePosition,
-  startStableCanvasPlayback,
-  maybeContinueWaveformSource
 })
 
-watchHorizontalBrowseDetailPlaybackPosition({
-  direction: () => props.direction,
-  currentSeconds: () => props.currentSeconds,
-  playbackActive: () => waveformPlaybackActive.value,
-  songKey: () => props.song?.filePath ?? '',
-  playbackSyncRevision: () => playbackSyncRevision.value,
-  seekRevision: () => props.seekRevision,
-  seekTargetSeconds: () => props.seekTargetSeconds,
-  playbackRate: () => props.playbackRate,
-  linkedGridActive: () => presentationLinkedGridActive.value,
-  linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
-  linkedGridVisualTransactionCommitted: () => linkedGridVisualTransactionCommitted,
-  setLinkedGridVisualTransactionCommitted: (value) => {
-    linkedGridVisualTransactionCommitted = value
-  },
-  dragging,
-  compactVisualWaveformActive,
-  dragPresentationReleaseActive,
-  syncDragPresentationReleaseViewportStart,
-  consumeDragPresentationReleaseRequiresFreshFrame,
-  normalizePreviewTimelineSeconds,
-  playbackDiscontinuityDetector,
-  applyPreviewPlaybackPosition,
-  dragReleaseHandoff,
-  applyStablePresentationSeekTarget,
-  startStableSeekSyncHandoff,
-  isStableSeekSyncHandoffActive,
-  forceRenderStableSeekTarget,
-  isStablePlaybackToggleRenderHeld,
-  stopStableCanvasPlayback,
-  consumeDragReleaseStablePresentationOffsetLimit,
-  measureStableCanvasPresentation,
-  hideStableCanvasPresentation,
-  applyStableCanvasPresentation,
-  reanchorStableCanvasPlayback,
-  resolveWaveformPlaybackRate,
-  maybeContinueWaveformSource,
-  stablePlaybackReanchorCanReanchor: stablePlaybackReanchorGate.canReanchor
-})
-
-watch(
-  () => [Number(props.seekRevision) || 0, Number(props.seekTargetSeconds) || 0] as const,
-  ([revision, targetSeconds]) => {
-    if (!revision) return
-    const state = props.presentationState
-    if (state?.owner === 'seek' && state.sourceDeck === resolveDetailDeck()) {
-      return
-    }
-    applyPresentationSeekTarget(targetSeconds, revision)
-  }
-)
-
-watch(
-  () => [canAdjustGrid.value, canAdjustBpmInput.value] as const,
-  () => {
-    emitToolbarState()
-  }
-)
-
-watch(
-  () =>
-    [
-      previewBpm.value,
-      previewRenderBpm.value,
-      previewFirstBeatMs.value,
-      previewDownbeatBeatOffset.value,
-      previewTimeBasisOffsetMs.value,
-      presentationLinkedGridVisualPending.value
-    ] as const,
-  ([, , , , , linkedGridVisualPending]) => {
-    if (linkedGridVisualPending) {
-      emitToolbarState()
-      return
-    }
-    syncVisualGridStateFromPreview()
-    scheduleGridOverlayDraw()
-    emitToolbarState()
-  }
-)
-
-watch(
-  () => [metronomeEnabled.value, metronomeVolumeLevel.value, canToggleMetronome.value] as const,
-  () => {
-    emitToolbarState()
-  }
-)
-
-watch(
-  () => runtime.setting?.themeMode,
-  () => {
-    invalidateWaveformTiles({ preserveDisplay: compactVisualWaveformActive.value })
-    resetGridRenderer()
-    scheduleDraw()
-  }
-)
-
-onMounted(() => {
-  mountWaveformCanvasWorker()
-  if (wrapRef.value) {
-    resizeObserver = new ResizeObserver(() => {
-      invalidateWaveformTiles()
-      resetGridRenderer()
-      scheduleDraw()
-    })
-    resizeObserver.observe(wrapRef.value)
-  }
-  emitToolbarState()
-  scheduleDraw()
-})
-
-onUnmounted(() => {
-  loadToken += 1
-  resetCompactVisualWaveformStrip()
-  clearPersistTimer()
-  clearBpmTapResetTimer()
-  clearPlaybackStableFrameRenderTimer()
-  clearStableSeekRenderRaf()
-  stopDragging(false, false)
-  disposeWaveformCanvas()
-  disposeCompactVisualWaveformStrip()
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
-})
+const { audioEditSelectionStyle, audioEditInsertedStyles, audioEditBoundStyles } =
+  useHorizontalBrowseRawWaveformAudioEditOverlay({
+    hasSong: () => Boolean(props.song),
+    selection: () => props.audioEditSelection,
+    pendingStartSec: () => props.audioEditPendingStartSec,
+    pendingEndSec: () => props.audioEditPendingEndSec,
+    insertedRanges: () => props.audioEditInsertedRanges,
+    dragging,
+    displayViewportStartSec,
+    displayViewportDurationSec,
+    previewStartSec,
+    resolveVisibleDurationSec
+  })
 
 defineExpose(
   createHorizontalBrowseRawWaveformDetailExpose({
@@ -1224,7 +1007,10 @@ defineExpose(
     prepareStableFrameForAnchor,
     commitLinkedGridVisualTransaction,
     resolveVisibleDurationSec,
-    resolveWrapWidth: () => Number(wrapRef.value?.getBoundingClientRect().width || 0)
+    resolveWrapWidth: () => Number(wrapRef.value?.getBoundingClientRect().width || 0),
+    persistGridDefinition,
+    syncGridStateFromSongForDisplay,
+    clearGridHistory: dynamicBeatGridEdit.clearHistory
   })
 )
 </script>
@@ -1237,7 +1023,8 @@ defineExpose(
       `raw-detail-waveform--${props.direction}`,
       {
         'is-dragging': dragging,
-        'is-loading': previewLoading
+        'is-loading': previewLoading,
+        'is-interaction-disabled': props.interactionDisabled
       }
     ]"
     @pointerdown.stop="handlePointerDown"
@@ -1265,6 +1052,28 @@ defineExpose(
         ref="overlayCanvasBackRef"
         class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
       />
+    </div>
+    <div
+      v-for="region in audioEditInsertedStyles"
+      :key="region.key"
+      class="raw-detail-waveform__audio-edit-insert"
+      :style="region.style"
+      aria-hidden="true"
+    ></div>
+    <div
+      v-if="audioEditSelectionStyle"
+      class="raw-detail-waveform__audio-edit-selection"
+      :style="audioEditSelectionStyle"
+    ></div>
+    <div
+      v-for="bound in audioEditBoundStyles"
+      :key="bound.key"
+      class="raw-detail-waveform__audio-edit-bound"
+      :class="`is-${bound.kind}`"
+      :style="bound.style"
+      aria-hidden="true"
+    >
+      <span>{{ bound.label }}</span>
     </div>
   </div>
 </template>

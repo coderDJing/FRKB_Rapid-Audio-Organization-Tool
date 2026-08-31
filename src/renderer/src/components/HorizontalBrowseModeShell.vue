@@ -2,12 +2,15 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import HorizontalBrowseDeckControlRow from '@renderer/components/HorizontalBrowseDeckControlRow.vue'
-import HorizontalBrowseDeckDetailLane from '@renderer/components/HorizontalBrowseDeckDetailLane.vue'
 import HorizontalBrowseEditDeckControls from '@renderer/components/HorizontalBrowseEditDeckControls.vue'
+import HorizontalBrowseAudioEditChrome from '@renderer/components/HorizontalBrowseAudioEditChrome.vue'
 import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrowseDeckMoveDialog.vue'
-import HorizontalBrowseDeckOverviewSection from '@renderer/components/HorizontalBrowseDeckOverviewSection.vue'
-import HorizontalBrowseCuePanels from '@renderer/components/HorizontalBrowseCuePanels.vue'
 import HorizontalBrowseFaderPanel from '@renderer/components/HorizontalBrowseFaderPanel.vue'
+import HorizontalBrowseModeShellWaveformStack from '@renderer/components/HorizontalBrowseModeShellWaveformStack.vue'
+import type {
+  HorizontalBrowseModeShellWaveformStackExpose,
+  HorizontalBrowseModeShellWaveformStackModel
+} from '@renderer/components/horizontalBrowseModeShellWaveformStackTypes'
 import {
   HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
@@ -60,20 +63,15 @@ import {
   DUAL_MODE_BPM_INPUT_TITLE,
   EDIT_MODE_BPM_INPUT_TITLE,
   EDIT_MODE_TAP_BPM_TITLE,
-  type DeckCuePanelMode,
-  type HorizontalBrowseDeckDetailLaneExpose,
   type HorizontalBrowseViewMode,
   type SharedDetailZoomState
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellTypes'
 import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseModePlaybackHandoff'
 import { useHorizontalBrowseEditPlaybackRange } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditPlaybackRange'
+import { useHorizontalBrowseAudioEditShell } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseAudioEditShell'
 import { useHorizontalBrowseModeShellHotkeys } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseModeShellHotkeys'
 import { useHorizontalBrowseVolumeSync } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseVolumeSync'
 import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
-import {
-  userGuideSpotlightBeat,
-  userGuideSpotlightStep
-} from '@renderer/composables/userGuideBridge'
 import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationCoordinator'
 import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationShellBridge'
 import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailTypes'
@@ -100,10 +98,8 @@ const {
 const topDeckCuePointSeconds = ref(0)
 const bottomDeckCuePointSeconds = ref(0)
 const waveformPresentation = useHorizontalBrowseWaveformPresentationCoordinator()
-const topDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
-const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
-const resolveDetailRef = (deck: DeckKey) =>
-  deck === 'top' ? topDetailRef.value : bottomDetailRef.value
+const waveformStackRef = ref<HorizontalBrowseModeShellWaveformStackExpose | null>(null)
+const resolveDetailRef = (deck: DeckKey) => waveformStackRef.value?.resolveDetailRef(deck) ?? null
 const {
   prepareDeckStableFrameForAnchor,
   beginLinkedGridVisualTransaction,
@@ -124,12 +120,6 @@ const editDetailZoomState = ref<SharedDetailZoomState>(
 )
 const horizontalBrowseViewMode = computed<HorizontalBrowseViewMode>(() => props.viewMode)
 const isEditMode = computed(() => horizontalBrowseViewMode.value === 'edit')
-const userGuideExpandFader = computed(() => {
-  if (isEditMode.value) return false
-  if (userGuideSpotlightStep.value !== 'horizontal') return false
-  const beat = userGuideSpotlightBeat.value
-  return beat === 'horizontalTransport' || beat === 'horizontalLink'
-})
 const isLightTheme = computed(() =>
   resolveHorizontalBrowseLightThemeActive(runtime.setting?.themeMode || 'system')
 )
@@ -163,12 +153,6 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
     clearDeckSongListSource(deck)
   }
 }
-const topOverviewRegions = [1, 2, 3]
-const bottomOverviewRegions = [6, 7, 8]
-const deckCuePanelMode = reactive<Record<DeckKey, DeckCuePanelMode>>({
-  top: 'memory',
-  bottom: 'memory'
-})
 const deckTempoInputDirty = reactive<Record<DeckKey, boolean>>({
   top: false,
   bottom: false
@@ -284,6 +268,7 @@ const {
   resolveDeckSong,
   resolveCuePointSec: resolveHorizontalBrowseCuePointSec
 })
+const editQuantizeEnabled = computed(() => deckQuantizeEnabled.top)
 const resolveDeckMarkerPlacementSeconds = (deck: DeckKey) =>
   Math.max(0, Number(resolveDeckMarkerPlacementSec(deck)) || 0)
 const resolveDeckToolbarBpmInputValue = (deck: DeckKey) =>
@@ -446,12 +431,12 @@ const {
   handleDeckRawWaveformDragStart: startDeckRawWaveformDrag,
   handleDeckRawWaveformScrubPreview: previewDeckRawWaveformScrub,
   handleDeckRawWaveformDragEnd: endDeckRawWaveformDrag,
-  handleDeckPlayheadSeek,
-  handleDeckSectionSeekPlay,
+  handleDeckPlayheadSeek: nativeHandleDeckPlayheadSeek,
+  handleDeckSectionSeekPlay: nativeHandleDeckSectionSeekPlay,
   handleDeckBarJump,
   handleDeckPhraseJump,
-  handleDeckBeatJump,
-  handleDeckSeekPercent,
+  handleDeckBeatJump: nativeHandleDeckBeatJump,
+  handleDeckSeekPercent: nativeHandleDeckSeekPercent,
   buildDeckStoredCueDefinition,
   handleDeckMemoryCueRecall,
   handleDeckHotCueRecall,
@@ -461,7 +446,7 @@ const {
   handleDeckCueClick,
   handleDeckCueHotkeyDown,
   handleDeckCueHotkeyUp,
-  handleDeckPlayPauseToggle
+  handleDeckPlayPauseToggle: nativeHandleDeckPlayPauseToggle
 } = useHorizontalBrowseDeckTransportInteractions({
   touchDeckInteraction,
   notifyDeckSeekIntent: notifyDeckSeekPresentationIntent,
@@ -491,9 +476,9 @@ const {
   deactivateDualTransportSync
 })
 const {
-  handleDeckRawWaveformDragStart,
-  handleDeckRawWaveformScrubPreview,
-  handleDeckRawWaveformDragEnd,
+  handleDeckRawWaveformDragStart: startNativeRawWaveformDrag,
+  handleDeckRawWaveformScrubPreview: previewNativeRawWaveformDrag,
+  handleDeckRawWaveformDragEnd: endNativeRawWaveformDrag,
   markDetailZoomPresentation
 } = createHorizontalBrowseWaveformPresentationShellBridge({
   presentation: waveformPresentation,
@@ -510,28 +495,76 @@ const {
   editBeatStep,
   canPreviousEditSong,
   canNextEditSong,
-  loadEditAdjacentSong,
-  jumpEditDeckByBeats
+  loadEditAdjacentSong: nativeLoadEditAdjacentSong,
+  jumpEditDeckByBeats: nativeJumpEditDeckByBeats
 } = useHorizontalBrowseEditDeckNavigation({
   topDeckSong,
   assignSongToDeck,
-  handleDeckBeatJump,
+  handleDeckBeatJump: nativeHandleDeckBeatJump,
   resolveDeckPlaying,
-  handleDeckPlayPauseToggle
+  handleDeckPlayPauseToggle: nativeHandleDeckPlayPauseToggle
 })
+const {
+  audioEdit,
+  gridEditMode,
+  topDeckVisibleCurrentSeconds,
+  topDeckVisibleDurationSeconds,
+  topDeckVisiblePlaying,
+  handleDeckPlayPauseToggle,
+  handleDeckPlayheadSeek,
+  handleDeckSectionSeekPlay,
+  handleDeckSeekPercent,
+  handleDeckRawWaveformDragStart,
+  handleDeckRawWaveformScrubPreview,
+  handleDeckRawWaveformDragEnd,
+  loadEditAdjacentSong,
+  jumpEditDeckByBeats
+} = useHorizontalBrowseAudioEditShell({
+  isEditMode,
+  topDeckSong,
+  sourceDurationSec: topDeckDurationSeconds,
+  quantizeEnabled: editQuantizeEnabled,
+  nativePlaying: topDeckUiPlaying,
+  nativeSeconds: topDeckRenderCurrentSeconds,
+  nativePlayToggle: nativeHandleDeckPlayPauseToggle,
+  nativeSeek: nativeHandleDeckPlayheadSeek,
+  nativeSeekPercent: nativeHandleDeckSeekPercent,
+  nativeSectionSeekPlay: nativeHandleDeckSectionSeekPlay,
+  nativeLoadEditAdjacentSong,
+  nativeJumpEditDeckByBeats,
+  editBeatStep,
+  resolveDeckPlaying,
+  assignSongToDeck,
+  nativeTransport,
+  notifySeekIntent: (seconds) => notifyDeckSeekPresentationIntent('top', seconds),
+  nativeRawWaveformDragStart: startNativeRawWaveformDrag,
+  nativeRawWaveformScrubPreview: previewNativeRawWaveformDrag,
+  nativeRawWaveformDragEnd: endNativeRawWaveformDrag,
+  resolveCuePointSec: () => topDeckCuePointSeconds.value,
+  resolveLoopRange: () => resolveDeckLoopRange('top')
+})
+const handleTopDeckEjectSong = () => {
+  if (isEditMode.value) {
+    audioEdit.handleContextChange(() => handleDeckEjectSong('top'))
+    return
+  }
+  void handleDeckEjectSong('top')
+}
 const { playbackRangeOverlay, handleDeckPlaybackTick } = useHorizontalBrowseEditPlaybackRange({
   runtime,
   isEditMode,
-  topDeckSong,
-  currentSeconds: topDeckRenderCurrentSeconds,
-  durationSeconds: topDeckDurationSeconds,
-  resolvePlaying: () => resolveDeckPlaying('top'),
+  topDeckSong: audioEdit.displaySong,
+  currentSeconds: topDeckVisibleCurrentSeconds,
+  durationSeconds: topDeckVisibleDurationSeconds,
+  resolvePlaying: () => topDeckVisiblePlaying.value,
   resolveLoopActive: () => isDeckLoopActive('top'),
   seek: (seconds) => handleDeckPlayheadSeek('top', seconds),
   seekAndPlay: (seconds) => handleDeckSectionSeekPlay('top', seconds),
-  pause: () => resolveDeckPlaying('top') && handleDeckPlayPauseToggle('top'),
+  pause: () => topDeckVisiblePlaying.value && handleDeckPlayPauseToggle('top'),
   advanceToNextSong: () => Boolean(loadEditAdjacentSong(1)),
-  handleLoopPlaybackTick: handleDeckLoopPlaybackTick
+  handleLoopPlaybackTick: handleDeckLoopPlaybackTick,
+  customRangeSec: audioEdit.session.playbackRange,
+  setCustomRangeSec: audioEdit.session.setPlaybackRange
 })
 const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated } =
   useHorizontalBrowseDeckHotCues({
@@ -658,15 +691,21 @@ const resolveDeckToolbarState = (deck: DeckKey) => {
       tapBpmTitle: isEditMode.value ? EDIT_MODE_TAP_BPM_TITLE : ''
     }
   )
+  const editSaving = isEditMode.value && deck === 'top' && audioEdit.saving.value
   return {
     ...toolbarState,
+    disabled: toolbarState.disabled || editSaving,
     // 双轨的 BPM 是 transport 临时速度目标，不能被只读网格/细节波形的状态禁用。
-    bpmInputDisabled: isEditMode.value
-      ? toolbarState.bpmInputDisabled
-      : !resolveDeckSong(deck)?.filePath,
+    bpmInputDisabled: editSaving
+      ? true
+      : isEditMode.value
+        ? toolbarState.bpmInputDisabled
+        : !resolveDeckSong(deck)?.filePath,
+    gridControlsDisabled: toolbarState.gridControlsDisabled || editSaving,
     // 外部曲目的网格属于 Rekordbox；双轨只保留临时速度控制，隐藏无效的网格工具。
-    showGridControls:
-      isEditMode.value || !isRekordboxExternalPlaybackSource('', resolveDeckSong(deck)),
+    showGridControls: isEditMode.value
+      ? audioEdit.subMode.value === 'grid'
+      : !isRekordboxExternalPlaybackSource('', resolveDeckSong(deck)),
     showMetronome: isEditMode.value || !isRekordboxExternalPlaybackSource('', resolveDeckSong(deck))
   }
 }
@@ -678,14 +717,21 @@ useHorizontalBrowseModeShellHotkeys({
   ejectDeckSong: handleDeckEjectSong,
   openDeckMoveDialog,
   onTogglePlayPause: handleDeckPlayPauseToggle,
-  onCueKeyDown: handleDeckCueHotkeyDown,
-  onCueKeyUp: handleDeckCueHotkeyUp,
+  onCueKeyDown: (deck) => (isEditMode.value ? false : handleDeckCueHotkeyDown(deck)),
+  onCueKeyUp: (deck) => {
+    if (!isEditMode.value) handleDeckCueHotkeyUp(deck)
+  },
   onJumpBar: handleDeckBarJump,
   onJumpPhrase: handleDeckPhraseJump,
   onJumpEditBeats: jumpEditDeckByBeats,
   onSeekPercent: handleDeckSeekPercent,
   faderPanel: faderPanelRef,
-  onNavigateEditSong: loadEditAdjacentSong
+  onNavigateEditSong: loadEditAdjacentSong,
+  guardSongContextChange: (action) => {
+    if (isEditMode.value) return audioEdit.handleContextChange(action)
+    void action()
+    return true
+  }
 })
 
 const {
@@ -772,6 +818,92 @@ const { handleSongsRemoved } = useHorizontalBrowseSongsRemoved({
   handleDeckEjectSong
 })
 
+const waveformStackModel: HorizontalBrowseModeShellWaveformStackModel = {
+  isEditMode,
+  topDeckSong,
+  bottomDeckSong,
+  deckSyncState,
+  deckKeysHarmonicMatched,
+  topDeckVisibleCurrentSeconds,
+  topDeckVisibleDurationSeconds,
+  topDeckVisiblePlaying,
+  bottomDeckRenderCurrentSeconds,
+  bottomDeckDurationSeconds,
+  bottomDeckUiPlaying,
+  audioEdit,
+  playbackRangeOverlay,
+  deckQuantizeEnabled,
+  topDeckWaveformPlaybackActive,
+  bottomDeckWaveformPlaybackActive,
+  topDeckPlaybackRate,
+  bottomDeckPlaybackRate,
+  topDeckPlaybackSyncRevision,
+  bottomDeckPlaybackSyncRevision,
+  topDeckGridBpm,
+  bottomDeckGridBpm,
+  topDeckCuePointSeconds,
+  bottomDeckCuePointSeconds,
+  deckSeekIntent,
+  sharedDetailZoomState,
+  editDetailZoomState,
+  gridEditMode,
+  waveformPresentation,
+  isDeckHovered,
+  resolveDeckSyncUiEnabled,
+  resolveDeckToolbarState,
+  resolveDeckLoopRange,
+  isDeckSongReadOnly,
+  isDeckMasterTempoEnabled,
+  resolveDeckTempoNudgeDirection,
+  handleRegionDragEnter,
+  handleRegionDragOver,
+  handleRegionDragLeave,
+  handleRegionDrop,
+  triggerDeckBeatSync,
+  toggleDeckMaster,
+  handleTopDeckEjectSong,
+  handleDeckEjectSong,
+  handleDeckPlayheadSeek,
+  handleDeckSectionSeekPlay,
+  handleDeckSetDownbeatLineAtPlayhead,
+  handleDeckGridShiftLargeLeft,
+  handleDeckGridShiftSmallLeft,
+  handleDeckGridShiftSmallRight,
+  handleDeckGridShiftLargeRight,
+  handleDeckBpmInputUpdate,
+  handleDeckBpmInputBlur,
+  handleDeckBpmTap,
+  handleDeckMemoryCueCreate,
+  handleDeckSelectWholeAdjustment,
+  handleDeckSplitAfterPlayhead,
+  handleDeckDeleteBoundary,
+  handleDeckMetronomeStateCycle,
+  handleDeckLoopStepDown,
+  handleDeckLoopStepUp,
+  handleDeckLoopToggle,
+  handleDeckMasterTempoToggle,
+  resetDeckTempo,
+  handleDeckQuantizeToggle,
+  startDeckTempoNudge,
+  stopDeckTempoNudge,
+  openDeckMoveDialog,
+  resolveDeckPlaybackRateForTransport,
+  resolveDeckWaveformGain,
+  isDeckWaveformDragging,
+  resolveDeckWaveformDragAnchorSec,
+  shouldPreserveGridShiftPhase,
+  handleToolbarStateChange,
+  handleDetailZoomChange,
+  handleDeckRawWaveformDragStart,
+  handleDeckRawWaveformScrubPreview,
+  handleDeckRawWaveformDragEnd,
+  handleEditWaveformLoadingChange,
+  handleDeckHotCuePress,
+  handleDeckHotCueDelete,
+  handleDeckMemoryCueRecallPress,
+  handleDeckMemoryCueDelete
+}
+
 onMounted(() => {
   startSnapshotSync()
   void nativeTransport.reset().finally(() => {
@@ -841,20 +973,17 @@ onUnmounted(() => {
     :class="{
       'is-edit-mode': isEditMode,
       'is-light-theme': isLightTheme,
-      'is-fader-controls-expanded': (faderControlsExpanded || userGuideExpandFader) && !isEditMode
+      'is-fader-controls-expanded': faderControlsExpanded && !isEditMode
     }"
   >
-    <div
-      class="controls"
-      :class="{ 'controls--edit': isEditMode }"
-      data-user-guide-target="horizontal-transport"
-    >
+    <div class="controls" :class="{ 'controls--edit': isEditMode }">
       <HorizontalBrowseEditDeckControls
         v-if="isEditMode"
         v-model:beat-step="editBeatStep"
         :song-present="!!topDeckSong"
         :can-previous-song="canPreviousEditSong"
         :can-next-song="canNextEditSong"
+        :disabled="audioEdit.saving.value"
         @previous-song="loadEditAdjacentSong(-1)"
         @next-song="loadEditAdjacentSong(1)"
         @jump-beats="jumpEditDeckByBeats"
@@ -862,14 +991,16 @@ onUnmounted(() => {
 
       <HorizontalBrowseDeckControlRow
         deck="top"
-        :playing="topDeckPlayButtonActive"
-        :decoding="topDeckUiDecoding"
+        :playing="isEditMode ? topDeckVisiblePlaying && !topDeckCueActive : topDeckPlayButtonActive"
+        :decoding="topDeckUiDecoding || (isEditMode && audioEdit.playback.preparing.value)"
         :pending-play="deckPendingPlayVisible.top"
         :pending-cue="deckPendingCuePreviewOnLoad.top"
         :cue-active="topDeckCueActive"
-        :bands-visible="(faderControlsExpanded || userGuideExpandFader) && !isEditMode"
+        :bands-visible="faderControlsExpanded && !isEditMode"
         :bands="deckBandState.top"
         :song-present="!!topDeckSong"
+        :disabled="isEditMode && audioEdit.saving.value"
+        :show-cue="!isEditMode"
         :cue-monitor-enabled="deckCueMonitorState.top"
         @cue-pointer-down="handleDeckCuePointerDown('top', $event)"
         @cue-click="handleDeckCueClick('top')"
@@ -881,14 +1012,13 @@ onUnmounted(() => {
       <HorizontalBrowseFaderPanel
         v-if="!isEditMode"
         ref="faderPanelRef"
-        :expanded="faderControlsExpanded || userGuideExpandFader"
+        v-model:expanded="faderControlsExpanded"
         :native-transport="nativeTransport"
         :main-window-volume="mainWindowVolume"
         :transport-sync-enabled="dualTransportSyncEnabled || dualTransportSyncActivating"
         :transport-sync-disabled="
           !canUseDualTransportSync || dualTransportSyncActivating || dualTransportSyncDeactivating
         "
-        @update:expanded="faderControlsExpanded = $event"
         @toggle-transport-sync="handleDualTransportSyncToggle"
       />
 
@@ -900,7 +1030,7 @@ onUnmounted(() => {
         :pending-play="deckPendingPlayVisible.bottom"
         :pending-cue="deckPendingCuePreviewOnLoad.bottom"
         :cue-active="bottomDeckCueActive"
-        :bands-visible="faderControlsExpanded || userGuideExpandFader"
+        :bands-visible="faderControlsExpanded"
         :bands="deckBandState.bottom"
         :song-present="!!bottomDeckSong"
         :cue-monitor-enabled="deckCueMonitorState.bottom"
@@ -912,227 +1042,22 @@ onUnmounted(() => {
       />
     </div>
 
-    <div class="waveform-stack" :class="{ 'waveform-stack--edit': isEditMode }">
-      <HorizontalBrowseDeckOverviewSection
-        position="top"
-        :region-ids="topOverviewRegions"
-        deck="top"
-        :deck-hovered="isDeckHovered('top')"
-        :song="topDeckSong"
-        :beat-sync-enabled="topDeckSong ? resolveDeckSyncUiEnabled('top') : false"
-        :master-active="topDeckSong ? deckSyncState.leaderDeck === 'top' : false"
-        :key-highlighted="deckKeysHarmonicMatched"
-        :current-seconds="topDeckRenderCurrentSeconds"
-        :duration-seconds="topDeckDurationSeconds"
-        :hot-cues="topDeckSong?.hotCues || []"
-        :memory-cues="topDeckSong?.memoryCues || []"
-        :toolbar-state="resolveDeckToolbarState('top')"
-        :loop-range="resolveDeckLoopRange('top')"
-        :playback-range="playbackRangeOverlay"
-        :read-only-source="isDeckSongReadOnly('top')"
-        :quantize-enabled="deckQuantizeEnabled.top"
-        :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
-        :tempo-nudge-active-direction="resolveDeckTempoNudgeDirection('top')"
-        :show-tempo-nudge="!isEditMode"
-        :hide-sync-controls="isEditMode"
-        show-energy
-        :show-large-shift-buttons="isEditMode"
-        @region-drag-enter="handleRegionDragEnter"
-        @region-drag-over="handleRegionDragOver"
-        @region-drag-leave="handleRegionDragLeave"
-        @region-drop="handleRegionDrop"
-        @trigger-beat-sync="triggerDeckBeatSync('top')"
-        @toggle-master="toggleDeckMaster('top')"
-        @eject-song="handleDeckEjectSong('top')"
-        @seek="handleDeckPlayheadSeek('top', $event)"
-        @seek-play="handleDeckSectionSeekPlay('top', $event)"
-        @set-downbeat-line="handleDeckSetDownbeatLineAtPlayhead('top')"
-        @shift-left-large="handleDeckGridShiftLargeLeft('top')"
-        @shift-left-small="handleDeckGridShiftSmallLeft('top')"
-        @shift-right-small="handleDeckGridShiftSmallRight('top')"
-        @shift-right-large="handleDeckGridShiftLargeRight('top')"
-        @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
-        @blur-bpm-input="handleDeckBpmInputBlur('top')"
-        @tap-bpm="handleDeckBpmTap('top')"
-        @memory-cue="void handleDeckMemoryCueCreate('top')"
-        @select-whole-adjustment="handleDeckSelectWholeAdjustment('top')"
-        @split-after-playhead="handleDeckSplitAfterPlayhead('top')"
-        @delete-boundary="handleDeckDeleteBoundary('top')"
-        @cycle-metronome-state="handleDeckMetronomeStateCycle('top')"
-        @loop-step-down="handleDeckLoopStepDown('top')"
-        @loop-step-up="handleDeckLoopStepUp('top')"
-        @toggle-loop="handleDeckLoopToggle('top')"
-        @toggle-master-tempo="handleDeckMasterTempoToggle('top')"
-        @reset-tempo="resetDeckTempo('top')"
-        @toggle-quantize="handleDeckQuantizeToggle('top')"
-        @tempo-nudge-start="startDeckTempoNudge('top', $event)"
-        @tempo-nudge-end="stopDeckTempoNudge('top', $event)"
-        @select-move-target="(target, actionMode) => openDeckMoveDialog('top', target, actionMode)"
-      />
+    <HorizontalBrowseModeShellWaveformStack ref="waveformStackRef" :model="waveformStackModel" />
 
-      <section
-        class="detail-pair"
-        :class="{ 'detail-pair--edit': isEditMode }"
-        data-user-guide-target="horizontal-waveforms"
-      >
-        <HorizontalBrowseDeckDetailLane
-          ref="topDetailRef"
-          :song="topDeckSong"
-          :shared-zoom-state="isEditMode ? editDetailZoomState : sharedDetailZoomState"
-          :current-seconds="topDeckRenderCurrentSeconds"
-          :playing="topDeckUiPlaying"
-          :playback-active="topDeckWaveformPlaybackActive"
-          :playback-rate="topDeckPlaybackRate"
-          :visual-playback-rate="resolveDeckPlaybackRateForTransport('top')"
-          :waveform-gain="resolveDeckWaveformGain('top')"
-          :playback-sync-revision="topDeckPlaybackSyncRevision"
-          :grid-bpm="topDeckGridBpm"
-          :loop-range="resolveDeckLoopRange('top')"
-          :cue-seconds="topDeckCuePointSeconds"
-          :hot-cues="topDeckSong?.hotCues || []"
-          :memory-cues="topDeckSong?.memoryCues || []"
-          :seek-target-seconds="deckSeekIntent.top.seconds"
-          :seek-revision="deckSeekIntent.top.revision"
-          :linked-drag-active="isDeckWaveformDragging('top')"
-          :linked-drag-anchor-sec="resolveDeckWaveformDragAnchorSec('top')"
-          :linked-grid-active="!isEditMode && shouldPreserveGridShiftPhase('top')"
-          :presentation-state="waveformPresentation.state.top"
-          :max-zoom="
-            isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
-          "
-          :waveform-layout="isEditMode ? 'full' : 'auto'"
-          waveform-render-style="raw-curve"
-          allow-negative-timeline
-          :grid-edit-mode="isEditMode"
-          direction="up"
-          :deck-hovered="isDeckHovered('top')"
-          :region-id="4"
-          @region-drag-enter="handleRegionDragEnter"
-          @region-drag-over="handleRegionDragOver"
-          @region-drag-leave="handleRegionDragLeave"
-          @region-drop="handleRegionDrop"
-          @toolbar-state-change="handleToolbarStateChange('top', $event)"
-          @zoom-change="handleDetailZoomChange"
-          @drag-session-start="handleDeckRawWaveformDragStart('top')"
-          @drag-session-preview="handleDeckRawWaveformScrubPreview('top', $event)"
-          @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
-          @edit-waveform-loading-change="handleEditWaveformLoadingChange"
-        />
-        <HorizontalBrowseDeckDetailLane
-          v-if="!isEditMode"
-          ref="bottomDetailRef"
-          :song="bottomDeckSong"
-          :shared-zoom-state="sharedDetailZoomState"
-          :current-seconds="bottomDeckRenderCurrentSeconds"
-          :playing="bottomDeckUiPlaying"
-          :playback-active="bottomDeckWaveformPlaybackActive"
-          :playback-rate="bottomDeckPlaybackRate"
-          :visual-playback-rate="resolveDeckPlaybackRateForTransport('bottom')"
-          :waveform-gain="resolveDeckWaveformGain('bottom')"
-          :playback-sync-revision="bottomDeckPlaybackSyncRevision"
-          :grid-bpm="bottomDeckGridBpm"
-          :loop-range="resolveDeckLoopRange('bottom')"
-          :cue-seconds="bottomDeckCuePointSeconds"
-          :hot-cues="bottomDeckSong?.hotCues || []"
-          :memory-cues="bottomDeckSong?.memoryCues || []"
-          :seek-target-seconds="deckSeekIntent.bottom.seconds"
-          :seek-revision="deckSeekIntent.bottom.revision"
-          :linked-drag-active="isDeckWaveformDragging('bottom')"
-          :linked-drag-anchor-sec="resolveDeckWaveformDragAnchorSec('bottom')"
-          :linked-grid-active="shouldPreserveGridShiftPhase('bottom')"
-          :presentation-state="waveformPresentation.state.bottom"
-          :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"
-          waveform-layout="auto"
-          waveform-render-style="raw-curve"
-          allow-negative-timeline
-          :grid-edit-mode="false"
-          direction="down"
-          :deck-hovered="isDeckHovered('bottom')"
-          :region-id="5"
-          @region-drag-enter="handleRegionDragEnter"
-          @region-drag-over="handleRegionDragOver"
-          @region-drag-leave="handleRegionDragLeave"
-          @region-drop="handleRegionDrop"
-          @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
-          @zoom-change="handleDetailZoomChange"
-          @drag-session-start="handleDeckRawWaveformDragStart('bottom')"
-          @drag-session-preview="handleDeckRawWaveformScrubPreview('bottom', $event)"
-          @drag-session-end="handleDeckRawWaveformDragEnd('bottom', $event)"
-        />
-      </section>
-
-      <HorizontalBrowseDeckOverviewSection
-        v-if="!isEditMode"
-        position="bottom"
-        :region-ids="bottomOverviewRegions"
-        deck="bottom"
-        :deck-hovered="isDeckHovered('bottom')"
-        :song="bottomDeckSong"
-        :beat-sync-enabled="bottomDeckSong ? resolveDeckSyncUiEnabled('bottom') : false"
-        :master-active="bottomDeckSong ? deckSyncState.leaderDeck === 'bottom' : false"
-        :key-highlighted="deckKeysHarmonicMatched"
-        :current-seconds="bottomDeckRenderCurrentSeconds"
-        :duration-seconds="bottomDeckDurationSeconds"
-        :hot-cues="bottomDeckSong?.hotCues || []"
-        :memory-cues="bottomDeckSong?.memoryCues || []"
-        :toolbar-state="resolveDeckToolbarState('bottom')"
-        :loop-range="resolveDeckLoopRange('bottom')"
-        :read-only-source="isDeckSongReadOnly('bottom')"
-        :quantize-enabled="deckQuantizeEnabled.bottom"
-        :master-tempo-enabled="isDeckMasterTempoEnabled('bottom')"
-        :tempo-nudge-active-direction="resolveDeckTempoNudgeDirection('bottom')"
-        :show-tempo-nudge="!isEditMode"
-        show-energy
-        @region-drag-enter="handleRegionDragEnter"
-        @region-drag-over="handleRegionDragOver"
-        @region-drag-leave="handleRegionDragLeave"
-        @region-drop="handleRegionDrop"
-        @trigger-beat-sync="triggerDeckBeatSync('bottom')"
-        @toggle-master="toggleDeckMaster('bottom')"
-        @eject-song="handleDeckEjectSong('bottom')"
-        @seek="handleDeckPlayheadSeek('bottom', $event)"
-        @seek-play="handleDeckSectionSeekPlay('bottom', $event)"
-        @set-downbeat-line="handleDeckSetDownbeatLineAtPlayhead('bottom')"
-        @shift-left-large="handleDeckGridShiftLargeLeft('bottom')"
-        @shift-left-small="handleDeckGridShiftSmallLeft('bottom')"
-        @shift-right-small="handleDeckGridShiftSmallRight('bottom')"
-        @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
-        @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
-        @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
-        @tap-bpm="handleDeckBpmTap('bottom')"
-        @memory-cue="void handleDeckMemoryCueCreate('bottom')"
-        @select-whole-adjustment="handleDeckSelectWholeAdjustment('bottom')"
-        @split-after-playhead="handleDeckSplitAfterPlayhead('bottom')"
-        @delete-boundary="handleDeckDeleteBoundary('bottom')"
-        @cycle-metronome-state="handleDeckMetronomeStateCycle('bottom')"
-        @loop-step-down="handleDeckLoopStepDown('bottom')"
-        @loop-step-up="handleDeckLoopStepUp('bottom')"
-        @toggle-loop="handleDeckLoopToggle('bottom')"
-        @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
-        @reset-tempo="resetDeckTempo('bottom')"
-        @toggle-quantize="handleDeckQuantizeToggle('bottom')"
-        @tempo-nudge-start="startDeckTempoNudge('bottom', $event)"
-        @tempo-nudge-end="stopDeckTempoNudge('bottom', $event)"
-        @select-move-target="
-          (target, actionMode) => openDeckMoveDialog('bottom', target, actionMode)
-        "
-      />
-      <HorizontalBrowseCuePanels
-        v-model:top-mode="deckCuePanelMode.top"
-        v-model:bottom-mode="deckCuePanelMode.bottom"
-        :top-hot-cues="topDeckSong?.hotCues || []"
-        :bottom-hot-cues="bottomDeckSong?.hotCues || []"
-        :top-hot-cue-editable="!isRekordboxExternalPlaybackSource('', topDeckSong)"
-        :bottom-hot-cue-editable="!isRekordboxExternalPlaybackSource('', bottomDeckSong)"
-        :top-memory-cues="topDeckSong?.memoryCues || []"
-        :bottom-memory-cues="bottomDeckSong?.memoryCues || []"
-        @hotcue-press="void handleDeckHotCuePress($event.deck, $event.slot)"
-        @hotcue-delete="void handleDeckHotCueDelete($event.deck, $event.slot)"
-        @memorycue-press="void handleDeckMemoryCueRecallPress($event.deck, $event.sec)"
-        @memorycue-delete="void handleDeckMemoryCueDelete($event.deck, $event.sec)"
-      />
-    </div>
-
+    <HorizontalBrowseAudioEditChrome
+      v-if="isEditMode"
+      :save-open="audioEdit.saveOpen.value"
+      :leave-open="audioEdit.leaveOpen.value"
+      :original-title="String(topDeckSong?.title || topDeckSong?.fileName || '')"
+      :original-format="audioEdit.originalFormat.value"
+      :version-preview-name="audioEdit.versionPreviewName.value"
+      :lossless-source="audioEdit.losslessSource.value"
+      @confirm-save="void audioEdit.commitSave($event)"
+      @cancel-save="audioEdit.cancelSave()"
+      @leave-save="audioEdit.finishLeave('save')"
+      @leave-discard="audioEdit.finishLeave('discard')"
+      @leave-cancel="audioEdit.finishLeave('cancel')"
+    />
     <HorizontalBrowseDeckMoveDialog
       :visible="selectSongListDialogVisible"
       :library-name="selectSongListDialogTargetLibraryName"

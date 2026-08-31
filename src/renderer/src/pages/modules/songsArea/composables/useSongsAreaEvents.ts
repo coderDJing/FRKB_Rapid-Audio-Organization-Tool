@@ -11,6 +11,7 @@ import { normalizeSongEnergyScore } from '@shared/songEnergy'
 import { normalizeSongStructureAnalysis, type SongStructureAnalysis } from '@shared/songStructure'
 import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { markGlobalSongSearchDirty } from '@renderer/utils/globalSongSearchEvents'
 import type { OpenSongListOptions } from './useSongsLoader'
 
 const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g, '\\').toLowerCase()
@@ -789,6 +790,19 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     } catch {}
   }
 
+  const onReloadCurrentSongList = (payload?: { uuid?: string; scanData?: ISongInfo[] }) => {
+    const listUUID = String(payload?.uuid || '').trim()
+    if (!listUUID || listUUID !== songsAreaState.songListUUID) return
+    const scanData = Array.isArray(payload?.scanData) ? payload.scanData : []
+    if (!scanData.length) {
+      void openSongList().catch(() => {})
+      return
+    }
+    originalSongInfoArr.value = markRaw(scanData)
+    applyFiltersAndSorting()
+    markGlobalSongSearchDirty('scanSongList', { songListUUID: listUUID })
+  }
+
   const loadCurrentSongList = async (
     songListUUID: string,
     options?: {
@@ -864,6 +878,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.on('setList/itemsChanged', onSetListItemsChanged)
+    emitter.on('songsArea/reload-if-current', onReloadCurrentSongList)
     // 组件挂载（含切分屏/进出 Pioneer 等导致的重挂载）恢复已有歌单时不弹框，
     // 仅记录已打开的歌单，待用户真正切换歌单时才询问。
     lastOpenedUUID = songsAreaState.songListUUID || ''
@@ -892,6 +907,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     )
     emitter.off(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.off('setList/itemsChanged', onSetListItemsChanged)
+    emitter.off('songsArea/reload-if-current', onReloadCurrentSongList)
   })
 
   // 切换歌单时刷新列表

@@ -15,6 +15,9 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   hotCues: () => ISongHotCue[] | null | undefined
   memoryCues: () => ISongMemoryCue[] | null | undefined
   loopRange: () => { startSec: number; endSec: number } | null | undefined
+  audioEditSelection?: () => { startSec: number; endSec: number } | null | undefined
+  audioEditPendingStartSec?: () => number | null | undefined
+  audioEditPendingEndSec?: () => number | null | undefined
   currentSeconds: () => number | undefined
   playbackRate: () => number | undefined
   visualPlaybackRate?: () => number | undefined
@@ -33,6 +36,7 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   beatGridEditMode?: () => boolean
   beatGridVisibleFromSec?: () => number | null | undefined
   beatGridSelectedBoundarySec?: () => number | null | undefined
+  showGridClipBoundaries?: () => boolean
   previewTimeBasisOffsetMs: Ref<number>
   dragging: Ref<boolean>
   previewLoading: Ref<boolean>

@@ -12,7 +12,7 @@ import {
   resolveAnalysisRuntimeDownloadTitle
 } from '@renderer/utils/analysisRuntimeDownloadUi'
 import { useBottomInfoVisibleAnalysisProgress } from './bottomInfoAreaVisibleAnalysis'
-import { toIpcCloneablePayload } from './bottomInfoAreaIpcPayload'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 const runtime = useRuntimeStore()
 
 const normalizeAnalysisPath = (value: string) =>

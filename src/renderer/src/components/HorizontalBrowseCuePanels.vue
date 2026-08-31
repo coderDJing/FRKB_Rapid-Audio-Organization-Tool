@@ -29,6 +29,8 @@ const props = defineProps<{
   bottomHotCueEditable?: boolean
   topMemoryCues?: ISongMemoryCue[] | null
   bottomMemoryCues?: ISongMemoryCue[] | null
+  topMemoryCueEditable?: boolean
+  bottomMemoryCueEditable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -72,6 +74,7 @@ const panels = computed(() => [
     deck: 'top' as DeckKey,
     mode: props.topMode,
     hotCueEditable: props.topHotCueEditable !== false,
+    memoryCueEditable: props.topMemoryCueEditable !== false,
     hotCueRows: buildHotCueRows(props.topHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.topMemoryCues).map((item) => ({
       sec: item.sec,
@@ -92,6 +95,7 @@ const panels = computed(() => [
     deck: 'bottom' as DeckKey,
     mode: props.bottomMode,
     hotCueEditable: props.bottomHotCueEditable !== false,
+    memoryCueEditable: props.bottomMemoryCueEditable !== false,
     hotCueRows: buildHotCueRows(props.bottomHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.bottomMemoryCues).map((item) => ({
       sec: item.sec,
@@ -194,6 +198,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
               tag="button"
               type="button"
               class="cue-panel__memory-delete"
+              :disabled="!panel.memoryCueEditable"
               title="Delete Memory Cue"
               aria-label="Delete Memory Cue"
               @click.stop="emit('memorycue-delete', { deck: panel.deck, sec: memoryCue.sec })"

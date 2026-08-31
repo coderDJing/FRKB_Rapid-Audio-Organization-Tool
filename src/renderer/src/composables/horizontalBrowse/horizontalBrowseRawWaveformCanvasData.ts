@@ -10,6 +10,13 @@ export const resolveHorizontalBrowseCueAccentColor = () => {
   return value || DEFAULT_CUE_ACCENT_COLOR
 }
 
+const DEFAULT_AUDIO_EDIT_ACCENT_COLOR = '#0078d4'
+
+export const resolveHorizontalBrowseAudioEditAccentColor = () => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+  return value || DEFAULT_AUDIO_EDIT_ACCENT_COLOR
+}
+
 export const resolveHorizontalBrowseActiveMixxxSelection = (
   liveMixxxData: MixxxWaveformData | null
 ) => {

@@ -29,6 +29,8 @@ import {
   type SongStructureSectionKind
 } from '@shared/songStructure'
 import type { HorizontalBrowsePlaybackRangeOverlay } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditPlaybackRange'
+import type { AudioEditClip, AudioEditRange } from '@shared/audioEditTimeline'
+import { remapAudioEditOverviewWaveform } from '@renderer/composables/horizontalBrowse/audioEditCompactWaveform'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -40,6 +42,12 @@ const props = defineProps<{
   loopRange?: { startSec: number; endSec: number } | null
   sectionSeekMode?: 'seek' | 'seek-play'
   playbackRange?: HorizontalBrowsePlaybackRangeOverlay | null
+  audioEditHasEdits?: boolean
+  audioEditClips?: AudioEditClip[] | null
+  audioEditSelection?: AudioEditRange | null
+  audioEditPendingStartSec?: number | null
+  audioEditPendingEndSec?: number | null
+  audioEditInsertedRanges?: AudioEditRange[] | null
 }>()
 
 const emit = defineEmits<{
@@ -94,8 +102,13 @@ const normalizedStructure = computed(() =>
   normalizeSongStructureAnalysis(props.song?.songStructure)
 )
 
+const displayWaveformData = computed(() => {
+  if (!props.audioEditHasEdits || !props.audioEditClips?.length) return compactVisualData.value
+  return remapAudioEditOverviewWaveform(compactVisualData.value, props.audioEditClips)
+})
+
 const totalSeconds = computed(() => {
-  const compactDuration = resolvePositiveSeconds(compactVisualData.value?.duration)
+  const compactDuration = resolvePositiveSeconds(displayWaveformData.value?.duration)
   if (compactDuration > 0) return compactDuration
   const structureDuration = resolvePositiveSeconds(normalizedStructure.value?.durationSec)
   if (structureDuration > 0) return structureDuration
@@ -123,6 +136,37 @@ const loopMaskStyle = computed(() => {
     left: `${(startSec / totalSeconds.value) * 100}%`,
     width: `${((endSec - startSec) / totalSeconds.value) * 100}%`
   }
+})
+
+const audioEditSelectionStyle = computed(() => {
+  const range = props.audioEditSelection
+  if (!range || totalSeconds.value <= 0) return null
+  const startSec = Math.max(0, Number(range.startSec) || 0)
+  const endSec = Math.max(startSec, Number(range.endSec) || 0)
+  if (endSec <= startSec) return null
+  return {
+    left: `${(startSec / totalSeconds.value) * 100}%`,
+    width: `${((endSec - startSec) / totalSeconds.value) * 100}%`
+  }
+})
+
+const audioEditInsertedStyles = computed(() => {
+  const ranges = props.audioEditInsertedRanges
+  if (!ranges?.length || totalSeconds.value <= 0) return []
+  return ranges.flatMap((range, index) => {
+    const startSec = Math.max(0, Number(range.startSec) || 0)
+    const endSec = Math.max(startSec, Number(range.endSec) || 0)
+    if (endSec <= startSec) return []
+    return [
+      {
+        key: `${startSec}-${endSec}-${index}`,
+        style: {
+          left: `${(startSec / totalSeconds.value) * 100}%`,
+          width: `${((endSec - startSec) / totalSeconds.value) * 100}%`
+        }
+      }
+    ]
+  })
 })
 
 const resolveStructureLabel = (kind: SongStructureSectionKind) => {
@@ -409,13 +453,13 @@ const drawWaveform = () => {
     return
   }
 
-  if (compactVisualData.value) {
+  if (displayWaveformData.value) {
     drawCompactVisualWaveform(ctx, {
       width,
       height,
-      data: compactVisualData.value,
+      data: displayWaveformData.value,
       rangeStartSec: 0,
-      rangeDurationSec: Math.max(0.0001, Number(compactVisualData.value.duration) || 0),
+      rangeDurationSec: Math.max(0.0001, Number(displayWaveformData.value.duration) || 0),
       showDetailHighlights: false,
       showCenterLine: false,
       waveformLayout: useHalfWaveform() ? 'top-half' : 'full'
@@ -504,9 +548,17 @@ watch(
 watch(
   () => [Number(props.currentSeconds) || 0, totalSeconds.value] as const,
   () => {
-    if (compactVisualData.value || pioneerPreviewData.value) return
+    if (displayWaveformData.value || pioneerPreviewData.value) return
     drawWaveform()
   }
+)
+
+watch(
+  () => [props.audioEditHasEdits, props.audioEditClips],
+  () => {
+    drawWaveform()
+  },
+  { deep: true }
 )
 
 const handleSongWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
@@ -598,6 +650,28 @@ onUnmounted(() => {
         size="compact"
       />
       <div v-if="loopMaskStyle" class="overview-waveform__loop-mask" :style="loopMaskStyle"></div>
+      <div
+        v-for="region in audioEditInsertedStyles"
+        :key="region.key"
+        class="overview-waveform__audio-edit-insert"
+        :style="region.style"
+        aria-hidden="true"
+      ></div>
+      <div
+        v-if="audioEditSelectionStyle"
+        class="overview-waveform__audio-edit-selection"
+        :style="audioEditSelectionStyle"
+      ></div>
+      <div
+        v-if="audioEditPendingStartSec != null && totalSeconds > 0"
+        class="overview-waveform__audio-edit-bound"
+        :style="{ left: `${(Number(audioEditPendingStartSec) / totalSeconds) * 100}%` }"
+      ></div>
+      <div
+        v-if="audioEditPendingEndSec != null && totalSeconds > 0"
+        class="overview-waveform__audio-edit-bound"
+        :style="{ left: `${(Number(audioEditPendingEndSec) / totalSeconds) * 100}%` }"
+      ></div>
       <div
         v-if="playheadLeft !== null"
         class="overview-waveform__playhead"
@@ -797,6 +871,37 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 28%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 44%, transparent);
   pointer-events: none;
+}
+
+.overview-waveform__audio-edit-insert {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 7;
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 44%, transparent);
+  pointer-events: none;
+}
+
+.overview-waveform__audio-edit-selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 8;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 44%, transparent);
+  pointer-events: none;
+}
+
+.overview-waveform__audio-edit-bound {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 9;
+  width: 2px;
+  background: color-mix(in srgb, var(--accent) 80%, #fff);
+  pointer-events: none;
+  transform: translateX(-1px);
 }
 
 .overview-waveform__playhead {

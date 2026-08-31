@@ -28,6 +28,7 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   beatGridEditMode?: boolean
   beatGridVisibleFromSec?: number | null
   beatGridSelectedBoundarySec?: number | null
+  showGridClipBoundaries?: boolean
   timeBasisOffsetMs: number
   rangeStartSec: number
   rangeDurationSec: number
@@ -54,6 +55,10 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   hotCues: ISongHotCue[]
   memoryCues: ISongMemoryCue[]
   loopRange: HorizontalBrowseDetailLiveCanvasLoopRange | null
+  audioEditSelection?: HorizontalBrowseDetailLiveCanvasLoopRange | null
+  audioEditPendingStartSec?: number | null
+  audioEditPendingEndSec?: number | null
+  audioEditAccentColor?: string
   cueAccentColor: string
   playbackActive: boolean
   playbackSeconds: number

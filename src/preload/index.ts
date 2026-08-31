@@ -236,6 +236,7 @@ const invokePrefixes = [
   'setList:',
   'similarTracks:',
   'song-search:',
+  'song-edit:',
   'song:',
   'songList:',
   'track:cache:',

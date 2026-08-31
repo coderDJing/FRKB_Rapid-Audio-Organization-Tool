@@ -42,3 +42,19 @@ export const isHorizontalBrowseDragPresentationReleaseExpired = (
   nowMs = performance.now(),
   maxHoldMs = DEFAULT_DRAG_PRESENTATION_RELEASE_MAX_HOLD_MS
 ) => startedAtMs > 0 && nowMs - startedAtMs >= maxHoldMs
+
+type ShouldCommitDragReleaseRenderedViewportOptions = {
+  pending: boolean
+  canCompleteRelease: boolean
+  releaseExpired: boolean
+}
+
+// 松手后尚未对上目标窗口的 worker 帧不能写回 displayViewport，否则选区会跳回拖拽前。
+export const shouldCommitHorizontalBrowseDragReleaseRenderedViewport = ({
+  pending,
+  canCompleteRelease,
+  releaseExpired
+}: ShouldCommitDragReleaseRenderedViewportOptions) => {
+  if (!pending) return true
+  return canCompleteRelease || releaseExpired
+}

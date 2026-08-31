@@ -37,6 +37,8 @@ const props = defineProps<{
   tempoNudgeActiveDirection?: HorizontalBrowseTempoNudgeDirection | null
   showTempoNudge?: boolean
   showLargeShiftButtons?: boolean
+  hideTransportActions?: boolean
+  showQuantizeAction?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -113,10 +115,8 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
 <template>
   <div class="overview__toolbar-row">
     <div class="overview__toolbar-main">
-      <div
-        class="overview__grid-guide-target"
-        :data-user-guide-target="props.showSplitAfterPlayhead ? 'edit-grid' : undefined"
-      >
+      <slot name="leading" />
+      <slot name="tools">
         <MixtapeBeatAlignGridAdjustToolbar
           :disabled="props.disabled"
           :bpm-input-disabled="props.bpmInputDisabled"
@@ -148,139 +148,166 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
           @split-after-playhead="emit('split-after-playhead')"
           @delete-boundary="emit('delete-boundary')"
         />
-      </div>
-      <div class="overview__toolbar-group overview__loop-control">
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__loop-arrow"
-          :disabled="props.loopDisabled"
-          title="Loop 缩短"
-          aria-label="Loop 缩短"
-          @click="emit('loop-step-down')"
+        <div class="overview__toolbar-group overview__loop-control">
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__loop-arrow"
+            :disabled="props.loopDisabled"
+            title="Loop 缩短"
+            aria-label="Loop 缩短"
+            @click="emit('loop-step-down')"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M10.5 3.5 6 8l4.5 4.5"></path>
+            </svg>
+          </bubbleBoxTrigger>
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__loop-value"
+            :class="{ 'is-active': props.loopActive }"
+            :disabled="props.loopDisabled"
+            title="Toggle Loop"
+            aria-label="Toggle Loop"
+            @click="emit('toggle-loop')"
+          >
+            {{ props.loopBeatLabel }}
+          </bubbleBoxTrigger>
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__loop-arrow"
+            :disabled="props.loopDisabled"
+            title="Loop 加长"
+            aria-label="Loop 加长"
+            @click="emit('loop-step-up')"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
+            </svg>
+          </bubbleBoxTrigger>
+        </div>
+        <div v-if="props.showMetronome" class="overview__toolbar-group">
+          <BeatGridMetronomeControls
+            :metronome-enabled="props.metronomeEnabled"
+            :metronome-volume-level="props.metronomeVolumeLevel"
+            :can-toggle-metronome="props.canToggleMetronome"
+            @cycle-metronome-state="emit('cycle-metronome-state')"
+          />
+        </div>
+        <div
+          v-if="props.showTempoNudge !== false"
+          class="overview__toolbar-group overview__tempo-nudge-control"
+          role="group"
+          aria-label="临时速度调整"
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M10.5 3.5 6 8l4.5 4.5"></path>
-          </svg>
-        </bubbleBoxTrigger>
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__loop-value"
-          :class="{ 'is-active': props.loopActive }"
-          :disabled="props.loopDisabled"
-          title="Toggle Loop"
-          aria-label="Toggle Loop"
-          @click="emit('toggle-loop')"
-        >
-          {{ props.loopBeatLabel }}
-        </bubbleBoxTrigger>
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__loop-arrow"
-          :disabled="props.loopDisabled"
-          title="Loop 加长"
-          aria-label="Loop 加长"
-          @click="emit('loop-step-up')"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-            <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
-          </svg>
-        </bubbleBoxTrigger>
-      </div>
-      <div v-if="props.showMetronome" class="overview__toolbar-group">
-        <BeatGridMetronomeControls
-          :metronome-enabled="props.metronomeEnabled"
-          :metronome-volume-level="props.metronomeVolumeLevel"
-          :can-toggle-metronome="props.canToggleMetronome"
-          @cycle-metronome-state="emit('cycle-metronome-state')"
-        />
-      </div>
-      <div
-        v-if="props.showTempoNudge !== false"
-        class="overview__toolbar-group overview__tempo-nudge-control"
-        role="group"
-        aria-label="临时速度调整"
-      >
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__tempo-nudge-btn"
-          :class="{ 'is-active': props.tempoNudgeActiveDirection === 'fast' }"
-          :disabled="!props.songPresent"
-          title="按住临时加速"
-          aria-label="按住临时加速"
-          @pointerdown="handleTempoNudgePointerDown('fast', $event)"
-          @pointerup="handleTempoNudgePointerEnd('fast', $event)"
-          @pointercancel="handleTempoNudgePointerEnd('fast', $event)"
-          @lostpointercapture="emit('tempo-nudge-end', 'fast')"
-          @blur="emit('tempo-nudge-end', 'fast')"
-          @keydown.space.prevent="handleTempoNudgeKeyDown('fast', $event)"
-          @keyup.space.prevent="handleTempoNudgeKeyUp('fast')"
-          @keydown.enter.prevent="handleTempoNudgeKeyDown('fast', $event)"
-          @keyup.enter.prevent="handleTempoNudgeKeyUp('fast')"
-        >
-          <svg viewBox="0 0 18 16" aria-hidden="true" focusable="false">
-            <path d="M14.5 8H3.5l4.8-4.5"></path>
-          </svg>
-        </bubbleBoxTrigger>
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__tempo-nudge-btn"
-          :class="{ 'is-active': props.tempoNudgeActiveDirection === 'slow' }"
-          :disabled="!props.songPresent"
-          title="按住临时减速"
-          aria-label="按住临时减速"
-          @pointerdown="handleTempoNudgePointerDown('slow', $event)"
-          @pointerup="handleTempoNudgePointerEnd('slow', $event)"
-          @pointercancel="handleTempoNudgePointerEnd('slow', $event)"
-          @lostpointercapture="emit('tempo-nudge-end', 'slow')"
-          @blur="emit('tempo-nudge-end', 'slow')"
-          @keydown.space.prevent="handleTempoNudgeKeyDown('slow', $event)"
-          @keyup.space.prevent="handleTempoNudgeKeyUp('slow')"
-          @keydown.enter.prevent="handleTempoNudgeKeyDown('slow', $event)"
-          @keyup.enter.prevent="handleTempoNudgeKeyUp('slow')"
-        >
-          <svg viewBox="0 0 18 16" aria-hidden="true" focusable="false">
-            <path d="M3.5 8h11l-4.8-4.5"></path>
-          </svg>
-        </bubbleBoxTrigger>
-      </div>
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__tempo-nudge-btn"
+            :class="{ 'is-active': props.tempoNudgeActiveDirection === 'fast' }"
+            :disabled="!props.songPresent"
+            title="按住临时加速"
+            aria-label="按住临时加速"
+            @pointerdown="handleTempoNudgePointerDown('fast', $event)"
+            @pointerup="handleTempoNudgePointerEnd('fast', $event)"
+            @pointercancel="handleTempoNudgePointerEnd('fast', $event)"
+            @lostpointercapture="emit('tempo-nudge-end', 'fast')"
+            @blur="emit('tempo-nudge-end', 'fast')"
+            @keydown.space.prevent="handleTempoNudgeKeyDown('fast', $event)"
+            @keyup.space.prevent="handleTempoNudgeKeyUp('fast')"
+            @keydown.enter.prevent="handleTempoNudgeKeyDown('fast', $event)"
+            @keyup.enter.prevent="handleTempoNudgeKeyUp('fast')"
+          >
+            <svg viewBox="0 0 18 16" aria-hidden="true" focusable="false">
+              <path d="M14.5 8H3.5l4.8-4.5"></path>
+            </svg>
+          </bubbleBoxTrigger>
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__tempo-nudge-btn"
+            :class="{ 'is-active': props.tempoNudgeActiveDirection === 'slow' }"
+            :disabled="!props.songPresent"
+            title="按住临时减速"
+            aria-label="按住临时减速"
+            @pointerdown="handleTempoNudgePointerDown('slow', $event)"
+            @pointerup="handleTempoNudgePointerEnd('slow', $event)"
+            @pointercancel="handleTempoNudgePointerEnd('slow', $event)"
+            @lostpointercapture="emit('tempo-nudge-end', 'slow')"
+            @blur="emit('tempo-nudge-end', 'slow')"
+            @keydown.space.prevent="handleTempoNudgeKeyDown('slow', $event)"
+            @keyup.space.prevent="handleTempoNudgeKeyUp('slow')"
+            @keydown.enter.prevent="handleTempoNudgeKeyDown('slow', $event)"
+            @keyup.enter.prevent="handleTempoNudgeKeyUp('slow')"
+          >
+            <svg viewBox="0 0 18 16" aria-hidden="true" focusable="false">
+              <path d="M3.5 8h11l-4.8-4.5"></path>
+            </svg>
+          </bubbleBoxTrigger>
+        </div>
+      </slot>
     </div>
-    <div class="overview__toolbar-actions">
-      <div class="overview__toolbar-group overview__toolbar-group--actions">
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__transport-btn"
-          :class="{ 'is-active': props.masterTempoEnabled }"
-          :disabled="!props.songPresent"
-          title="Master Tempo"
-          @click="emit('toggle-master-tempo')"
-        >
-          MT
-        </bubbleBoxTrigger>
-        <bubbleBoxTrigger
-          wrapper-tag="span"
-          tag="button"
-          type="button"
-          class="overview__transport-btn"
-          :disabled="!props.songPresent"
-          title="Reset Tempo"
-          @click="emit('reset-tempo')"
-        >
-          RES
-        </bubbleBoxTrigger>
-      </div>
-      <div class="overview__toolbar-group">
+    <div
+      v-if="!props.hideTransportActions || props.showQuantizeAction"
+      class="overview__toolbar-actions"
+    >
+      <template v-if="!props.hideTransportActions">
+        <div class="overview__toolbar-group overview__toolbar-group--actions">
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__transport-btn"
+            :class="{ 'is-active': props.masterTempoEnabled }"
+            :disabled="!props.songPresent"
+            title="Master Tempo"
+            @click="emit('toggle-master-tempo')"
+          >
+            MT
+          </bubbleBoxTrigger>
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__transport-btn"
+            :disabled="!props.songPresent"
+            title="Reset Tempo"
+            @click="emit('reset-tempo')"
+          >
+            RES
+          </bubbleBoxTrigger>
+        </div>
+        <div class="overview__toolbar-group">
+          <bubbleBoxTrigger
+            wrapper-tag="span"
+            tag="button"
+            type="button"
+            class="overview__transport-btn"
+            :class="{ 'is-active': props.quantizeEnabled }"
+            :disabled="!props.songPresent"
+            title="Quantize"
+            aria-label="Quantize"
+            @click="emit('toggle-quantize')"
+          >
+            Q
+          </bubbleBoxTrigger>
+        </div>
+        <div class="overview__toolbar-group">
+          <HorizontalBrowseDeckMoveButton
+            :disabled="!props.songPresent"
+            :read-only-source="props.readOnlySource"
+            @select-target="(target, actionMode) => emit('select-move-target', target, actionMode)"
+          />
+        </div>
+      </template>
+      <div v-if="props.showQuantizeAction" class="overview__toolbar-group">
         <bubbleBoxTrigger
           wrapper-tag="span"
           tag="button"
@@ -294,13 +321,6 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         >
           Q
         </bubbleBoxTrigger>
-      </div>
-      <div class="overview__toolbar-group">
-        <HorizontalBrowseDeckMoveButton
-          :disabled="!props.songPresent"
-          :read-only-source="props.readOnlySource"
-          @select-target="(target, actionMode) => emit('select-move-target', target, actionMode)"
-        />
       </div>
     </div>
   </div>
@@ -322,14 +342,10 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
 .overview__toolbar-main {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
-}
-
-.overview__grid-guide-target {
-  display: flex;
-  align-items: center;
-  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .overview__toolbar-main :deep(.grid-adjust-bpm-input) {

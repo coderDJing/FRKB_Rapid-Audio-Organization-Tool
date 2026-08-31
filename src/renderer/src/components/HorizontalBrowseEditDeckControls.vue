@@ -10,6 +10,7 @@ defineProps<{
   canPreviousSong: boolean
   canNextSong: boolean
   beatStep: BeatStep
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,10 +37,16 @@ const handleBeatStepChange = (event: Event) => {
         wrapper-tag="span"
         wrapper-class="edit-deck-controls__anchor"
         class="edit-deck-controls__button"
-        :title="canPreviousSong ? '载入上一首' : '没有可载入的上一首'"
+        :title="
+          disabled
+            ? '保存中，暂时不能切换歌曲'
+            : canPreviousSong
+              ? '载入上一首'
+              : '没有可载入的上一首'
+        "
         shortcut="W"
         type="button"
-        :disabled="!canPreviousSong"
+        :disabled="disabled || !canPreviousSong"
         :aria-label="canPreviousSong ? '载入上一首' : '没有可载入的上一首'"
         @click="emit('previous-song')"
       >
@@ -53,10 +60,12 @@ const handleBeatStepChange = (event: Event) => {
         wrapper-tag="span"
         wrapper-class="edit-deck-controls__anchor"
         class="edit-deck-controls__button"
-        :title="canNextSong ? '载入下一首' : '没有可载入的下一首'"
+        :title="
+          disabled ? '保存中，暂时不能切换歌曲' : canNextSong ? '载入下一首' : '没有可载入的下一首'
+        "
         shortcut="S"
         type="button"
-        :disabled="!canNextSong"
+        :disabled="disabled || !canNextSong"
         :aria-label="canNextSong ? '载入下一首' : '没有可载入的下一首'"
         @click="emit('next-song')"
       >
@@ -73,9 +82,9 @@ const handleBeatStepChange = (event: Event) => {
         wrapper-tag="span"
         wrapper-class="edit-deck-controls__anchor"
         class="edit-deck-controls__button"
-        :title="`后退 ${beatStep} beats`"
+        :title="disabled ? '保存中，暂时不能跳转' : `后退 ${beatStep} beats`"
         type="button"
-        :disabled="!songPresent"
+        :disabled="disabled || !songPresent"
         :aria-label="`后退 ${beatStep} beats`"
         @click="emit('jump-beats', -1)"
       >
@@ -90,9 +99,9 @@ const handleBeatStepChange = (event: Event) => {
         wrapper-tag="span"
         wrapper-class="edit-deck-controls__anchor"
         class="edit-deck-controls__button"
-        :title="`前进 ${beatStep} beats`"
+        :title="disabled ? '保存中，暂时不能跳转' : `前进 ${beatStep} beats`"
         type="button"
-        :disabled="!songPresent"
+        :disabled="disabled || !songPresent"
         :aria-label="`前进 ${beatStep} beats`"
         @click="emit('jump-beats', 1)"
       >
@@ -107,12 +116,12 @@ const handleBeatStepChange = (event: Event) => {
     <bubbleBoxTrigger
       tag="div"
       class="edit-deck-controls__select-wrap"
-      :title="`跳转步长：${beatStep} beats`"
+      :title="disabled ? '保存中，暂时不能调整' : `跳转步长：${beatStep} beats`"
     >
       <select
         class="edit-deck-controls__select"
         :value="beatStep"
-        :disabled="!songPresent"
+        :disabled="disabled || !songPresent"
         aria-label="切换 beat 跳转步长"
         @change="handleBeatStepChange"
       >

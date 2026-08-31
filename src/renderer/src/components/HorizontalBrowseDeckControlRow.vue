@@ -15,6 +15,8 @@ const props = defineProps<{
   bands: HorizontalBrowseTransportBandState
   songPresent: boolean
   cueMonitorEnabled: boolean
+  disabled?: boolean
+  showCue?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +47,8 @@ const handleToggleBand = (
       :pending-play="props.pendingPlay"
       :pending-cue="props.pendingCue"
       :cue-active="props.cueActive"
+      :disabled="props.disabled || !props.songPresent"
+      :show-cue="props.showCue"
       @cue-pointer-down="emit('cue-pointer-down', $event)"
       @cue-click="emit('cue-click')"
       @play-toggle="emit('play-toggle')"

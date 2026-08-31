@@ -35,6 +35,7 @@ type OverlayFrameState = {
   beatGridEditMode: boolean
   beatGridVisibleFromSec: number | null
   beatGridSelectedBoundarySec: number | null
+  showGridClipBoundaries: boolean
   showBeatGrid: boolean
   playbackDurationSec: number
   themeVariant: 'light' | 'dark'
@@ -46,6 +47,11 @@ type OverlayFrameState = {
   memoryCueSignature: string
   loopStartSec: number | null
   loopEndSec: number | null
+  audioEditSelectionStartSec: number | null
+  audioEditSelectionEndSec: number | null
+  audioEditPendingStartSec: number | null
+  audioEditPendingEndSec: number | null
+  audioEditAccentColor: string
   cueAccentColor: string
 }
 
@@ -158,7 +164,8 @@ const drawBeatGridOverlay = (
   themeVariant: 'light' | 'dark',
   beatGridEditMode: boolean,
   beatGridVisibleFromSec: number | null,
-  beatGridSelectedBoundarySec: number | null
+  beatGridSelectedBoundarySec: number | null,
+  showClipBoundaries: boolean
 ): void => {
   if (rangeDurationSec <= 0) return
 
@@ -252,7 +259,7 @@ const drawBeatGridOverlay = (
         drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
       }
     }
-    if (runtime.source !== 'rekordbox') {
+    if (runtime.source !== 'rekordbox' && showClipBoundaries) {
       for (const boundarySec of runtime.clipBoundaries) {
         if (boundarySec < drawStartSec - 0.001 || boundarySec > drawEndSec + 0.001) continue
         const x = ((boundarySec - rangeStartSec) / rangeDurationSec) * width
@@ -350,6 +357,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     beatGridSelectedBoundarySec: Number.isFinite(Number(request.beatGridSelectedBoundarySec))
       ? Number(request.beatGridSelectedBoundarySec)
       : null,
+    showGridClipBoundaries: request.showGridClipBoundaries !== false,
     showBeatGrid: request.showBeatGrid === true,
     playbackDurationSec: Math.max(0, Number(request.playbackDurationSec) || 0),
     themeVariant: request.themeVariant,
@@ -383,6 +391,19 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       .join('|'),
     loopStartSec: request.loopRange ? Number(request.loopRange.startSec) || 0 : null,
     loopEndSec: request.loopRange ? Number(request.loopRange.endSec) || 0 : null,
+    audioEditSelectionStartSec: request.audioEditSelection
+      ? Number(request.audioEditSelection.startSec) || 0
+      : null,
+    audioEditSelectionEndSec: request.audioEditSelection
+      ? Number(request.audioEditSelection.endSec) || 0
+      : null,
+    audioEditPendingStartSec:
+      request.audioEditPendingStartSec == null
+        ? null
+        : Number(request.audioEditPendingStartSec) || 0,
+    audioEditPendingEndSec:
+      request.audioEditPendingEndSec == null ? null : Number(request.audioEditPendingEndSec) || 0,
+    audioEditAccentColor: String(request.audioEditAccentColor || ''),
     cueAccentColor: request.cueAccentColor
   })
 
@@ -398,6 +419,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       lastFrame.beatGridEditMode === current.beatGridEditMode &&
       lastFrame.beatGridVisibleFromSec === current.beatGridVisibleFromSec &&
       lastFrame.beatGridSelectedBoundarySec === current.beatGridSelectedBoundarySec &&
+      lastFrame.showGridClipBoundaries === current.showGridClipBoundaries &&
       lastFrame.showBeatGrid === current.showBeatGrid &&
       lastFrame.playbackDurationSec === current.playbackDurationSec &&
       lastFrame.themeVariant === current.themeVariant &&
@@ -408,6 +430,11 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       lastFrame.memoryCueSignature === current.memoryCueSignature &&
       lastFrame.loopStartSec === current.loopStartSec &&
       lastFrame.loopEndSec === current.loopEndSec &&
+      lastFrame.audioEditSelectionStartSec === current.audioEditSelectionStartSec &&
+      lastFrame.audioEditSelectionEndSec === current.audioEditSelectionEndSec &&
+      lastFrame.audioEditPendingStartSec === current.audioEditPendingStartSec &&
+      lastFrame.audioEditPendingEndSec === current.audioEditPendingEndSec &&
+      lastFrame.audioEditAccentColor === current.audioEditAccentColor &&
       lastFrame.cueAccentColor === current.cueAccentColor
     )
   }
@@ -435,6 +462,10 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       hotCues: request.hotCues,
       memoryCues: request.memoryCues,
       loopRange: request.loopRange,
+      audioEditSelection: request.audioEditSelection,
+      audioEditPendingStartSec: request.audioEditPendingStartSec,
+      audioEditPendingEndSec: request.audioEditPendingEndSec,
+      audioEditAccentColor: request.audioEditAccentColor,
       cueAccentColor: request.cueAccentColor,
       timeBasisOffsetMs: request.timeBasisOffsetMs,
       themeVariant: request.themeVariant,
@@ -506,7 +537,8 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
           : null,
         Number.isFinite(Number(request.beatGridSelectedBoundarySec))
           ? Number(request.beatGridSelectedBoundarySec)
-          : null
+          : null,
+        request.showGridClipBoundaries !== false
       )
     }
     drawOverlayRange(

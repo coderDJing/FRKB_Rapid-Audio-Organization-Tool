@@ -54,6 +54,7 @@ import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerLibraryMaintenanceHandlers } from './ipc/libraryMaintenanceHandlers'
 import { registerPlaylistHandlers } from './ipc/playlistHandlers'
 import { registerMediaMetadataHandlers } from './ipc/mediaMetadataHandlers'
+import { registerSongEditHandlers } from './ipc/songEditHandlers'
 import { registerCacheHandlers } from './ipc/cacheHandlers'
 import { registerFilesystemHandlers } from './ipc/filesystemHandlers'
 import { registerClipboardHandlers } from './ipc/clipboardHandlers'
@@ -331,6 +332,7 @@ registerSettingsHandlers({
 registerLibraryMaintenanceHandlers()
 registerPlaylistHandlers()
 registerMediaMetadataHandlers()
+registerSongEditHandlers()
 registerCacheHandlers()
 registerFilesystemHandlers()
 registerClipboardHandlers()

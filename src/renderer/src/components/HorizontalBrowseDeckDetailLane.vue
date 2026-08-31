@@ -15,6 +15,8 @@ import type {
   HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
   HorizontalBrowseLinkedGridVisualTransactionDeckState
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualTransaction'
+import type { AudioEditClip } from '@shared/audioEditTimeline'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 type HorizontalBrowseSharedZoomState = {
   value: number
@@ -40,7 +42,12 @@ const props = defineProps<{
   playbackSyncRevision: number
   gridBpm: number
   loopRange: HorizontalBrowseLoopRange | null
-  cueSeconds: number
+  audioEditSelection?: HorizontalBrowseLoopRange | null
+  audioEditPendingStartSec?: number | null
+  audioEditPendingEndSec?: number | null
+  audioEditInsertedRanges?: HorizontalBrowseLoopRange[] | null
+  audioEditClips?: AudioEditClip[] | null
+  cueSeconds?: number
   hotCues: ISongHotCue[]
   memoryCues: ISongMemoryCue[]
   seekTargetSeconds: number
@@ -56,6 +63,8 @@ const props = defineProps<{
   waveformRenderStyle?: 'columns' | 'raw-curve'
   allowNegativeTimeline?: boolean
   gridEditMode?: boolean
+  interactionDisabled?: boolean
+  deferGridPersist?: boolean
   deckHovered: boolean
   regionId: number
 }>()
@@ -71,6 +80,8 @@ const emit = defineEmits<{
   (event: 'drag-session-preview', payload: { anchorSec: number; playbackRate: number }): void
   (event: 'drag-session-end', payload: { anchorSec: number; committed: boolean }): void
   (event: 'edit-waveform-loading-change', value: boolean): void
+  (event: 'display-beat-grid-change', value: SongBeatGridMapV2 | null): void
+  (event: 'grid-dirty-change', value: boolean): void
 }>()
 
 const detailRef = ref<HorizontalBrowseRawWaveformDetailExpose | null>(null)
@@ -101,7 +112,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   commitLinkedGridVisualTransaction: (
     deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState,
     options?: HorizontalBrowseLinkedGridVisualTransactionCommitOptions
-  ) => detailRef.value?.commitLinkedGridVisualTransaction?.(deckState, options) ?? null
+  ) => detailRef.value?.commitLinkedGridVisualTransaction?.(deckState, options) ?? null,
+  flushGridPersist: (filePath?: string) =>
+    detailRef.value?.flushGridPersist?.(filePath) ?? Promise.resolve(),
+  restoreGridFromSong: () => detailRef.value?.restoreGridFromSong?.(),
+  clearGridHistory: () => detailRef.value?.clearGridHistory?.()
 })
 </script>
 
@@ -127,6 +142,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :playback-sync-revision="props.playbackSyncRevision"
       :grid-bpm="props.gridBpm"
       :loop-range="props.loopRange"
+      :audio-edit-selection="props.audioEditSelection"
+      :audio-edit-pending-start-sec="props.audioEditPendingStartSec"
+      :audio-edit-pending-end-sec="props.audioEditPendingEndSec"
+      :audio-edit-inserted-ranges="props.audioEditInsertedRanges"
+      :audio-edit-clips="props.audioEditClips"
       :cue-seconds="props.cueSeconds"
       :hot-cues="props.hotCues"
       :memory-cues="props.memoryCues"
@@ -142,6 +162,8 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :waveform-render-style="props.waveformRenderStyle"
       :allow-negative-timeline="props.allowNegativeTimeline"
       :grid-edit-mode="props.gridEditMode"
+      :interaction-disabled="props.interactionDisabled"
+      :defer-grid-persist="props.deferGridPersist"
       :direction="props.direction"
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"
@@ -149,6 +171,8 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       @drag-session-preview="emit('drag-session-preview', $event)"
       @drag-session-end="emit('drag-session-end', $event)"
       @edit-waveform-loading-change="emit('edit-waveform-loading-change', $event)"
+      @display-beat-grid-change="emit('display-beat-grid-change', $event)"
+      @grid-dirty-change="emit('grid-dirty-change', $event)"
     />
     <div
       v-show="!!props.song"

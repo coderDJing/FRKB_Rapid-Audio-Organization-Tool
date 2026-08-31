@@ -18,6 +18,10 @@
   margin-bottom: auto;
 }
 
+.raw-detail-waveform.is-interaction-disabled {
+  cursor: wait;
+}
+
 .raw-detail-waveform__canvas {
   position: absolute;
   inset: 0;
@@ -92,6 +96,58 @@
 
 .raw-detail-waveform__canvas--overlay {
   pointer-events: none;
+}
+
+.raw-detail-waveform__audio-edit-insert {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 44%, transparent);
+  pointer-events: none;
+}
+
+.raw-detail-waveform__audio-edit-selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 44%, transparent);
+  pointer-events: none;
+}
+
+.raw-detail-waveform__audio-edit-bound {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 2px;
+  background: color-mix(in srgb, var(--accent) 80%, #fff);
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+
+.raw-detail-waveform__audio-edit-bound span {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--shell-active-control-text, #fff);
+  background: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.raw-detail-waveform__audio-edit-bound.is-end span {
+  top: auto;
+  bottom: 3px;
 }
 
 .raw-detail-waveform.is-bar-selecting {

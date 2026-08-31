@@ -5,6 +5,8 @@ const props = defineProps<{
   pendingPlay?: boolean
   pendingCue?: boolean
   cueActive?: boolean
+  disabled?: boolean
+  showCue?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -17,6 +19,7 @@ const emit = defineEmits<{
 <template>
   <div class="deck-controls">
     <button
+      v-if="props.showCue !== false"
       type="button"
       class="deck-button deck-button--cue"
       :class="{
@@ -24,6 +27,7 @@ const emit = defineEmits<{
         'is-pending': props.pendingCue,
         'is-decoding': props.decoding
       }"
+      :disabled="props.disabled"
       @pointerdown="emit('cue-pointer-down', $event)"
       @click="emit('cue-click')"
     >
@@ -38,6 +42,7 @@ const emit = defineEmits<{
         'is-decoding': props.decoding
       }"
       :aria-busy="props.pendingPlay ? 'true' : undefined"
+      :disabled="props.disabled"
       @click="emit('play-toggle')"
     >
       <svg v-if="props.playing" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -120,6 +125,11 @@ const emit = defineEmits<{
 
 .deck-button.is-decoding {
   opacity: 0.82;
+}
+
+.deck-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
 }
 
 .deck-button:focus,

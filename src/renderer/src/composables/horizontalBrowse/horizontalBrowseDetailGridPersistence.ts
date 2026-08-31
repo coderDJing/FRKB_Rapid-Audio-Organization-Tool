@@ -13,6 +13,7 @@ import {
   projectSongBeatGridMapV2ToFixedGrid
 } from '@shared/songBeatGridMapV2'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 
 type HorizontalBrowseDetailGridPersistenceParams = {
   song: () => ISongInfo | null
@@ -23,6 +24,9 @@ type HorizontalBrowseDetailGridPersistenceParams = {
   previewBeatGridMap?: Ref<SongBeatGridMapV2 | null>
   resolvePreviewDurationSec?: () => number
   bpmTapTimestamps: Ref<number[]>
+  deferPersistToDisk?: () => boolean
+  onDirtyChange?: (dirty: boolean) => void
+  resolvePersistBeatGridMap?: () => SongBeatGridMapV2 | null
 }
 
 export const createHorizontalBrowseDetailGridPersistence = (
@@ -77,18 +81,25 @@ export const createHorizontalBrowseDetailGridPersistence = (
     }, PREVIEW_BPM_TAP_RESET_MS)
   }
 
-  const persistGridDefinition = async () => {
+  const persistGridDefinition = async (filePathOverride?: string) => {
     clearPersistTimer()
     const song = params.song()
     if (isRekordboxExternalPlaybackSource('', song)) return
-    const filePath = String(song?.filePath || '').trim()
+    const filePath = String(filePathOverride || song?.filePath || '').trim()
     if (!filePath) return
     pendingLocalGridSignature = buildPreviewGridSignature()
     pendingLocalGridStartedAt = Date.now()
-    const previewBeatGridMap = normalizeSongBeatGridMapV2(params.previewBeatGridMap?.value, {
-      durationSec: params.resolvePreviewDurationSec?.(),
-      allowSingleClip: true
-    })
+    if (!filePathOverride && params.deferPersistToDisk?.()) {
+      params.onDirtyChange?.(buildPreviewGridSignature() !== buildSongGridSignature())
+      return
+    }
+    const previewBeatGridMap = normalizeSongBeatGridMapV2(
+      params.resolvePersistBeatGridMap?.() ?? params.previewBeatGridMap?.value,
+      {
+        durationSec: params.resolvePreviewDurationSec?.(),
+        allowSingleClip: true
+      }
+    )
     const beatGridProjection = projectSongBeatGridMapV2ToFixedGrid(previewBeatGridMap)
     const firstBeatMs = Number(params.previewFirstBeatMs.value)
     const fallbackBpm = Number(params.previewBpm.value) || 0
@@ -106,11 +117,18 @@ export const createHorizontalBrowseDetailGridPersistence = (
         source: 'manual'
       })
     if (!beatGridMap) return
-    const payload = { filePath, beatGridMap }
+    const payload = toIpcCloneablePayload({
+      filePath,
+      beatGridMap,
+      enqueueAnalysis: !filePathOverride,
+      rebuildWaveform: Boolean(filePathOverride)
+    })
     try {
       await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', payload)
+      params.onDirtyChange?.(false)
     } catch (error) {
       console.error('[horizontal-browse] persist grid definition failed', error)
+      if (filePathOverride) throw error
     }
   }
 
@@ -118,6 +136,8 @@ export const createHorizontalBrowseDetailGridPersistence = (
     clearPersistTimer()
     pendingLocalGridSignature = buildPreviewGridSignature()
     pendingLocalGridStartedAt = Date.now()
+    params.onDirtyChange?.(buildPreviewGridSignature() !== buildSongGridSignature())
+    if (params.deferPersistToDisk?.()) return
     persistTimer = setTimeout(() => {
       persistTimer = null
       void persistGridDefinition()
@@ -152,6 +172,7 @@ export const createHorizontalBrowseDetailGridPersistence = (
     schedulePreviewBpmTapReset,
     persistGridDefinition,
     schedulePersistGridDefinition,
-    shouldDeferSongGridSync
+    shouldDeferSongGridSync,
+    resolvePreviewGridDirty: () => buildPreviewGridSignature() !== buildSongGridSignature()
   }
 }

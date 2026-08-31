@@ -145,10 +145,10 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     } else {
       options.clearDragReleaseHandoff()
     }
+    const dragRelease = options.endDragCanvasPresentation(finalPreviewStartSec)
     options.dragging.value = false
     activeDragPointerId = null
     options.scrubPreview.stop({ flushPending: committed && refreshWaveform })
-    const dragRelease = options.endDragCanvasPresentation(finalPreviewStartSec)
     window.removeEventListener('pointermove', handleDragPointerMove)
     window.removeEventListener('pointerup', handleWindowPointerUp)
     window.removeEventListener('pointercancel', handleWindowPointerCancel)

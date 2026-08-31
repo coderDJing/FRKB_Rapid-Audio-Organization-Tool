@@ -15,6 +15,7 @@ import {
   type PlaybackRangePercentRange,
   type PlaybackSectionRange
 } from '@shared/playbackRange'
+import { normalizeAudioEditRange, type AudioEditRange } from '@shared/audioEditTimeline'
 
 type PendingRangeAction =
   | {
@@ -32,8 +33,8 @@ type PendingRangeAction =
 type UseHorizontalBrowseEditPlaybackRangeParams = {
   runtime: ReturnType<typeof useRuntimeStore>
   isEditMode: ComputedRef<boolean>
-  topDeckSong: Ref<ISongInfo | null>
-  currentSeconds: Ref<number>
+  topDeckSong: Ref<ISongInfo | null> | ComputedRef<ISongInfo | null>
+  currentSeconds: Ref<number> | ComputedRef<number>
   durationSeconds: ComputedRef<number>
   resolvePlaying: () => boolean
   resolveLoopActive: () => boolean
@@ -42,6 +43,8 @@ type UseHorizontalBrowseEditPlaybackRangeParams = {
   pause: () => void
   advanceToNextSong: () => boolean
   handleLoopPlaybackTick: (deck: HorizontalBrowseDeckKey) => void
+  customRangeSec?: Ref<AudioEditRange | null>
+  setCustomRangeSec?: (range: AudioEditRange | null) => void
 }
 
 export type HorizontalBrowsePlaybackRangeOverlay = {
@@ -115,17 +118,31 @@ export const useHorizontalBrowseEditPlaybackRange = (
     if (!playbackRangeHandlesLocked.value) return true
     return playbackRangeLockedRanges.value.length > 0
   })
+  const percentToSeconds = (percent: number) =>
+    (safeDurationSeconds.value * clampPlaybackRangePercent(percent, 0)) / 100
+
+  const syncCustomRangeFromPercents = (startPercent: number, endPercent: number) => {
+    if (!params.setCustomRangeSec || !params.isEditMode.value) return
+    params.setCustomRangeSec(
+      normalizeAudioEditRange(percentToSeconds(startPercent), percentToSeconds(endPercent))
+    )
+  }
+
   const playbackRangeHandleStartPercent = computed({
     get: () => {
       const sectionRange = playbackSectionHandleRange.value
       if (playbackRangeHandlesLocked.value && sectionRange) {
         return secondsToPercent(sectionRange.startSec)
       }
+      const customRange = params.isEditMode.value ? params.customRangeSec?.value : null
+      if (customRange) return secondsToPercent(customRange.startSec)
       return clampPlaybackRangePercent(params.runtime.setting.startPlayPercent, 0)
     },
     set: (value: number) => {
       if (playbackRangeHandlesLocked.value) return
-      params.runtime.setting.startPlayPercent = clampPlaybackRangePercent(value, 0)
+      const next = clampPlaybackRangePercent(value, 0)
+      params.runtime.setting.startPlayPercent = next
+      syncCustomRangeFromPercents(next, playbackRangeHandleEndPercent.value)
     }
   })
   const playbackRangeHandleEndPercent = computed({
@@ -134,11 +151,15 @@ export const useHorizontalBrowseEditPlaybackRange = (
       if (playbackRangeHandlesLocked.value && sectionRange) {
         return secondsToPercent(sectionRange.endSec)
       }
+      const customRange = params.isEditMode.value ? params.customRangeSec?.value : null
+      if (customRange) return secondsToPercent(customRange.endSec)
       return clampPlaybackRangePercent(params.runtime.setting.endPlayPercent, 100)
     },
     set: (value: number) => {
       if (playbackRangeHandlesLocked.value) return
-      params.runtime.setting.endPlayPercent = clampPlaybackRangePercent(value, 100)
+      const next = clampPlaybackRangePercent(value, 100)
+      params.runtime.setting.endPlayPercent = next
+      syncCustomRangeFromPercents(playbackRangeHandleStartPercent.value, next)
     }
   })
   const setPlaybackRangeStartPercent = (value: number) => {
@@ -179,6 +200,10 @@ export const useHorizontalBrowseEditPlaybackRange = (
   const resolveCustomPlaybackRange = (): PlaybackSectionRange | null => {
     const duration = safeDurationSeconds.value
     if (duration <= 0) return null
+    const customRange = params.isEditMode.value ? params.customRangeSec?.value : null
+    if (customRange && customRange.endSec > customRange.startSec) {
+      return { startSec: customRange.startSec, endSec: customRange.endSec, kinds: [] }
+    }
     const startSec =
       (duration * clampPlaybackRangePercent(params.runtime.setting.startPlayPercent, 0)) / 100
     const endSec =

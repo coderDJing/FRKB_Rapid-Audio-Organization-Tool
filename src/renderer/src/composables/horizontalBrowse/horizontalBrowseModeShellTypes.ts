@@ -38,6 +38,9 @@ export type HorizontalBrowseDeckDetailLaneExpose = {
     deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState,
     options?: HorizontalBrowseLinkedGridVisualTransactionCommitOptions
   ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
+  flushGridPersist?: (filePath?: string) => Promise<void>
+  restoreGridFromSong?: () => void
+  clearGridHistory?: () => void
 }
 
 export const EDIT_MODE_BPM_INPUT_TITLE = '网格 BPM：修改分析结果和网格线，不改变播放速度'

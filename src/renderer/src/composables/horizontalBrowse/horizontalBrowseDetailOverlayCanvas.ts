@@ -30,6 +30,10 @@ type DrawHorizontalBrowseDetailOverlayOptions = {
   hotCues?: ISongHotCue[] | null
   memoryCues?: ISongMemoryCue[] | null
   loopRange?: HorizontalBrowseLoopRange | null
+  audioEditSelection?: HorizontalBrowseLoopRange | null
+  audioEditPendingStartSec?: number | null
+  audioEditPendingEndSec?: number | null
+  audioEditAccentColor?: string
   cueAccentColor?: string
   timeBasisOffsetMs?: number
   xPixelScale?: number
@@ -211,21 +215,20 @@ const drawHotCue = (
   ctx.fillText(text, centerX, topY + HOT_CUE_LABEL_HEIGHT * 0.5 + 0.5)
 }
 
-const drawLoopMask = (
+const drawTimeRangeMask = (
   ctx: DetailOverlayCanvasContext,
   width: number,
-  _height: number,
   waveformTop: number,
   waveformHeight: number,
   rangeStartSec: number,
   rangeDurationSec: number,
-  cueAccent: string,
+  fillColor: string,
   xPixelScale: number,
-  loopRange?: HorizontalBrowseLoopRange | null
+  timeRange?: HorizontalBrowseLoopRange | null
 ) => {
-  if (!loopRange) return
-  const visibleStartSec = Math.max(rangeStartSec, Number(loopRange.startSec) || 0)
-  const visibleEndSec = Math.min(rangeStartSec + rangeDurationSec, Number(loopRange.endSec) || 0)
+  if (!timeRange) return
+  const visibleStartSec = Math.max(rangeStartSec, Number(timeRange.startSec) || 0)
+  const visibleEndSec = Math.min(rangeStartSec + rangeDurationSec, Number(timeRange.endSec) || 0)
   if (visibleEndSec <= visibleStartSec) return
   const left = snapToDevicePixel(
     ((visibleStartSec - rangeStartSec) / rangeDurationSec) * width,
@@ -240,11 +243,11 @@ const drawLoopMask = (
 
   ctx.save()
   ctx.globalAlpha = 0.28
-  ctx.fillStyle = cueAccent
+  ctx.fillStyle = fillColor
   ctx.fillRect(left, waveformTop, rectWidth, waveformHeight)
   ctx.restore()
 
-  ctx.strokeStyle = cueAccent
+  ctx.strokeStyle = fillColor
   ctx.lineWidth = 1
   ctx.globalAlpha = 0.46
   ctx.strokeRect(
@@ -254,6 +257,36 @@ const drawLoopMask = (
     Math.max(0, waveformHeight - 1)
   )
   ctx.globalAlpha = 1
+}
+
+const drawBoundLine = (
+  ctx: DetailOverlayCanvasContext,
+  width: number,
+  waveformTop: number,
+  waveformHeight: number,
+  rangeStartSec: number,
+  rangeDurationSec: number,
+  color: string,
+  xPixelScale: number,
+  seconds: number | null | undefined
+) => {
+  if (seconds == null || !Number.isFinite(Number(seconds))) return
+  const centerX = resolveMarkerCenterX(Number(seconds), rangeStartSec, rangeDurationSec, width)
+  if (centerX === null) return
+  const left = snapToDevicePixel(centerX - 1, xPixelScale)
+  ctx.save()
+  ctx.globalAlpha = 0.92
+  ctx.fillStyle = color
+  ctx.fillRect(left, waveformTop, 2, waveformHeight)
+  ctx.restore()
+}
+
+const resolveAudioEditAccentColor = (override?: string) => {
+  const safeOverride = String(override || '').trim()
+  if (safeOverride) return safeOverride
+  if (typeof document === 'undefined') return '#0078d4'
+  const cssValue = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+  return cssValue || '#0078d4'
 }
 
 export const HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX = 12
@@ -274,6 +307,10 @@ export const drawHorizontalBrowseDetailOverlay = (
     hotCues,
     memoryCues,
     loopRange,
+    audioEditSelection,
+    audioEditPendingStartSec,
+    audioEditPendingEndSec,
+    audioEditAccentColor,
     cueAccentColor,
     timeBasisOffsetMs,
     xPixelScale,
@@ -283,12 +320,12 @@ export const drawHorizontalBrowseDetailOverlay = (
 
   const waveformTop = overlayInsetPx
   const cueAccent = resolveCueAccentColor(cueAccentColor)
+  const audioEditAccent = resolveAudioEditAccentColor(audioEditAccentColor)
   const markerPalette = resolveDetailMarkerPalette(themeVariant)
   const safeXPixelScale = resolvePixelScale(xPixelScale)
-  drawLoopMask(
+  drawTimeRangeMask(
     ctx,
     width,
-    height,
     waveformTop,
     waveformHeight,
     rangeStartSec,
@@ -297,6 +334,33 @@ export const drawHorizontalBrowseDetailOverlay = (
     safeXPixelScale,
     loopRange
   )
+  drawTimeRangeMask(
+    ctx,
+    width,
+    waveformTop,
+    waveformHeight,
+    rangeStartSec,
+    rangeDurationSec,
+    audioEditAccent,
+    safeXPixelScale,
+    audioEditSelection
+  )
+  const boundSeconds = audioEditSelection
+    ? [audioEditSelection.startSec, audioEditSelection.endSec]
+    : [audioEditPendingStartSec, audioEditPendingEndSec]
+  for (const boundSec of boundSeconds) {
+    drawBoundLine(
+      ctx,
+      width,
+      waveformTop,
+      waveformHeight,
+      rangeStartSec,
+      rangeDurationSec,
+      audioEditAccent,
+      safeXPixelScale,
+      boundSec
+    )
+  }
 
   const cueCenterX = resolveMarkerCenterX(cueSeconds, rangeStartSec, rangeDurationSec, width)
   if (cueCenterX !== null) {

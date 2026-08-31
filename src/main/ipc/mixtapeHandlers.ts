@@ -801,6 +801,8 @@ export function registerMixtapeHandlers() {
       payload: {
         filePath?: string
         beatGridMap?: SongBeatGridMapV2 | null
+        enqueueAnalysis?: boolean
+        rebuildWaveform?: boolean
       }
     ) => {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
@@ -823,11 +825,23 @@ export function registerMixtapeHandlers() {
         'manual'
       )
       if (nextBeatGridMap) {
-        enqueueKeyAnalysis(filePath, 'low', {
-          source: 'foreground',
-          preemptible: true,
-          includeStructure: true
-        })
+        if (payload?.enqueueAnalysis === false) {
+          if (payload?.rebuildWaveform === true) {
+            enqueueKeyAnalysis(filePath, 'low', {
+              source: 'foreground',
+              preemptible: true,
+              category: 'waveform-preview',
+              waveformOnly: true,
+              includeStructure: false
+            })
+          }
+        } else {
+          enqueueKeyAnalysis(filePath, 'low', {
+            source: 'foreground',
+            preemptible: true,
+            includeStructure: true
+          })
+        }
       }
       return result
     }

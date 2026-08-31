@@ -27,6 +27,7 @@ type UseHorizontalBrowseModeShellHotkeysParams = {
   onSeekPercent: (deck: DeckKey, percent: number) => void
   faderPanel: Ref<CrossfaderKeyboardTarget | null>
   onNavigateEditSong: (direction: -1 | 1) => void
+  guardSongContextChange: (action: () => unknown | Promise<unknown>) => boolean
 }
 
 export const useHorizontalBrowseModeShellHotkeys = (
@@ -39,13 +40,17 @@ export const useHorizontalBrowseModeShellHotkeys = (
   })
 
   const openMoveDialog = (deck: DeckKey, target: HorizontalBrowseDeckMoveTargetLibrary) => {
-    params.touchDeckInteraction(deck)
-    params.openDeckMoveDialog(deck, target)
+    params.guardSongContextChange(() => {
+      params.touchDeckInteraction(deck)
+      params.openDeckMoveDialog(deck, target)
+    })
   }
 
   const deleteSong = (deck: DeckKey) => {
-    params.touchDeckInteraction(deck)
-    void deleteDeckSong(deck)
+    params.guardSongContextChange(async () => {
+      params.touchDeckInteraction(deck)
+      await deleteDeckSong(deck)
+    })
   }
 
   useHorizontalBrowseHotkeys({

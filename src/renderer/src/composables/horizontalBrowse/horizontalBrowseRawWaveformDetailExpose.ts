@@ -31,6 +31,9 @@ type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
   ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
   resolveVisibleDurationSec: () => number
   resolveWrapWidth: () => number
+  persistGridDefinition: (filePath?: string) => Promise<void>
+  syncGridStateFromSongForDisplay: () => void
+  clearGridHistory: () => void
 }
 
 export type HorizontalBrowseGridShiftMsParams = {
@@ -73,6 +76,9 @@ export const createHorizontalBrowseRawWaveformDetailExpose = (
     releaseDynamicGridSelectionForBpmInput: params.releaseDynamicGridSelectionForBpmInput,
     cycleMetronomeState: params.cycleMetronomeState,
     prepareStableFrameForAnchor: params.prepareStableFrameForAnchor,
-    commitLinkedGridVisualTransaction: params.commitLinkedGridVisualTransaction
+    commitLinkedGridVisualTransaction: params.commitLinkedGridVisualTransaction,
+    flushGridPersist: (filePath?: string) => params.persistGridDefinition(filePath),
+    restoreGridFromSong: params.syncGridStateFromSongForDisplay,
+    clearGridHistory: params.clearGridHistory
   }
 }

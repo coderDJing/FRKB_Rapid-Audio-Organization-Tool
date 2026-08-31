@@ -84,6 +84,7 @@ type StableCanvasPresentationControllerOptions = {
   waveformCanvas: () => HTMLCanvasElement | null
   overlayCanvas: () => HTMLCanvasElement | null
   scheduleDraw: () => void
+  onPresentationApplied?: () => void
 }
 
 type StableCanvasPresentationApplyOptions = {
@@ -337,6 +338,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       options.overlayCanvas(),
       offsetCssPx
     )
+    options.onPresentationApplied?.()
     const shouldReanchor =
       applyOptions.allowReanchor !== false &&
       options.isPlaying() &&
@@ -450,6 +452,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       options.overlayCanvas(),
       offsetCssPx
     )
+    options.onPresentationApplied?.()
     return true
   }
 

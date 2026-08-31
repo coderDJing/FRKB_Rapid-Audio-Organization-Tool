@@ -589,6 +589,11 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     releaseSelectionForBpmInput: () => {
       selectionFrozenByBpmInput.value = false
       syncSelectionToPlayhead()
+    },
+    clearHistory: () => {
+      selectionFrozenByBpmInput.value = false
+      selectedTarget.value = { type: 'clip', index: 0, manual: false }
+      adjustmentScope.value = 'whole'
     }
   }
 }

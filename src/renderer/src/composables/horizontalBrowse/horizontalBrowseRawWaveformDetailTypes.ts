@@ -1,5 +1,7 @@
 import type { HorizontalBrowseGridShiftOptions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseGridToolbar'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
+import type { AudioEditClip } from '@shared/audioEditTimeline'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import type { HorizontalBrowseGridToolbarState } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseGridToolbar'
 import type { HorizontalBrowseScrubPreviewPayload } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseWaveformScrubPreview'
 import type { HorizontalBrowseWaveformPresentationState } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationCoordinator'
@@ -52,6 +54,11 @@ export type HorizontalBrowseRawWaveformDetailProps = {
   playbackSyncRevision?: number
   gridBpm?: number
   loopRange?: HorizontalBrowseLoopRange | null
+  audioEditSelection?: HorizontalBrowseLoopRange | null
+  audioEditPendingStartSec?: number | null
+  audioEditPendingEndSec?: number | null
+  audioEditInsertedRanges?: HorizontalBrowseLoopRange[] | null
+  audioEditClips?: AudioEditClip[] | null
   cueSeconds?: number
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
@@ -67,6 +74,8 @@ export type HorizontalBrowseRawWaveformDetailProps = {
   waveformRenderStyle?: HorizontalBrowseWaveformRenderStyle
   allowNegativeTimeline?: boolean
   gridEditMode?: boolean
+  interactionDisabled?: boolean
+  deferGridPersist?: boolean
 }
 
 export type HorizontalBrowseRawWaveformDetailEmit = {
@@ -76,6 +85,8 @@ export type HorizontalBrowseRawWaveformDetailEmit = {
   (event: 'drag-session-preview', value: HorizontalBrowseScrubPreviewPayload): void
   (event: 'drag-session-end', value: HorizontalBrowseDragSessionEndPayload): void
   (event: 'edit-waveform-loading-change', value: boolean): void
+  (event: 'display-beat-grid-change', value: SongBeatGridMapV2 | null): void
+  (event: 'grid-dirty-change', value: boolean): void
 }
 
 export type HorizontalBrowseRawWaveformDetailExpose = {
@@ -101,4 +112,7 @@ export type HorizontalBrowseRawWaveformDetailExpose = {
     deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState,
     options?: HorizontalBrowseLinkedGridVisualTransactionCommitOptions
   ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
+  flushGridPersist: (filePath?: string) => Promise<void>
+  restoreGridFromSong: () => void
+  clearGridHistory: () => void
 }
