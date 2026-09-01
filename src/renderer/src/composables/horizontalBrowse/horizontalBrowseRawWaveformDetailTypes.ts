@@ -50,6 +50,7 @@ export type HorizontalBrowseRawWaveformDetailProps = {
   playbackActive?: boolean
   playbackRate?: number
   visualPlaybackRate?: number
+  liveTempoPreviewRate?: number | null
   waveformGain?: number
   playbackSyncRevision?: number
   gridBpm?: number
@@ -104,6 +105,7 @@ export type HorizontalBrowseRawWaveformDetailExpose = {
   freezeDynamicGridSelectionForBpmInput: () => void
   releaseDynamicGridSelectionForBpmInput: () => void
   cycleMetronomeState: () => void
+  setLiveTempoPreviewRate?: (rate: number | null) => void
   prepareStableFrameForAnchor: (
     seconds: number,
     options?: { timeoutMs?: number }

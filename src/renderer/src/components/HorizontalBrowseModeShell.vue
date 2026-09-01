@@ -326,13 +326,22 @@ const {
   getDeckSong: resolveDeckSong,
   setDeckSong
 })
-const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, resetDeckTempo } =
-  useHorizontalBrowseDeckTempoControls({
-    resolveDeckSong,
-    resolveDeckGridBpm,
-    resolveTransportDeckSnapshot,
-    nativeTransport
-  })
+const {
+  isDeckMasterTempoEnabled,
+  toggleDeckMasterTempo,
+  scheduleDeckLiveTargetBpm,
+  commitDeckTargetBpm,
+  cancelDeckLiveTargetBpm,
+  resetDeckTempo
+} = useHorizontalBrowseDeckTempoControls({
+  resolveDeckSong,
+  resolveDeckGridBpm,
+  resolveTransportDeckSnapshot,
+  nativeTransport,
+  onLiveVisualPlaybackRate: (deck, playbackRate) => {
+    resolveDetailRef(deck)?.setLiveTempoPreviewRate?.(playbackRate)
+  }
+})
 resolveDeckMasterTempoEnabledForTransport = isDeckMasterTempoEnabled
 const handleDeckMasterTempoToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
@@ -652,6 +661,7 @@ const {
   handleDeckMetronomeStateCycle,
   handleDeckBpmTap,
   handleDeckBpmInputUpdate,
+  handleDeckBpmInputLive,
   handleDeckBpmInputBlur,
   handleDeckSelectWholeAdjustment,
   handleDeckSplitAfterPlayhead,
@@ -666,7 +676,9 @@ const {
   resolveDeckToolbarBpmInputValue,
   shouldPreserveGridShiftPhase,
   shouldCommitBpmInputAsGridEdit: (deck) => isEditMode.value && deck === 'top',
-  setDeckTargetBpm
+  scheduleDeckLiveTargetBpm,
+  commitDeckTargetBpm,
+  cancelDeckLiveTargetBpm
 })
 
 const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
@@ -871,6 +883,7 @@ const waveformStackModel: HorizontalBrowseModeShellWaveformStackModel = {
   handleDeckGridShiftSmallRight,
   handleDeckGridShiftLargeRight,
   handleDeckBpmInputUpdate,
+  handleDeckBpmInputLive,
   handleDeckBpmInputBlur,
   handleDeckBpmTap,
   handleDeckMemoryCueCreate,

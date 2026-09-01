@@ -30,6 +30,7 @@ export type HorizontalBrowseDeckDetailLaneExpose = {
   freezeDynamicGridSelectionForBpmInput?: () => void
   releaseDynamicGridSelectionForBpmInput?: () => void
   cycleMetronomeState?: () => void
+  setLiveTempoPreviewRate?: (rate: number | null) => void
   prepareStableFrameForAnchor?: (
     seconds: number,
     options?: { timeoutMs?: number }

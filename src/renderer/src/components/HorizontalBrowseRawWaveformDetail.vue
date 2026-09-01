@@ -30,6 +30,13 @@ import type {
   HorizontalBrowseLinkedGridVisualTransactionDeckState
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualTransaction'
 import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailExpose'
+import {
+  applyHorizontalBrowseLiveTempoPreviewTransform,
+  resolveHorizontalBrowseLiveTempoPreviewReleasePlan,
+  resolveHorizontalBrowseLiveTempoPreviewVisualGeometry,
+  shouldFinishHorizontalBrowseLiveTempoPreviewRelease
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseLiveTempoPreview'
+import { recordHorizontalBrowseLiveTempoReleaseDiag } from '@renderer/composables/horizontalBrowse/horizontalBrowseLiveTempoReleaseDiag'
 import { useHorizontalBrowseAudioEditDetailRaw } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseAudioEditDetailRaw'
 import {
   createPioneerDetailRawWaveform,
@@ -85,6 +92,10 @@ const previewBeatGridMap = ref<SongBeatGridMapV2 | null>(null)
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const compactVisualWaveformActive = ref(false)
+const waveformTempoScalerRef = ref<HTMLDivElement | null>(null)
+const waveformTempoScalerBackRef = ref<HTMLDivElement | null>(null)
+const overlayTempoScalerRef = ref<HTMLDivElement | null>(null)
+const overlayTempoScalerBackRef = ref<HTMLDivElement | null>(null)
 const previewPlaying = ref(false)
 const localGridShiftPhaseOffsetSec = ref(0)
 const playbackSyncRevision = computed(() =>
@@ -179,6 +190,9 @@ const resolveGridEditVisibleFromSec = () =>
   gridEditingEnabled.value ? selectedDynamicGridVisibleFromSec.value : null
 
 let loadToken = 0
+let liveTempoPreviewRateValue: number | null = null
+let liveTempoPreviewReleasePendingScale: number | null = null
+let displayedPreviewTimeScale = 1
 const playbackDiscontinuityDetector = createHorizontalBrowsePlaybackDiscontinuityDetector()
 let linkedGridVisualTransactionCommitted = false
 const stablePlaybackReanchorGate = createHorizontalBrowseStablePlaybackReanchorGate()
@@ -328,12 +342,29 @@ const {
   stableWaveformSource: resolveCanvasStableWaveformSource,
   stableRenderRevision: () => stableRenderRevision.value,
   linkedGridActive: () => presentationLinkedGridActive.value,
-  phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
+  phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001,
+  onPreparingPreviewTimeScale: (timeScale, renderTargetIndex) => {
+    applyLiveTempoPreviewTransformForBuffer(renderTargetIndex, timeScale)
+  },
+  onPresentedPreviewTimeScale: (timeScale) => {
+    displayedPreviewTimeScale = Math.max(0.25, Number(timeScale) || 1)
+    if (
+      shouldFinishHorizontalBrowseLiveTempoPreviewRelease(
+        displayedPreviewTimeScale,
+        liveTempoPreviewReleasePendingScale
+      )
+    ) {
+      liveTempoPreviewReleasePendingScale = null
+      liveTempoPreviewRateValue = null
+    }
+    syncLiveTempoPreviewTransform()
+  }
 })
 
 presentationState.setLastAppliedPreviewTimeScale(
   Math.max(0.25, Number(resolvePreviewTimeScale()) || 1)
 )
+displayedPreviewTimeScale = presentationState.getLastAppliedPreviewTimeScale()
 
 const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
   const deltaSec = Number(deltaMs) / 1000
@@ -745,6 +776,91 @@ const { handleSharedZoomState, handlePresentationState } =
     applyPresentationSeekTarget
   })
 
+const resolveLiveTempoPreviewActiveBufferIndex = (): 0 | 1 =>
+  waveformCanvasBackRef.value?.style.opacity === '1' ? 1 : 0
+
+const resolveLiveTempoPreviewScalers = (bufferIndex: 0 | 1) =>
+  bufferIndex === 1
+    ? [waveformTempoScalerBackRef.value, overlayTempoScalerBackRef.value]
+    : [waveformTempoScalerRef.value, overlayTempoScalerRef.value]
+
+const applyLiveTempoPreviewTransformForBuffer = (bufferIndex: 0 | 1, bufferTimeScale: number) => {
+  applyHorizontalBrowseLiveTempoPreviewTransform(
+    resolveLiveTempoPreviewScalers(bufferIndex),
+    bufferTimeScale,
+    liveTempoPreviewRateValue ?? presentationState.getLastAppliedPreviewTimeScale()
+  )
+}
+
+const syncLiveTempoPreviewTransform = () => {
+  if (liveTempoPreviewRateValue == null) {
+    applyHorizontalBrowseLiveTempoPreviewTransform(
+      [
+        waveformTempoScalerRef.value,
+        waveformTempoScalerBackRef.value,
+        overlayTempoScalerRef.value,
+        overlayTempoScalerBackRef.value
+      ],
+      1,
+      1
+    )
+    return
+  }
+  applyLiveTempoPreviewTransformForBuffer(
+    resolveLiveTempoPreviewActiveBufferIndex(),
+    displayedPreviewTimeScale
+  )
+}
+
+const clearLiveTempoPreviewRelease = () => {
+  liveTempoPreviewReleasePendingScale = null
+  liveTempoPreviewRateValue = null
+  syncLiveTempoPreviewTransform()
+}
+
+const applyLiveTempoPreviewRate = (liveRate: number | null | undefined) => {
+  const leavingLive = liveTempoPreviewRateValue != null
+  const nextRate =
+    liveRate != null && Number.isFinite(Number(liveRate)) && Number(liveRate) > 0
+      ? Number(liveRate)
+      : null
+  if (nextRate != null) {
+    liveTempoPreviewReleasePendingScale = null
+    liveTempoPreviewRateValue = nextRate
+    syncLiveTempoPreviewTransform()
+    if (compactVisualWaveformActive.value && waveformPlaybackActive.value) {
+      reanchorStableCanvasPlayback(resolveWaveformCurrentSeconds(), nextRate)
+    }
+    return
+  }
+  if (!leavingLive || presentationLinkedGridVisualPending.value) {
+    clearLiveTempoPreviewRelease()
+    return
+  }
+  const incomingTimeScale = Math.max(0.25, Number(resolveIncomingPreviewTimeScale()) || 1)
+  const releasePlan = resolveHorizontalBrowseLiveTempoPreviewReleasePlan(
+    displayedPreviewTimeScale,
+    incomingTimeScale
+  )
+  if (releasePlan.mode === 'immediate') {
+    clearLiveTempoPreviewRelease()
+    applyIncomingPreviewTimeScale(true, { keepCurrentFrame: true })
+    return
+  }
+  liveTempoPreviewReleasePendingScale = releasePlan.pendingScale
+  liveTempoPreviewRateValue = releasePlan.pendingScale
+  syncLiveTempoPreviewTransform()
+  if (!applyIncomingPreviewTimeScale(true, { keepCurrentFrame: true })) {
+    clearLiveTempoPreviewRelease()
+  }
+}
+
+watch(
+  () => props.liveTempoPreviewRate,
+  (liveRate) => applyLiveTempoPreviewRate(liveRate),
+  { flush: 'sync' }
+)
+
 const { stopDragging, handlePointerDown, handleWheel } =
   createHorizontalBrowseWaveformPointerInteraction({
     wrapRef,
@@ -993,6 +1109,7 @@ const { audioEditSelectionStyle, audioEditInsertedStyles, audioEditBoundStyles }
 
 defineExpose(
   createHorizontalBrowseRawWaveformDetailExpose({
+    setLiveTempoPreviewRate: (rate) => applyLiveTempoPreviewRate(rate),
     setDownbeatLineAtPlayhead,
     shiftGrid,
     updateBpmInput: handlePreviewBpmInputUpdate,
@@ -1031,27 +1148,35 @@ defineExpose(
     @wheel.prevent.stop="handleWheel"
   >
     <div ref="waveformSurfaceRef" class="raw-detail-waveform__surface">
-      <canvas
-        ref="waveformCanvasRef"
-        class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform"
-      />
-      <canvas
-        ref="waveformCanvasBackRef"
-        class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform raw-detail-waveform__canvas--buffer-back"
-      />
+      <div ref="waveformTempoScalerRef" class="raw-detail-waveform__tempo-scaler">
+        <canvas
+          ref="waveformCanvasRef"
+          class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform"
+        />
+      </div>
+      <div ref="waveformTempoScalerBackRef" class="raw-detail-waveform__tempo-scaler">
+        <canvas
+          ref="waveformCanvasBackRef"
+          class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform raw-detail-waveform__canvas--buffer-back"
+        />
+      </div>
     </div>
     <div v-if="externalDetailWaveformUnavailable" class="raw-detail-waveform__unavailable">
       Rekordbox 未提供细节波形
     </div>
     <div ref="overlaySurfaceRef" class="raw-detail-waveform__overlay-surface">
-      <canvas
-        ref="overlayCanvasRef"
-        class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
-      />
-      <canvas
-        ref="overlayCanvasBackRef"
-        class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
-      />
+      <div ref="overlayTempoScalerRef" class="raw-detail-waveform__tempo-scaler">
+        <canvas
+          ref="overlayCanvasRef"
+          class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
+        />
+      </div>
+      <div ref="overlayTempoScalerBackRef" class="raw-detail-waveform__tempo-scaler">
+        <canvas
+          ref="overlayCanvasBackRef"
+          class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
+        />
+      </div>
     </div>
     <div
       v-for="region in audioEditInsertedStyles"

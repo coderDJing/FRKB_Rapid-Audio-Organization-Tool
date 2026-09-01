@@ -3,6 +3,7 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
+import { rebaseHorizontalBrowsePlaybackClock } from '@renderer/composables/horizontalBrowse/horizontalBrowseLivePlaybackClock'
 import {
   publishHorizontalBrowseLinkedGridRenderClock,
   publishHorizontalBrowseLinkedGridRenderClockPair
@@ -23,6 +24,7 @@ type UseHorizontalBrowseRenderSyncParams = {
       stateRevision?: number
     }
     snapshot: (nowMs?: number) => Promise<unknown>
+    resolveLiveClockPlaybackRate?: (deck: DeckKey) => number | null
   }
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckPlaying: (deck: DeckKey) => boolean
@@ -110,6 +112,11 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   let transportSnapshotInFlight = false
   let lastTransportSnapshotAt = 0
 
+  const lastClockPlaybackRate: Record<DeckKey, number | null> = {
+    top: null,
+    bottom: null
+  }
+
   const estimateDeckRenderCurrentSeconds = (deck: DeckKey, nowMs = performance.now()) => {
     const pendingHold = pendingRenderPositionHold[deck]
     if (pendingHold && nowMs - pendingHold.startedAtMs < RENDER_SYNC_POSITION_HOLD_MAX_MS) {
@@ -119,13 +126,29 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     if (pendingIntent) return pendingIntent.seconds
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const renderLimitSec = resolveDeckRenderLimitSec(snapshot)
-    const playbackRate = Number(snapshot.playbackRate) || 1
+    const liveClockRate = params.nativeTransport.resolveLiveClockPlaybackRate?.(deck)
+    const playbackRate = Math.max(0.25, Number(liveClockRate ?? snapshot.playbackRate) || 1)
+    const previousClockRate = lastClockPlaybackRate[deck]
     const baseSec = normalizeTimelineSeconds(deckRenderSyncBaseSec[deck])
     const baseAtMs = Math.max(0, Number(deckRenderSyncBaseAtMs[deck]) || 0)
     const canEstimatePlayback =
       baseAtMs > 0 && (snapshot.playingAudible || (snapshot.playing && baseSec < 0))
-    const deltaSec = canEstimatePlayback ? Math.max(0, nowMs - baseAtMs) / 1000 : 0
-    const nextSec = baseSec + deltaSec * Math.max(0.25, playbackRate)
+    if (canEstimatePlayback && previousClockRate != null) {
+      const rebased = rebaseHorizontalBrowsePlaybackClock(
+        deckRenderSyncBaseSec[deck],
+        deckRenderSyncBaseAtMs[deck],
+        previousClockRate,
+        playbackRate,
+        nowMs
+      )
+      deckRenderSyncBaseSec[deck] = rebased.baseSec
+      deckRenderSyncBaseAtMs[deck] = rebased.baseAtMs
+    }
+    lastClockPlaybackRate[deck] = playbackRate
+    const nextBaseSec = normalizeTimelineSeconds(deckRenderSyncBaseSec[deck])
+    const nextBaseAtMs = Math.max(0, Number(deckRenderSyncBaseAtMs[deck]) || 0)
+    const deltaSec = canEstimatePlayback ? Math.max(0, nowMs - nextBaseAtMs) / 1000 : 0
+    const nextSec = nextBaseSec + deltaSec * playbackRate
     return renderLimitSec > 0 ? Math.min(renderLimitSec, nextSec) : nextSec
   }
 

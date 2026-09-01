@@ -129,6 +129,8 @@ const exactSendChannels = new Set([
   'whatsNew-toggle-minimize'
 ])
 
+const exactSendTransportChannels = new Set(['horizontal-browse-transport:set-playback-rate-live'])
+
 const exactListenChannels = new Set([
   'addSongFingerprintFinished',
   'analysis-runtime-download-state',
@@ -259,6 +261,7 @@ const isAllowedIpcChannel = (method: IpcMethod, channel: string): boolean => {
   if (method === 'send') {
     return (
       exactSendChannels.has(channel) ||
+      exactSendTransportChannels.has(channel) ||
       channel.startsWith('mini-player:') ||
       sourceChannelPrefixes.some((prefix) => channel === `${prefix}stream-preview-waveforms`)
     )

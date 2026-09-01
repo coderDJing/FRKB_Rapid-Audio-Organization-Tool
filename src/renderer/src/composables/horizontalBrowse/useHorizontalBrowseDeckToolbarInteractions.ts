@@ -38,7 +38,9 @@ type UseHorizontalBrowseDeckToolbarInteractionsParams = {
   resolveDeckToolbarBpmInputValue: (deck: HorizontalBrowseDeckKey) => string
   shouldPreserveGridShiftPhase: (deck: HorizontalBrowseDeckKey) => boolean
   shouldCommitBpmInputAsGridEdit: (deck: HorizontalBrowseDeckKey) => boolean
-  setDeckTargetBpm: (deck: HorizontalBrowseDeckKey, targetBpm: number) => Promise<unknown>
+  scheduleDeckLiveTargetBpm: (deck: HorizontalBrowseDeckKey, targetBpm: number) => void
+  commitDeckTargetBpm: (deck: HorizontalBrowseDeckKey, targetBpm: number) => Promise<unknown>
+  cancelDeckLiveTargetBpm: (deck: HorizontalBrowseDeckKey) => void
 }
 
 export const useHorizontalBrowseDeckToolbarInteractions = (
@@ -103,12 +105,23 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
   }
 
   const handleDeckBpmInputUpdate = (deck: HorizontalBrowseDeckKey, value: string) => {
-    params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.freezeDynamicGridSelectionForBpmInput?.()
+    if (params.shouldCommitBpmInputAsGridEdit(deck)) {
+      params.touchDeckInteraction(deck)
+      params.resolveDetailRef(deck)?.freezeDynamicGridSelectionForBpmInput?.()
+    } else if (!params.deckTempoInputDirty[deck]) {
+      params.touchDeckInteraction(deck)
+    }
     const toolbarStateRef = resolveToolbarStateRef(deck)
     params.deckTempoCommitToken[deck] += 1
     params.deckTempoInputDirty[deck] = true
     toolbarStateRef.value = { ...toolbarStateRef.value, bpmInputValue: value }
+  }
+
+  const handleDeckBpmInputLive = (deck: HorizontalBrowseDeckKey, value: string) => {
+    if (params.shouldCommitBpmInputAsGridEdit(deck)) return
+    const parsed = parsePreviewBpmInput(value)
+    if (parsed === null) return
+    params.scheduleDeckLiveTargetBpm(deck, parsed)
   }
 
   const handleDeckBpmInputBlur = (deck: HorizontalBrowseDeckKey) => {
@@ -117,6 +130,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     const nextToolbarState = toolbarStateRef.value
     const parsed = parsePreviewBpmInput(nextToolbarState.bpmInputValue)
     if (parsed === null) {
+      params.cancelDeckLiveTargetBpm(deck)
       params.deckTempoInputDirty[deck] = false
       params.deckTempoCommitToken[deck] += 1
       params.resolveDetailRef(deck)?.releaseDynamicGridSelectionForBpmInput?.()
@@ -136,6 +150,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     }
 
     if (params.shouldCommitBpmInputAsGridEdit(deck)) {
+      params.cancelDeckLiveTargetBpm(deck)
       const detail = params.resolveDetailRef(deck)
       if (detail?.updateBpmInput && detail?.blurBpmInput) {
         detail.updateBpmInput(formattedBpm)
@@ -160,8 +175,8 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
       return
     }
 
-    // 双轨 BPM 输入只在失焦时提交，输入过程中只维护草稿值。
-    void params.setDeckTargetBpm(deck, parsed).finally(() => {
+    // 双轨键盘输入仍在失焦时提交；拖动走 live-bpm-input，松手这里再冲刷最终值。
+    void params.commitDeckTargetBpm(deck, parsed).finally(() => {
       if (params.deckTempoCommitToken[deck] !== token) return
       params.deckTempoInputDirty[deck] = false
       params.resolveDetailRef(deck)?.releaseDynamicGridSelectionForBpmInput?.()
@@ -198,6 +213,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     handleDeckMetronomeStateCycle,
     handleDeckBpmTap,
     handleDeckBpmInputUpdate,
+    handleDeckBpmInputLive,
     handleDeckBpmInputBlur,
     handleDeckSelectWholeAdjustment,
     handleDeckSplitAfterPlayhead,

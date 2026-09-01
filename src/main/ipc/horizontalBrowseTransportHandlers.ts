@@ -204,6 +204,13 @@ export function registerHorizontalBrowseTransportHandlers() {
     }
   )
 
+  ipcMain.on(
+    'horizontal-browse-transport:set-playback-rate-live',
+    (_event, deck: HorizontalBrowseDeckKey, nowMs: number, playbackRate: number) => {
+      horizontalBrowseTransportBridge.setPlaybackRate(deck, nowMs, playbackRate)
+    }
+  )
+
   ipcMain.handle(
     'horizontal-browse-transport:set-tempo-nudge-playback-rate',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, playbackRate: number) => {

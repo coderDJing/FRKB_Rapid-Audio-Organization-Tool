@@ -98,6 +98,7 @@ export type HorizontalBrowseModeShellWaveformStackModel = {
   handleDeckGridShiftSmallRight: DeckToolbarInteractions['handleDeckGridShiftSmallRight']
   handleDeckGridShiftLargeRight: DeckToolbarInteractions['handleDeckGridShiftLargeRight']
   handleDeckBpmInputUpdate: DeckToolbarInteractions['handleDeckBpmInputUpdate']
+  handleDeckBpmInputLive: DeckToolbarInteractions['handleDeckBpmInputLive']
   handleDeckBpmInputBlur: DeckToolbarInteractions['handleDeckBpmInputBlur']
   handleDeckBpmTap: DeckToolbarInteractions['handleDeckBpmTap']
   handleDeckMemoryCueCreate: DeckMemoryCues['handleDeckMemoryCueCreate']

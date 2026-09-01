@@ -101,7 +101,11 @@ export const createHorizontalBrowseDetailPresentationActions = (
     return waitForStableFrameAnchor(safeSeconds, timeoutMs)
   }
 
-  const applyIncomingPreviewTimeScale = (scheduleFrame = true) => {
+  const applyIncomingPreviewTimeScale = (
+    scheduleFrame = true,
+    options: { keepCurrentFrame?: boolean } = {}
+  ) => {
+    const keepCurrentFrame = options.keepCurrentFrame === true
     const safeNextScale = Math.max(0.25, Number(params.resolveIncomingPreviewTimeScale()) || 1)
     const safePreviousScale = Math.max(
       0.25,
@@ -117,21 +121,28 @@ export const createHorizontalBrowseDetailPresentationActions = (
     }
     params.setLastAppliedPreviewTimeScale(safeNextScale)
     const playbackTimeScaleActive = params.waveformPlaybackActive()
+    // 播放头（暂停态=currentSeconds，播放态同理）锚定在屏幕固定比例 RATIO，波形绕播放头缩放，
+    // 保证换密度时播放头屏幕位置不动。横向跳的真凶在 canvas translate 层，不在此处 rangeStart。
     const anchorSec = playbackTimeScaleActive
       ? params.resolveWaveformCurrentSeconds()
       : params.previewStartSec.value + previousVisible * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
     params.previewStartSec.value = params.clampPreviewStart(
       anchorSec - nextVisible * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
     )
-    params.invalidateWaveformTiles({ preserveDisplay: params.compactVisualWaveformActive.value })
-    params.resetGridRenderer()
+    if (!keepCurrentFrame) {
+      params.invalidateWaveformTiles({ preserveDisplay: params.compactVisualWaveformActive.value })
+      params.resetGridRenderer()
+    }
     params.maybeContinueWaveformSource(anchorSec)
     if (scheduleFrame) {
-      if (playbackTimeScaleActive) {
+      clearPlaybackStableFrameRenderTimer()
+      params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
+      if (
+        !keepCurrentFrame &&
+        playbackTimeScaleActive &&
+        params.compactVisualWaveformActive.value
+      ) {
         schedulePlaybackStableFrameRender()
-      } else {
-        clearPlaybackStableFrameRenderTimer()
-        params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
       }
     }
     return true

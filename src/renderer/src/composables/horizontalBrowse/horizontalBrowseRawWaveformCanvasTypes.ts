@@ -47,4 +47,6 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   stableRenderRevision?: () => number
   linkedGridActive?: () => boolean
   phaseAwareScrollReuse?: () => boolean
+  onPreparingPreviewTimeScale?: (timeScale: number, renderTargetIndex: 0 | 1) => void
+  onPresentedPreviewTimeScale?: (timeScale: number) => void
 }

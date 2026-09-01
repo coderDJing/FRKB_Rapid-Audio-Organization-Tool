@@ -38,6 +38,7 @@ const props = defineProps<{
   playbackActive: boolean
   playbackRate: number
   visualPlaybackRate?: number
+  liveTempoPreviewRate?: number | null
   waveformGain?: number
   playbackSyncRevision: number
   gridBpm: number
@@ -107,6 +108,8 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   releaseDynamicGridSelectionForBpmInput: () =>
     detailRef.value?.releaseDynamicGridSelectionForBpmInput?.(),
   cycleMetronomeState: () => detailRef.value?.cycleMetronomeState?.(),
+  setLiveTempoPreviewRate: (rate: number | null) =>
+    detailRef.value?.setLiveTempoPreviewRate?.(rate),
   prepareStableFrameForAnchor: (seconds: number, options?: { timeoutMs?: number }) =>
     detailRef.value?.prepareStableFrameForAnchor?.(seconds, options) ?? Promise.resolve(false),
   commitLinkedGridVisualTransaction: (
@@ -138,6 +141,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :playback-active="props.playbackActive"
       :playback-rate="props.playbackRate"
       :visual-playback-rate="props.visualPlaybackRate"
+      :live-tempo-preview-rate="props.liveTempoPreviewRate"
       :waveform-gain="props.waveformGain"
       :playback-sync-revision="props.playbackSyncRevision"
       :grid-bpm="props.gridBpm"

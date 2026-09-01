@@ -116,6 +116,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let dragPresentationBaseOffsetCssPx = 0
   let lastRenderedRangeStartSec: number | null = null
   let lastRenderedRangeDurationSec: number | null = null
+  let queuedPreviewTimeScale = 1
   const clearStableRevisionReplacementState = () => {
     pendingStableRevisionRender = null
   }
@@ -314,6 +315,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       : null
     const stableViewportOnlyRender =
       payload.ready && payload.stableWaveformSource === true && payload.renderViewportOnly === true
+    if (payload.ready && renderTargetIndex !== null) {
+      options.onPreparingPreviewTimeScale?.(queuedPreviewTimeScale, renderTargetIndex === 1 ? 1 : 0)
+    }
     const presentationPayload = placeholderPresentationReady
       ? {
           ...payload,
@@ -354,6 +358,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       })
     }
     setDisplayReady(true)
+    options.onPresentedPreviewTimeScale?.(queuedPreviewTimeScale)
     syncDisplayViewportFromRenderedCanvas()
     if (
       payload.renderViewportOnly === true &&
@@ -689,6 +694,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       waveformGain: resolveHorizontalBrowseWaveformGain(options.waveformGain?.())
     } satisfies Parameters<typeof liveCanvasBridge.render>[0]
     rememberRenderViewport(renderRequest)
+    queuedPreviewTimeScale = resolvePreviewTimeScale()
     liveCanvasBridge.render(renderRequest)
     if (playbackRawRecovering) {
       playbackRawSettleUntilMs = Math.max(

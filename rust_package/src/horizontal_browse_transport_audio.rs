@@ -70,11 +70,15 @@ fn resolved_output_sample_rate(output_sample_rate: f64, source_sample_rate: u32)
 }
 
 pub(super) fn should_use_master_tempo(target: &DeckState) -> bool {
-  target.master_tempo_enabled
-    && (target.playback_rate - 1.0).abs() > 0.0001
-    && !target.pcm_data.is_empty()
-    && target.sample_rate > 0
-    && target.channels > 0
+  if !target.master_tempo_enabled
+    || target.pcm_data.is_empty()
+    || target.sample_rate == 0
+    || target.channels == 0
+  {
+    return false;
+  }
+  // 已经在拉伸时划过原速不要关掉处理器，避免 BPM 拖动经过 1.0 时咔一声。
+  (target.playback_rate - 1.0).abs() > 0.0001 || target.master_tempo_state.processor.is_some()
 }
 
 fn configure_processor(target: &mut DeckState, output_sample_rate: f64) {

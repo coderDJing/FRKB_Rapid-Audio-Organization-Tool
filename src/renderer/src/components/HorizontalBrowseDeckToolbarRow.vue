@@ -48,6 +48,7 @@ const emit = defineEmits<{
   (event: 'shift-right-small'): void
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
+  (event: 'live-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
@@ -141,6 +142,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
           @shift-right-small="emit('shift-right-small')"
           @shift-right-large="emit('shift-right-large')"
           @update-bpm-input="emit('update-bpm-input', $event)"
+          @live-bpm-input="emit('live-bpm-input', $event)"
           @blur-bpm-input="emit('blur-bpm-input')"
           @tap-bpm="emit('tap-bpm')"
           @memory-cue="emit('memory-cue')"

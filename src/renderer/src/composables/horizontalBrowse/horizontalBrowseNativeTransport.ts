@@ -40,8 +40,35 @@ export const createHorizontalBrowseNativeTransport = () => {
     createEmptyHorizontalBrowseTransportSnapshot()
   )
   const snapshotListeners = new Set<SnapshotListener>()
+  const liveClockPlaybackRate: Record<HorizontalBrowseDeckKey, number | null> = {
+    top: null,
+    bottom: null
+  }
   let snapshotEventBound = false
   let lastAppliedSnapshotSequence = 0
+
+  const resolveLiveClockPlaybackRate = (deck: HorizontalBrowseDeckKey) =>
+    liveClockPlaybackRate[deck]
+
+  const setLiveClockPlaybackRate = (deck: HorizontalBrowseDeckKey, playbackRate: number | null) => {
+    if (playbackRate == null) {
+      liveClockPlaybackRate[deck] = null
+      return
+    }
+    liveClockPlaybackRate[deck] = Number(playbackRate) || 1
+  }
+
+  const preserveLiveClockDeckSnapshot = (
+    deck: HorizontalBrowseDeckKey,
+    incoming: HorizontalBrowseTransportSnapshot['top']
+  ) => {
+    if (liveClockPlaybackRate[deck] == null) return incoming
+    return {
+      ...incoming,
+      playbackRate: Number(state[deck].playbackRate) || 1,
+      effectiveBpm: Number(state[deck].effectiveBpm) || incoming.effectiveBpm
+    }
+  }
 
   const invoke = async (channel: string, ...args: unknown[]) =>
     (await window.electron.ipcRenderer.invoke(
@@ -78,8 +105,8 @@ export const createHorizontalBrowseNativeTransport = () => {
     state.snapshotSequence = snapshot.snapshotSequence
     state.stateRevision = snapshot.stateRevision
     state.leaderDeck = snapshot.leaderDeck
-    state.top = { ...snapshot.top }
-    state.bottom = { ...snapshot.bottom }
+    state.top = { ...preserveLiveClockDeckSnapshot('top', snapshot.top) }
+    state.bottom = { ...preserveLiveClockDeckSnapshot('bottom', snapshot.bottom) }
     state.output = { ...snapshot.output }
     if (notifyListeners) {
       notifySnapshotListeners(snapshot)
@@ -186,8 +213,20 @@ export const createHorizontalBrowseNativeTransport = () => {
       performance.now(),
       Number(playbackRate) || 1
     )
+    liveClockPlaybackRate[deck] = null
     applySnapshot(snapshot)
     return snapshot
+  }
+
+  const setPlaybackRateLive = (deck: HorizontalBrowseDeckKey, playbackRate: number) => {
+    const nextRate = Number(playbackRate) || 1
+    liveClockPlaybackRate[deck] = nextRate
+    window.electron.ipcRenderer.send(
+      'horizontal-browse-transport:set-playback-rate-live',
+      deck,
+      performance.now(),
+      nextRate
+    )
   }
 
   const setTempoNudgePlaybackRate = async (deck: HorizontalBrowseDeckKey, playbackRate: number) => {
@@ -461,6 +500,9 @@ export const createHorizontalBrowseNativeTransport = () => {
     setDeckState,
     setState,
     setPlaybackRate,
+    setPlaybackRateLive,
+    setLiveClockPlaybackRate,
+    resolveLiveClockPlaybackRate,
     setTempoNudgePlaybackRate,
     setMasterTempoEnabled,
     setBeatGrid,

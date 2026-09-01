@@ -81,6 +81,7 @@ const emit = defineEmits<{
   (event: 'shift-right-small'): void
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
+  (event: 'live-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
@@ -109,6 +110,7 @@ let bpmDragStartY = 0
 let bpmDragStartValue = 0
 let bpmDragActive = false
 let bpmDragInputTarget: HTMLInputElement | null = null
+let bpmDragLastEmittedValue = ''
 let bodyUserSelectBeforeBpmDrag = ''
 const controlsDisabled = computed(() => props.disabled || props.gridControlsDisabled)
 const bpmInputDisabled = computed(() => props.bpmInputDisabled ?? controlsDisabled.value)
@@ -269,6 +271,7 @@ const clearBpmDrag = () => {
   bpmDragPointerId = null
   bpmDragInputTarget = null
   bpmDragActive = false
+  bpmDragLastEmittedValue = ''
 }
 
 function handleWindowBpmDragMove(event: PointerEvent) {
@@ -281,7 +284,11 @@ function handleWindowBpmDragMove(event: PointerEvent) {
   if (!bpmDragActive) return
   const bpmOffset = (deltaY / resolveBpmDragScreenHeight()) * BPM_DRAG_BPM_PER_SCREEN
   const nextValue = clampDraggedBpmValue(snapDraggedBpmValue(bpmDragStartValue + bpmOffset))
-  emit('update-bpm-input', formatDraggedBpmValue(nextValue))
+  const formatted = formatDraggedBpmValue(nextValue)
+  if (formatted === bpmDragLastEmittedValue) return
+  bpmDragLastEmittedValue = formatted
+  emit('update-bpm-input', formatted)
+  emit('live-bpm-input', formatted)
 }
 
 function handleWindowBpmDragEnd(event: PointerEvent) {
@@ -307,6 +314,7 @@ const handleBpmPointerDown = (event: PointerEvent) => {
   bpmDragStartY = event.clientY
   bpmDragStartValue = resolveBpmDragStartValue(target)
   bpmDragActive = false
+  bpmDragLastEmittedValue = ''
   bpmDragInputTarget = target
   bodyUserSelectBeforeBpmDrag =
     typeof document !== 'undefined' ? document.body.style.userSelect : ''

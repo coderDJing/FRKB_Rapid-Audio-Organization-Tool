@@ -21,6 +21,7 @@ type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
   freezeDynamicGridSelectionForBpmInput: () => void
   releaseDynamicGridSelectionForBpmInput: () => void
   cycleMetronomeState: () => void
+  setLiveTempoPreviewRate: (rate: number | null) => void
   prepareStableFrameForAnchor: (
     seconds: number,
     options?: { timeoutMs?: number }
@@ -75,6 +76,7 @@ export const createHorizontalBrowseRawWaveformDetailExpose = (
     freezeDynamicGridSelectionForBpmInput: params.freezeDynamicGridSelectionForBpmInput,
     releaseDynamicGridSelectionForBpmInput: params.releaseDynamicGridSelectionForBpmInput,
     cycleMetronomeState: params.cycleMetronomeState,
+    setLiveTempoPreviewRate: params.setLiveTempoPreviewRate,
     prepareStableFrameForAnchor: params.prepareStableFrameForAnchor,
     commitLinkedGridVisualTransaction: params.commitLinkedGridVisualTransaction,
     flushGridPersist: (filePath?: string) => params.persistGridDefinition(filePath),
