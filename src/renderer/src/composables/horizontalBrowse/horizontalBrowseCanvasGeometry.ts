@@ -22,6 +22,12 @@ export const resolveHorizontalBrowseStableOverscanCssPx = (width: number, pixelR
   return Math.min(Math.max(256, safeWidth * 3), maxOverscan)
 }
 
+// 关于非对称 overscan（设计文档提出「前向多、后向少」）：
+// 当前实现由**优先级调度**承担这件事——前向屏幕外块先补、后向块最后补，几何仍保持左右对称。
+// 把几何本身做成非对称会让可见区不再居中于渲染范围，牵动 presentation offset 与播放头对齐的
+// 一整套换算（含 tempo 预览过渡期的旧帧 handoff），收益仅是少画一两块屏幕外块，不值这个风险。
+// 分块后「必须等的面积」只取决于可见区块数、与 overscan 无关，故保留大 overscan 已无性能代价。
+
 export const setHorizontalBrowseCanvasGeometry = (
   canvas: HTMLCanvasElement | null,
   left: number,
@@ -33,6 +39,44 @@ export const setHorizontalBrowseCanvasGeometry = (
   Object.assign(canvas.style, {
     left: `${left}px`,
     top: `${top}px`,
+    right: 'auto',
+    bottom: 'auto',
+    width: `${width}px`,
+    height: `${height}px`
+  })
+}
+
+// 分块路径：块容器的 left / top / width / height 与旧的单张超宽 canvas 完全一致，
+// 因此 presentation offset、rendered viewport 反解、`.tempo-scaler` 挂载点都无需改动。
+// 每块只在容器内部有静态 left / width，统一位移仍挂在容器上（每块独立位移会在边界产生亚像素错位）。
+export const setHorizontalBrowseWaveformTileContainerGeometry = (
+  container: HTMLElement | null,
+  left: number,
+  width: number,
+  height: number
+) => {
+  if (!container) return
+  Object.assign(container.style, {
+    left: `${left}px`,
+    top: '0px',
+    right: 'auto',
+    bottom: 'auto',
+    width: `${width}px`,
+    height: `${height}px`
+  })
+}
+
+export const setHorizontalBrowseWaveformTileGeometry = (
+  canvas: HTMLCanvasElement | null,
+  left: number,
+  width: number,
+  height: number
+) => {
+  if (!canvas) return
+  Object.assign(canvas.style, {
+    position: 'absolute',
+    left: `${left}px`,
+    top: '0px',
     right: 'auto',
     bottom: 'auto',
     width: `${width}px`,
@@ -54,15 +98,16 @@ export const setHorizontalBrowseLiveCanvasGeometry = (
   setHorizontalBrowseCanvasGeometry(overlayCanvas, left, 0, width, overlayHeight)
 }
 
+// 波形侧可以是单张超宽 canvas（旧路径），也可以是块容器 div（分块路径）——两者的 left / width /
+// transform 语义完全一致，故这里只要求 HTMLElement。
 export const applyHorizontalBrowseCanvasPresentationOffset = (
-  waveformCanvas: HTMLCanvasElement | null,
-  overlayCanvas: HTMLCanvasElement | null,
+  waveformCanvas: HTMLElement | null,
+  overlayCanvas: HTMLElement | null,
   offsetCssPx: number,
   applyOverlayOffset: boolean
 ) => {
   if (!waveformCanvas) return
-  const clearTransform = (canvas: HTMLCanvasElement | null) =>
-    canvas?.style.removeProperty('transform')
+  const clearTransform = (canvas: HTMLElement | null) => canvas?.style.removeProperty('transform')
   const offset = Number(offsetCssPx) || 0
   if (Math.abs(offset) <= 0.001) {
     clearTransform(waveformCanvas)

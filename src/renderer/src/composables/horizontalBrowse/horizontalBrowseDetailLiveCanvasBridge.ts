@@ -68,7 +68,9 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
 
   const mount = (
     waveformCanvases: Array<HTMLCanvasElement | null>,
-    overlayCanvases: Array<HTMLCanvasElement | null>
+    overlayCanvases: Array<HTMLCanvasElement | null>,
+    // 分块路径：[buffer0 的块列表, buffer1 的块列表]。控制权移交是一次性的，因此块数量在此定死。
+    waveformTileCanvases: Array<Array<HTMLCanvasElement | null>> = []
   ) => {
     const validWaveformCanvases = waveformCanvases.filter(
       (canvas): canvas is HTMLCanvasElement =>
@@ -91,6 +93,14 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     const offscreenOverlayCanvases = validOverlayCanvases.map((canvas) =>
       canvas.transferControlToOffscreen()
     )
+    const offscreenTileCanvases = waveformTileCanvases.map((bufferTiles) =>
+      bufferTiles
+        .filter(
+          (canvas): canvas is HTMLCanvasElement =>
+            !!canvas && typeof canvas.transferControlToOffscreen === 'function'
+        )
+        .map((canvas) => canvas.transferControlToOffscreen())
+    )
     postMessage(
       {
         type: 'attachCanvas',
@@ -98,10 +108,11 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
           waveformCanvas: offscreenWaveformCanvases[0],
           overlayCanvas: offscreenOverlayCanvases[0],
           waveformCanvases: offscreenWaveformCanvases,
-          overlayCanvases: offscreenOverlayCanvases
+          overlayCanvases: offscreenOverlayCanvases,
+          waveformTileCanvases: offscreenTileCanvases
         }
       },
-      [...offscreenWaveformCanvases, ...offscreenOverlayCanvases]
+      [...offscreenWaveformCanvases, ...offscreenOverlayCanvases, ...offscreenTileCanvases.flat()]
     )
     attached = true
     return true

@@ -24,6 +24,7 @@ import {
 import { createHorizontalBrowseSyncedSeekPreparation } from '@renderer/composables/horizontalBrowse/horizontalBrowseSyncedSeekPreparation'
 import { resolveHorizontalBrowseBeatSyncDecks } from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatSyncDecks'
 import { startHorizontalBrowseBeatSyncRawWaveformDragRelease } from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatSyncRawWaveformDragRelease'
+import { shouldNotifyHorizontalBrowseAlignedDragReleaseSeek } from '@renderer/composables/horizontalBrowse/horizontalBrowseDragReleaseSeekIntent'
 import type { UseHorizontalBrowseDeckPlaybackControllerParams } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckPlaybackControllerTypes'
 import {
   normalizeLinkedDragVisualPlaybackRate,
@@ -669,7 +670,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
       const alignedTargetSec = Number.isFinite(Number(alignedSnapshot.currentSec))
         ? Number(alignedSnapshot.currentSec)
         : targetSec
-      params.notifyDeckSeekIntent(deck, alignedTargetSec)
+      if (shouldNotifyHorizontalBrowseAlignedDragReleaseSeek(targetSec, alignedTargetSec)) {
+        params.notifyDeckSeekIntent(deck, alignedTargetSec)
+      }
       if (shouldResume) {
         await prepareDeckStableFrameForAnchor(deck, alignedTargetSec, {
           timeoutMs: DRAG_RELEASE_STABLE_FRAME_WAIT_MS

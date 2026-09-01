@@ -13,6 +13,12 @@ import {
   resolvePixelSnappedCssSize
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseCanvasGeometry'
 import { createHorizontalBrowseStableCanvasPresentationController } from '@renderer/composables/horizontalBrowse/horizontalBrowseStableCanvasPresentation'
+import { isHorizontalBrowseWaveformTileRenderingEnabled } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformTileFlag'
+import { createHorizontalBrowseWaveformTilePool } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformTilePool'
+import {
+  resolveHorizontalBrowseWaveformTileRenderOrder,
+  resolveHorizontalBrowseWaveformTileRenderPlan
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformTilePlan'
 import type { UseHorizontalBrowseRawWaveformCanvasOptions } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformCanvasTypes'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
@@ -39,6 +45,7 @@ import {
   cloneRekordboxBeatGridEntriesForHorizontalBrowseWorker,
   cloneSongBeatGridMapForHorizontalBrowseWorker
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformWorkerGrid'
+import { queueHorizontalBrowseLinkedCanvasActivation } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedCanvasActivationBarrier'
 import {
   canReplacePendingHorizontalBrowseStableRevisionRender,
   clearHorizontalBrowseRawWaveformGridCanvas,
@@ -113,6 +120,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     kind: StableRevisionRenderKind
   } | null = null
   let dragPresentationActive = false
+  let linkedReleaseActivationPending = false
   let dragPresentationBaseOffsetCssPx = 0
   let lastRenderedRangeStartSec: number | null = null
   let lastRenderedRangeDurationSec: number | null = null
@@ -149,7 +157,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     waveformCanvas: () => liveCanvasBuffers.presentationWaveformCanvas(),
     overlayCanvas: () => liveCanvasBuffers.presentationOverlayCanvas(),
     scheduleDraw: () => drawWaveformNow(),
-    onPresentationApplied: () => syncDisplayViewportFromRenderedCanvas()
+    onPresentationApplied: () => {
+      syncDisplayViewportFromRenderedCanvas()
+    }
   })
 
   const liveCanvasBridge = createHorizontalBrowseDetailLiveCanvasBridge({
@@ -215,6 +225,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       clearStableRevisionReplacementState()
       setDisplayReady(false)
       liveCanvasBridge.clear()
+      // worker 的 clear 会清掉块画布像素，块池状态必须同步失效，否则会误判「这块已画过」。
+      resetTilePools()
       lastRenderedRawData = null
       suppressNextPlaybackScrollReuse = true
     }
@@ -241,6 +253,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     placeholderVisible.value = false
     liveCanvasRenderToken += 1
     liveCanvasBridge.clear()
+    resetTilePools()
     lastRenderedRangeStartSec = null
     lastRenderedRangeDurationSec = null
     lastQueuedStableRenderRevision = -1
@@ -257,16 +270,145 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const ensureLiveCanvasMounted = () => {
     if (liveCanvasAttached) return true
+    const tileCanvases = liveCanvasBuffers.tileCanvases()
     liveCanvasAttached = liveCanvasBridge.mount(
       liveCanvasBuffers.waveformCanvases(),
-      liveCanvasBuffers.overlayCanvases()
+      liveCanvasBuffers.overlayCanvases(),
+      isHorizontalBrowseWaveformTileRenderingEnabled() ? tileCanvases : []
     )
     return liveCanvasAttached
   }
 
-  const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
+  // 分块渲染状态：每 buffer 一个块池（stable 路径渲染到非活动 buffer 再翻转，两 buffer 内容不共享）。
+  const tilePools = [
+    createHorizontalBrowseWaveformTilePool(liveCanvasBuffers.tileSlotCount),
+    createHorizontalBrowseWaveformTilePool(liveCanvasBuffers.tileSlotCount)
+  ]
+  let pendingTileRender: {
+    renderToken: number
+    renderTargetIndex: number
+    generation: { timeScale: number; renderRevision: number }
+    plan: ReturnType<typeof resolveHorizontalBrowseWaveformTileRenderPlan>
+  } | null = null
+
+  const resetTilePools = () => {
+    for (const pool of tilePools) pool.invalidateAll()
+    pendingTileRender = null
+    lastTileViewportStartSec = null
+    tileForward = true
+  }
+
+  // 非对称 overscan：播放只朝一个方向推进，后向 overscan 在稳态播放期基本闲置，
+  // 因此屏幕外块的补齐顺序按当前推进方向分配（前向先补）。反向拖动时自动互换。
+  let lastTileViewportStartSec: number | null = null
+  let tileForward = true
+
+  const resolveTileForwardDirection = () => {
+    // 播放中恒为前向：播放推进方向就是未来时间。
+    if (options.playing.value && !options.dragging.value) {
+      tileForward = true
+      return true
+    }
+    const viewportStartSec = Number(displayViewportStartSec.value)
+    if (!Number.isFinite(viewportStartSec)) return tileForward
+    if (lastTileViewportStartSec !== null) {
+      const deltaSec = viewportStartSec - lastTileViewportStartSec
+      // 阈值避免亚像素抖动来回翻转方向。
+      if (Math.abs(deltaSec) > 0.001) tileForward = deltaSec > 0
+    }
+    lastTileViewportStartSec = viewportStartSec
+    return tileForward
+  }
+
+  /**
+   * 分块路径：算出渲染计划、摆好块布局，返回随渲染请求一起下发的 tilePlan。
+   *
+   * 返回 null 表示本轮不走分块（flag 关闭或块画布未就绪），调用方继续走旧整帧路径。
+   * 块计划必须与渲染请求同一条消息：worker 先画完 P0 再回报 rendered，promote 时序才天然正确。
+   */
+  const resolveTileRenderPlan = (params: {
+    renderToken: number
+    renderTargetIndex: number
+    renderWidthCssPx: number
+    heightCssPx: number
+    pixelRatio: number
+    rangeStartSec: number
+    rangeDurationSec: number
+    viewportStartCssPx: number
+    viewportWidthCssPx: number
+    renderRevision: number
+    forward: boolean
+  }) => {
+    if (!isHorizontalBrowseWaveformTileRenderingEnabled()) return null
+    const bufferIndex = params.renderTargetIndex === 1 ? 1 : 0
+    const pool = tilePools[bufferIndex]
+    if (!pool) return null
+    const generation = {
+      timeScale: resolvePreviewTimeScale(),
+      renderRevision: params.renderRevision
+    }
+    pool.invalidateStaleGenerations(generation)
+    const plan = resolveHorizontalBrowseWaveformTileRenderPlan({
+      renderWidthCssPx: params.renderWidthCssPx,
+      heightCssPx: params.heightCssPx,
+      pixelRatio: params.pixelRatio,
+      rangeStartSec: params.rangeStartSec,
+      rangeDurationSec: params.rangeDurationSec,
+      viewportStartCssPx: params.viewportStartCssPx,
+      viewportWidthCssPx: params.viewportWidthCssPx,
+      generation,
+      pool,
+      forward: params.forward
+    })
+    if (plan.tiles.length === 0) return null
+    liveCanvasBuffers.applyTileLayout(params.renderTargetIndex, plan.tiles, params.heightCssPx)
+    pendingTileRender = {
+      renderToken: params.renderToken,
+      renderTargetIndex: bufferIndex,
+      generation,
+      plan
+    }
+    const renderOrder = resolveHorizontalBrowseWaveformTileRenderOrder(plan)
+    return {
+      tiles: renderOrder.map((tile) => ({
+        slotIndex: tile.slotIndex,
+        globalIndex: tile.globalIndex,
+        scaledWidth: tile.scaledWidth,
+        scaledHeight: plan.scaledHeight,
+        rangeStartSec: tile.rangeStartSec,
+        rangeDurationSec: tile.rangeDurationSec,
+        priority: tile.priority
+      })),
+      visibleSlotIndexes: plan.visibleSlotIndexes
+    }
+  }
+
+  /** 把 worker 回报的已画块登记进块池，供后续滚动复用。 */
+  const commitRenderedTileSlots = (payload: LiveCanvasRenderedPayload) => {
+    const renderedTileSlotIndexes = payload.renderedTileSlotIndexes
+    if (!renderedTileSlotIndexes?.length) return
+    const pending = pendingTileRender
+    if (!pending || pending.renderToken !== payload.renderToken) return
+    const pool = tilePools[pending.renderTargetIndex]
+    if (!pool) return
+    const plannedTileBySlot = new Map(
+      pending.plan.tiles.map((tile) => [tile.slotIndex, tile] as const)
+    )
+    for (const slotIndex of renderedTileSlotIndexes) {
+      const tile = plannedTileBySlot.get(slotIndex)
+      if (!tile) continue
+      pool.markRendered(slotIndex, pending.generation, tile.globalIndex)
+    }
+    if (payload.tilesPending !== true) pendingTileRender = null
+  }
+
+  const commitLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
     if (dragPresentationActive) return
     if (payload.renderToken !== liveCanvasRenderToken) return
+    commitRenderedTileSlots(payload)
+    // 屏幕外块（P1/P2）补齐的回报只用于登记块池：可见面早已在 P0 就绪时切换过，
+    // 这里不能再走一遍 promote / displayReady，否则会重复触发可见面切换。
+    if (payload.renderedTileSlotIndexes?.length && payload.renderViewportOnly === true) return
     const pendingStableRender = pendingStableRevisionRender
     if (pendingStableRender?.token === payload.renderToken) {
       pendingStableRevisionRender = null
@@ -368,6 +510,25 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     ) {
       scheduleStableFullRender()
     }
+  }
+
+  const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
+    const shouldSynchronizeLinkedReleaseActivation =
+      linkedReleaseActivationPending &&
+      options.linkedGridActive?.() === true &&
+      payload.ready &&
+      payload.stableWaveformSource === true &&
+      payload.renderViewportOnly !== true &&
+      Number.isInteger(payload.renderTargetIndex)
+    if (!shouldSynchronizeLinkedReleaseActivation) {
+      commitLiveCanvasRendered(payload)
+      return
+    }
+    queueHorizontalBrowseLinkedCanvasActivation(options.direction(), () => {
+      if (payload.renderToken !== liveCanvasRenderToken) return
+      linkedReleaseActivationPending = false
+      commitLiveCanvasRendered(payload)
+    })
   }
 
   const clearLiveCanvasPresentationOffset = () => liveCanvasBuffers.applyPresentationOffset(0, true)
@@ -692,7 +853,26 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         ? visualGridPhase.playbackRenderClockEpochMs
         : null,
       playbackDurationSec: renderPlaybackDurationSec,
-      waveformGain: resolveHorizontalBrowseWaveformGain(options.waveformGain?.())
+      waveformGain: resolveHorizontalBrowseWaveformGain(options.waveformGain?.()),
+      // 分块渲染计划随请求一起下发。stable 路径（含播放态：stable 下 playbackActive 恒为 false，
+      // 滚动靠 presentation offset 而非 worker 逐帧重画）全程走分块；非 stable 的 worker 增量
+      // 滚动路径保持原样不动。flag 关闭时 resolveTileRenderPlan 返回 null，行为与旧路径一致。
+      tilePlan: stableWaveformSource
+        ? resolveTileRenderPlan({
+            renderToken,
+            renderTargetIndex,
+            renderWidthCssPx: renderWidth,
+            heightCssPx: height,
+            pixelRatio,
+            rangeStartSec: renderRangeStartSec,
+            rangeDurationSec: renderRangeDurationSec,
+            viewportStartCssPx: stableOverscanCssPx,
+            viewportWidthCssPx: width,
+            renderRevision: renderPlaybackSyncRevision,
+            // 播放推进方向即前向；拖拽时按拖动方向，交由 P1/P2 互换决定补齐顺序。
+            forward: resolveTileForwardDirection()
+          })
+        : null
     } satisfies Parameters<typeof liveCanvasBridge.render>[0]
     rememberRenderViewport(renderRequest)
     queuedPreviewTimeScale = resolvePreviewTimeScale()
@@ -719,6 +899,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resetDisplayViewport()
     clearStableRevisionReplacementState()
     liveCanvasBridge.clear()
+    resetTilePools()
   }
 
   const drawWaveform = (drawOptions: HorizontalBrowseRawWaveformDrawOptions = {}) => {
@@ -949,6 +1130,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const beginDragCanvasPresentation = () => {
     const viewportStartSec = resolveRenderedCanvasViewportStartSec()
     dragPresentationActive = true
+    linkedReleaseActivationPending = false
     dragReleaseState.reset()
     surfaceVisibility.clearPreservedSurface()
     clearStableRevisionReplacementState()
@@ -976,6 +1158,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const safeViewportStartSec = Number.isFinite(Number(viewportStartSec))
       ? Number(viewportStartSec)
       : null
+    linkedReleaseActivationPending = options.linkedGridActive?.() === true
     const visibleDurationSec = Math.max(0.001, Number(resolveVisibleDurationSec()) || 0)
     dragPresentationActive = false
     dragPresentationBaseOffsetCssPx = 0
@@ -1059,6 +1242,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     waveformSurfaceRef,
     waveformCanvasRef,
     waveformCanvasBackRef,
+    waveformTileContainerRefs: liveCanvasBuffers.waveformTileContainerRefs,
+    waveformTileCanvasRefs: liveCanvasBuffers.waveformTileCanvasRefs,
     gridCanvasRef,
     overlaySurfaceRef,
     overlayCanvasRef,
@@ -1088,6 +1273,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resetLiveWaveformData,
     stopLiveWaveformPlayback,
     measureStableCanvasPresentation: stablePresentation.measure,
+    adoptStableCanvasRenderRevision: stablePresentation.adoptCurrentFrameRenderRevision,
     applyStableCanvasPresentation: stablePresentation.apply,
     startStableCanvasPlayback: stablePresentation.startPlayback,
     stopStableCanvasPlayback: stablePresentation.stopPlayback,

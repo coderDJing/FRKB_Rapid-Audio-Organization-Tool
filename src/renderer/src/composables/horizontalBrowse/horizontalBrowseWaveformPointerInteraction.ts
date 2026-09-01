@@ -62,15 +62,22 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
   let linkedDragPresentationActive = false
   let linkedDragStartSec = 0
 
-  const finishLinkedDragPresentation = () => {
+  const finishLinkedDragPresentation = (committed = false) => {
     if (!linkedDragPresentationActive) return
     const finalAnchorSec = options.resolvePreviewAnchorSec()
     const finalPreviewStartSec = options.previewStartSec.value
     linkedDragPresentationActive = false
     linkedDragStartSec = 0
+    if (committed) {
+      options.beginDragReleaseHandoff(finalAnchorSec)
+    } else {
+      options.clearDragReleaseHandoff()
+    }
     const dragRelease = options.endDragCanvasPresentation(finalPreviewStartSec)
     options.maybeContinueWaveformSource(finalAnchorSec)
-    if (dragRelease.requiresRender) {
+    // 正常联结松手会由共享 presentation commit 统一触发最终帧；这里抢先绘制会让被动轨
+    // 比主动轨更早 promote 一张过渡帧，随后又被共享提交帧替换，形成可见的单轨闪动。
+    if (dragRelease.requiresRender && !committed) {
       options.drawWaveformNow({ preferPreviewStart: true })
     }
   }
@@ -86,7 +93,7 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
       ([active, anchorSec, hasSong]) => {
         if (options.dragging.value) return
         if (!active || !hasSong || !Number.isFinite(anchorSec)) {
-          finishLinkedDragPresentation()
+          finishLinkedDragPresentation(!active && hasSong)
           return
         }
         const wrap = options.wrapRef.value

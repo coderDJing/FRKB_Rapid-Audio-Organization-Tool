@@ -60,6 +60,7 @@ type DetailPlaybackPositionWatchParams = {
   measureStableCanvasPresentation: (
     seconds?: number
   ) => HorizontalBrowseStableCanvasPresentationMeasureResult
+  adoptStableCanvasRenderRevision: (seconds: number) => boolean
   hideStableCanvasPresentation: () => void
   applyStableCanvasPresentation: (
     seconds: number,
@@ -231,6 +232,9 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         }
         if (params.compactVisualWaveformActive.value && requirePresentable) {
           const maxOffsetCssPx = params.consumeDragReleaseStablePresentationOffsetLimit(safeSeconds)
+          if (dragPresentationReleaseCompleted && maxOffsetCssPx === Number.POSITIVE_INFINITY) {
+            params.adoptStableCanvasRenderRevision(safeSeconds)
+          }
           const canReuseStableFrame = prepareHorizontalBrowseStableCanvasJump({
             seconds: safeSeconds,
             measure: params.measureStableCanvasPresentation,

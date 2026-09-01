@@ -100,3 +100,32 @@ export const isHorizontalBrowseRawDataIntersectingRange = (
   const rangeEndSec = rangeStartSec + Math.max(0, rangeDurationSec)
   return rangeEndSec > rawStartSec && rangeStartSec < rawEndSec
 }
+
+/**
+ * `drawRgbWaveform` 没画出像素时，判断该瓦片能否作为合法空白提交。
+ *
+ * 已加载范围内可能本来就是静音，歌曲有效范围之外也本应为空白；但歌曲内部尚未加载到的区间
+ * 不能提前标记为 ready，否则会把暂时缺失的数据固化成空白瓦片。
+ */
+export const canCommitHorizontalBrowseBlankRawSegment = (
+  rawData: RawWaveformData | null,
+  rangeStartSec: number,
+  rangeDurationSec: number,
+  timeBasisOffsetSec: number
+) => {
+  if (!rawData || rangeDurationSec <= 0) return false
+  return (
+    isHorizontalBrowseRawDataIntersectingRange(
+      rawData,
+      rangeStartSec,
+      rangeDurationSec,
+      timeBasisOffsetSec
+    ) ||
+    isHorizontalBrowseRawDataCoveringRange(
+      rawData,
+      rangeStartSec,
+      rangeDurationSec,
+      timeBasisOffsetSec
+    )
+  )
+}

@@ -67,6 +67,36 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   playbackRenderClockEpochMs?: number | null
   playbackDurationSec: number
   waveformGain: number
+  /**
+   * 分块渲染计划。存在时 worker 走分块路径画波形层（overlay 仍单层不分块），
+   * 且只在 P0 全部就绪后才回报 `ready: true`。
+   */
+  tilePlan?: HorizontalBrowseDetailLiveCanvasTilePlan | null
+}
+
+/** 分块路径的单块渲染指令。几何与时间范围全部由主线程的渲染计划算好，worker 只负责绘制。 */
+export type HorizontalBrowseDetailLiveCanvasTileRenderRequest = {
+  slotIndex: number
+  globalIndex: number
+  scaledWidth: number
+  scaledHeight: number
+  rangeStartSec: number
+  rangeDurationSec: number
+  /** 0=可见区 1=前向 overscan 2=后向 overscan。 */
+  priority: number
+}
+
+/**
+ * 分块渲染计划，随渲染请求一起下发。
+ *
+ * 块计划必须与渲染请求同一条消息：worker 要先画完 P0 再回报 `rendered`，主线程的 promote
+ * 时序才天然正确（`rendered` 到达即意味着可见区已就绪），无需在主线程做双路异步汇合。
+ */
+export type HorizontalBrowseDetailLiveCanvasTilePlan = {
+  /** 只含本轮需要重画的块，已按 P0 → P1 → P2 排序。 */
+  tiles: HorizontalBrowseDetailLiveCanvasTileRenderRequest[]
+  /** 可见区块的 slotIndex 全集（含本轮复用、无需重画的块）。 */
+  visibleSlotIndexes: number[]
 }
 
 export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
@@ -77,6 +107,8 @@ export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
         overlayCanvas: OffscreenCanvas
         waveformCanvases?: OffscreenCanvas[]
         overlayCanvases?: OffscreenCanvas[]
+        /** 分块路径：[buffer0 的全部块, buffer1 的全部块]。 */
+        waveformTileCanvases?: OffscreenCanvas[][]
       }
     }
   | {
@@ -111,7 +143,15 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         renderTargetIndex?: number
         stableWaveformSource?: boolean
         rawWaveformKind?: 'rekordbox-rgb' | 'rekordbox-triband'
-        notReadyReason?: 'missing-metrics' | 'missing-raw-data' | 'render-full-frame-failed'
+        /** 分块路径本轮成功绘制的块，供主线程更新块池 ready 状态。 */
+        renderedTileSlotIndexes?: number[]
+        /** 分块路径是否还有屏幕外块待补（P1/P2 未画完）。 */
+        tilesPending?: boolean
+        notReadyReason?:
+          | 'missing-metrics'
+          | 'missing-raw-data'
+          | 'render-full-frame-failed'
+          | 'tile-visible-not-ready'
       }
     }
   | {

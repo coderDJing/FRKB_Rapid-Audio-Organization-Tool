@@ -36,6 +36,8 @@ import {
   shouldFinishHorizontalBrowseLiveTempoPreviewRelease
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLiveTempoPreview'
 import { useHorizontalBrowseAudioEditDetailRaw } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseAudioEditDetailRaw'
+import { isHorizontalBrowseWaveformTileRenderingEnabled } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformTileFlag'
+import { HORIZONTAL_BROWSE_WAVEFORM_TILE_SLOT_COUNT } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformTileLayout'
 import {
   createPioneerDetailRawWaveform,
   type PioneerDetailWaveformData
@@ -90,6 +92,12 @@ const previewBeatGridMap = ref<SongBeatGridMapV2 | null>(null)
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const compactVisualWaveformActive = ref(false)
+// 分块渲染 flag。关闭时块容器与块画布完全不渲染进 DOM，走原有单张超宽 canvas 路径。
+const waveformTileRenderingEnabled = isHorizontalBrowseWaveformTileRenderingEnabled()
+const waveformTileSlotIndexes = Array.from(
+  { length: HORIZONTAL_BROWSE_WAVEFORM_TILE_SLOT_COUNT },
+  (_unused, index) => index
+)
 const waveformTempoScalerRef = ref<HTMLDivElement | null>(null)
 const waveformTempoScalerBackRef = ref<HTMLDivElement | null>(null)
 const overlayTempoScalerRef = ref<HTMLDivElement | null>(null)
@@ -262,6 +270,8 @@ const {
   waveformSurfaceRef,
   waveformCanvasRef,
   waveformCanvasBackRef,
+  waveformTileContainerRefs,
+  waveformTileCanvasRefs,
   overlaySurfaceRef,
   overlayCanvasRef,
   overlayCanvasBackRef,
@@ -283,6 +293,7 @@ const {
   resetLiveWaveformData,
   stopLiveWaveformPlayback,
   measureStableCanvasPresentation,
+  adoptStableCanvasRenderRevision,
   applyStableCanvasPresentation,
   startStableCanvasPlayback,
   stopStableCanvasPlayback,
@@ -1065,6 +1076,7 @@ useHorizontalBrowseRawWaveformDetailLifecycle({
     stopStableCanvasPlayback,
     consumeDragReleaseStablePresentationOffsetLimit,
     measureStableCanvasPresentation,
+    adoptStableCanvasRenderRevision,
     hideStableCanvasPresentation,
     applyStableCanvasPresentation,
     reanchorStableCanvasPlayback,
@@ -1155,12 +1167,48 @@ defineExpose(
           ref="waveformCanvasRef"
           class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform"
         />
+        <!-- 分块路径：块容器与旧超宽 canvas 几何一致，统一位移挂在容器上（每块不独立缩放/位移，
+             否则边界会出现亚像素错位）。容器位于 tempo-scaler 之内，故 CSS 变速缩放仍作用于整层。 -->
+        <div
+          v-if="waveformTileRenderingEnabled"
+          :ref="
+            (element) => (waveformTileContainerRefs[0].value = element as HTMLDivElement | null)
+          "
+          class="raw-detail-waveform__tile-container"
+        >
+          <canvas
+            v-for="slotIndex in waveformTileSlotIndexes"
+            :key="`tile-front-${slotIndex}`"
+            :ref="
+              (element) =>
+                (waveformTileCanvasRefs[0].value[slotIndex] = element as HTMLCanvasElement | null)
+            "
+            class="raw-detail-waveform__canvas--waveform raw-detail-waveform__tile"
+          />
+        </div>
       </div>
       <div ref="waveformTempoScalerBackRef" class="raw-detail-waveform__tempo-scaler">
         <canvas
           ref="waveformCanvasBackRef"
           class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform raw-detail-waveform__canvas--buffer-back"
         />
+        <div
+          v-if="waveformTileRenderingEnabled"
+          :ref="
+            (element) => (waveformTileContainerRefs[1].value = element as HTMLDivElement | null)
+          "
+          class="raw-detail-waveform__tile-container raw-detail-waveform__tile-container--buffer-back"
+        >
+          <canvas
+            v-for="slotIndex in waveformTileSlotIndexes"
+            :key="`tile-back-${slotIndex}`"
+            :ref="
+              (element) =>
+                (waveformTileCanvasRefs[1].value[slotIndex] = element as HTMLCanvasElement | null)
+            "
+            class="raw-detail-waveform__canvas--waveform raw-detail-waveform__tile"
+          />
+        </div>
       </div>
     </div>
     <div v-if="externalDetailWaveformUnavailable" class="raw-detail-waveform__unavailable">

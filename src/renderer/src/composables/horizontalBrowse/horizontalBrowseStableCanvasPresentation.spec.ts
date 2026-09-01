@@ -128,3 +128,74 @@ describe('horizontalBrowseStableCanvasPresentation tempo 过渡对齐', () => {
     expect(measured.offsetCssPx ?? 0).toBeCloseTo(0, 3)
   })
 })
+
+describe('horizontalBrowseStableCanvasPresentation 拖动松手 revision 收编', () => {
+  it('最终锚点一致时复用刚完成的帧，不要求再次渲染', () => {
+    const currentSeconds = 12
+    let renderRevision = 4
+    const frame = {
+      ...createStaleDensityFrame(currentSeconds, 10),
+      renderRevision
+    }
+    const controller = createHorizontalBrowseStableCanvasPresentationController({
+      isActive: () => true,
+      isPlaying: () => false,
+      isDragging: () => false,
+      currentSeconds: () => currentSeconds,
+      playbackRate: () => 1,
+      renderRevision: () => renderRevision,
+      resolveViewportRangeStartSec: (seconds, visibleDurationOverrideSec) =>
+        alignedStart(seconds, visibleDurationOverrideSec ?? 10),
+      waveformCanvas: () => null,
+      overlayCanvas: () => null,
+      scheduleDraw: () => {}
+    })
+
+    controller.queueFrame(frame)
+    controller.handleRendered({
+      renderToken: frame.renderToken,
+      rangeStartSec: frame.rangeStartSec,
+      rangeDurationSec: frame.rangeDurationSec,
+      ready: true
+    })
+    renderRevision = 5
+
+    expect(controller.measure(currentSeconds).frame).toBeNull()
+    expect(controller.adoptCurrentFrameRenderRevision(currentSeconds)).toBe(true)
+    expect(controller.measure(currentSeconds).presentable).toBe(true)
+  })
+
+  it('锚点不一致时拒绝把旧位置帧收编到新 revision', () => {
+    const frameSeconds = 12
+    let renderRevision = 4
+    const frame = {
+      ...createStaleDensityFrame(frameSeconds, 10),
+      renderRevision
+    }
+    const controller = createHorizontalBrowseStableCanvasPresentationController({
+      isActive: () => true,
+      isPlaying: () => false,
+      isDragging: () => false,
+      currentSeconds: () => frameSeconds,
+      playbackRate: () => 1,
+      renderRevision: () => renderRevision,
+      resolveViewportRangeStartSec: (seconds, visibleDurationOverrideSec) =>
+        alignedStart(seconds, visibleDurationOverrideSec ?? 10),
+      waveformCanvas: () => null,
+      overlayCanvas: () => null,
+      scheduleDraw: () => {}
+    })
+
+    controller.queueFrame(frame)
+    controller.handleRendered({
+      renderToken: frame.renderToken,
+      rangeStartSec: frame.rangeStartSec,
+      rangeDurationSec: frame.rangeDurationSec,
+      ready: true
+    })
+    renderRevision = 5
+
+    expect(controller.adoptCurrentFrameRenderRevision(frameSeconds + 1)).toBe(false)
+    expect(controller.measure(frameSeconds).frame).toBeNull()
+  })
+})

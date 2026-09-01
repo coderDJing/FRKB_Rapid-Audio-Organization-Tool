@@ -86,6 +86,26 @@
   opacity: 0;
 }
 
+// 分块路径的块容器。几何（left/width/height/transform）全部由 JS 写入，与旧单张超宽 canvas 一致。
+// overflow 不裁剪：全局网格边界不会正好落在渲染范围端点上，块会在容器左右各溢出不足一块，
+// 由外层 __surface 的 overflow:hidden 统一裁掉。
+.raw-detail-waveform__tile-container {
+  position: absolute;
+  transform-origin: 0 0;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.raw-detail-waveform__tile-container--buffer-back {
+  opacity: 0;
+}
+
+.raw-detail-waveform__tile {
+  position: absolute;
+  display: block;
+  backface-visibility: hidden;
+}
+
 .raw-detail-waveform.is-loading::after {
   content: '加载波形...';
   position: absolute;

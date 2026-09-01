@@ -1046,6 +1046,7 @@ onUnmounted(() => {
         :bands-visible="faderControlsExpanded"
         :bands="deckBandState.bottom"
         :song-present="!!bottomDeckSong"
+        :show-cue="true"
         :cue-monitor-enabled="deckCueMonitorState.bottom"
         @cue-pointer-down="handleDeckCuePointerDown('bottom', $event)"
         @cue-click="handleDeckCueClick('bottom')"

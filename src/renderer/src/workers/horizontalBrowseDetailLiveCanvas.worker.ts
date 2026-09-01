@@ -3,6 +3,7 @@ import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import { drawRgbWaveform } from '@renderer/components/rgbWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
+import { canCommitHorizontalBrowseBlankRawSegment } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformCoverage'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
 import { createHorizontalBrowseDetailLiveCanvasBufferManager } from './horizontalBrowseDetailLiveCanvasBuffers'
 import { createHorizontalBrowseDetailLiveCanvasRawStore } from './horizontalBrowseDetailLiveCanvasRawStore'
@@ -34,6 +35,7 @@ import type {
 } from './horizontalBrowseDetailLiveCanvasRenderState'
 import type {
   HorizontalBrowseDetailLiveCanvasRenderRequest,
+  HorizontalBrowseDetailLiveCanvasTileRenderRequest,
   HorizontalBrowseDetailLiveCanvasWorkerIncoming,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
 } from './horizontalBrowseDetailLiveCanvas.types'
@@ -70,6 +72,13 @@ const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) =>
   ).postMessage(message)
 let overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
 const canvasBufferManager = createHorizontalBrowseDetailLiveCanvasBufferManager()
+// 分块路径：[buffer0 的块列表, buffer1 的块列表]。attach 一次后数量固定。
+let waveformTileBuffers: Array<
+  Array<{
+    canvas: OffscreenCanvas
+    ctx: OffscreenCanvasRenderingContext2D
+  }>
+> = []
 
 const resetFrameState = () => {
   lastFrame = lastWaveformScrollShiftScaledPx = null
@@ -280,34 +289,12 @@ const canCommitBlankRawSegment = (
   rangeStartSec: number,
   rangeDurationSec: number
 ) => {
-  const rawData = state.rawData
-  if (!rawData || rangeDurationSec <= 0) return false
-  const frames = Math.max(
-    0,
-    Math.min(
-      Math.floor(Number(rawData.frames) || 0),
-      rawData.minLeft.length,
-      rawData.maxLeft.length,
-      rawData.minRight.length,
-      rawData.maxRight.length
-    )
+  return canCommitHorizontalBrowseBlankRawSegment(
+    state.rawData,
+    rangeStartSec,
+    rangeDurationSec,
+    Math.max(0, Number(state.timeBasisOffsetMs) || 0) / 1000
   )
-  const rate = Number(rawData.rate)
-  if (!frames || !Number.isFinite(rate) || rate <= 0) return false
-  const loadedFrames = Math.max(
-    0,
-    Math.min(Math.floor(Number(rawData.loadedFrames ?? frames) || 0), frames)
-  )
-  if (!loadedFrames) return false
-  const timeBasisOffsetSec =
-    rawData.nativeWaveformKind === 'rekordbox-rgb' ||
-    rawData.nativeWaveformKind === 'rekordbox-triband'
-      ? 0
-      : Math.max(0, Number(state.timeBasisOffsetMs) || 0) / 1000
-  const rawStartSec = Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec
-  const rawEndSec = rawStartSec + loadedFrames / rate
-  const rangeEndSec = rangeStartSec + rangeDurationSec
-  return rangeEndSec > rawStartSec && rangeStartSec < rawEndSec
 }
 
 const renderSegmentToScratch = (
@@ -499,6 +486,14 @@ const clearCanvasPixels = () => {
   pendingRender = null
   stopPlaybackAnimation()
   canvasBufferManager.clearAll()
+  // 分块路径：块画布像素也要清，否则主线程块池失效后旧块内容仍会露出来。
+  clearDeferredTileWork()
+  for (const tileBuffer of waveformTileBuffers) {
+    for (const tile of tileBuffer) {
+      tile.ctx.setTransform(1, 0, 0, 1, 0, 0)
+      tile.ctx.clearRect(0, 0, tile.canvas.width, tile.canvas.height)
+    }
+  }
   resetFrameState()
 }
 
@@ -732,8 +727,22 @@ const processRender = (
   const state = metrics ? buildFrameState(request, metrics, rawData) : null
   const renderState = state as FrameState | null
   const previousFrame = lastFrame
-  const ready =
-    !!metrics && !!rawData && renderFullFrame(request, metrics, renderState as FrameState)
+  // 分块路径：波形层改由块画布承载，整帧超宽位图不再绘制波形（这才是「少合成面积」的收益来源）。
+  // overlay 仍走下方原有单层路径，不分块。
+  const tileResult = request.tilePlan ? renderWaveformTiles(request, rawData) : null
+  if (tileResult) {
+    if (canvas && ctx) {
+      // 旧超宽位图不再承载波形，但它仍在 DOM 里且位于块容器之下：残留像素会从块的透明处透出来。
+      // 清空一次即可（后续每轮它都保持空白），代价是一个 clearRect。
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+    // 超宽位图已无波形内容，任何基于它的滚动复用都会画出错误画面。
+    resetFrameState()
+  }
+  const ready = tileResult
+    ? tileResult.visibleReady
+    : !!metrics && !!rawData && renderFullFrame(request, metrics, renderState as FrameState)
 
   const holdMissingPlaybackRaw =
     !!metrics &&
@@ -743,12 +752,15 @@ const processRender = (
     request.rawSlot !== null &&
     !rawData &&
     canPreservePlaybackFrameOnMissingRaw(renderState, previousFrame)
+  // 分块路径不走整帧 preserve：块画布各自保留自己的内容，旧可见面由主线程的
+  // preserveSurfaceUntilNextReady 负责，不需要把超宽位图拷来拷去。
   const shouldPreserve =
-    holdMissingPlaybackRaw ||
-    (!!metrics &&
-      !!renderState &&
-      !ready &&
-      canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame))
+    !tileResult &&
+    (holdMissingPlaybackRaw ||
+      (!!metrics &&
+        !!renderState &&
+        !ready &&
+        canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame)))
   const preserved = shouldPreserve && !!metrics && !!ctx && copyScrollSourceToTarget(metrics, ctx)
   const notReadyReason =
     ready || preserved
@@ -757,11 +769,13 @@ const processRender = (
         ? 'missing-metrics'
         : !rawData
           ? 'missing-raw-data'
-          : 'render-full-frame-failed'
+          : tileResult
+            ? 'tile-visible-not-ready'
+            : 'render-full-frame-failed'
   if (preserved) {
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
-  } else if (metrics && renderState && !ready) {
+  } else if (metrics && renderState && !ready && !tileResult) {
     clearWaveformPixels()
     if (request.showTimelinePlaceholder && ctx) {
       renderHorizontalBrowseTimelineFallback(ctx, request, metrics)
@@ -824,9 +838,200 @@ const processRender = (
         renderTargetIndex: request.renderTargetIndex,
         stableWaveformSource: request.stableWaveformSource === true,
         rawWaveformKind: rawData?.nativeWaveformKind,
+        renderedTileSlotIndexes: tileResult?.renderedTileSlotIndexes,
+        tilesPending: tileResult?.tilesPending,
         notReadyReason
       }
     })
+  }
+}
+
+// 分块路径的单块绘制。
+//
+// 复用与旧路径完全相同的 drawRange，只是每次的时间窗口更窄、目标画布更小——因此波形外观、
+// 平滑、增益、主题与旧路径逐像素同源，不引入新的绘制分支。
+const drawWaveformTile = (
+  tileBuffer: Array<{ canvas: OffscreenCanvas; ctx: OffscreenCanvasRenderingContext2D }>,
+  baseState: FrameState,
+  tile: HorizontalBrowseDetailLiveCanvasTileRenderRequest
+) => {
+  const target = tileBuffer[tile.slotIndex]
+  if (!target) return false
+  if (target.canvas.width !== tile.scaledWidth) target.canvas.width = tile.scaledWidth
+  if (target.canvas.height !== tile.scaledHeight) target.canvas.height = tile.scaledHeight
+  target.ctx.setTransform(1, 0, 0, 1, 0, 0)
+  target.ctx.imageSmoothingEnabled = false
+  target.ctx.clearRect(0, 0, tile.scaledWidth, tile.scaledHeight)
+  const tileState: FrameState = {
+    ...baseState,
+    rangeStartSec: tile.rangeStartSec,
+    rangeDurationSec: tile.rangeDurationSec
+  }
+  const rendered = drawRange(
+    target.ctx,
+    tile.scaledWidth,
+    tile.scaledHeight,
+    tile.rangeStartSec,
+    tile.rangeDurationSec,
+    tileState
+  )
+  // 空白但落在已加载 raw 范围内的块算成功：那里本就没有波形，不能因此判定可见区未就绪。
+  return rendered || canCommitBlankRawSegment(tileState, tile.rangeStartSec, tile.rangeDurationSec)
+}
+
+// 每块自己的 FrameState：除时间范围与尺寸外，全部字段与整帧路径一致。
+const resolveTileBaseState = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  rawData: RawWaveformData
+) =>
+  buildFrameState(
+    request,
+    {
+      ...resolveCanvasScaleMetrics(request.width, request.height, request.pixelRatio, {
+        preserveFractionalCssSize: true
+      }),
+      resized: false
+    },
+    rawData
+  )
+
+// 屏幕外块（P1/P2）的续画队列。P0 画完、rendered 已回报之后才继续，避免 overscan 拖住上屏。
+let deferredTileWork: {
+  renderToken: number
+  targetIndex: number
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest
+  tiles: HorizontalBrowseDetailLiveCanvasTileRenderRequest[]
+} | null = null
+let deferredTileTimer: ReturnType<typeof setTimeout> | null = null
+let deferredTileRaf = 0
+
+function clearDeferredTileWork() {
+  deferredTileWork = null
+  if (deferredTileTimer) {
+    clearTimeout(deferredTileTimer)
+    deferredTileTimer = null
+  }
+  if (deferredTileRaf) {
+    const scope = resolveWorkerAnimationFrameScope()
+    if (typeof scope.cancelAnimationFrame === 'function') {
+      scope.cancelAnimationFrame(deferredTileRaf)
+    }
+    deferredTileRaf = 0
+  }
+}
+
+// 每帧只补一块：屏幕外块不参与用户可见的就绪判定，分摊开画可避免一次性长任务再次造成掉帧。
+const TILE_DEFERRED_BATCH_SIZE = 1
+
+const scheduleDeferredTiles = () => {
+  if (deferredTileRaf || deferredTileTimer || !deferredTileWork) return
+  const scope = resolveWorkerAnimationFrameScope()
+  if (typeof scope.requestAnimationFrame === 'function') {
+    deferredTileRaf = scope.requestAnimationFrame(pumpDeferredTiles)
+    return
+  }
+  deferredTileTimer = setTimeout(pumpDeferredTiles, 0)
+}
+
+function pumpDeferredTiles() {
+  deferredTileRaf = 0
+  deferredTileTimer = null
+  const work = deferredTileWork
+  if (!work) return
+  const tileBuffer = waveformTileBuffers[work.targetIndex] ?? null
+  const rawData = resolveRawForRender(work.request)
+  if (!tileBuffer || !rawData) {
+    deferredTileWork = null
+    return
+  }
+  const baseState = resolveTileBaseState(work.request, rawData)
+  const batch = work.tiles.splice(0, TILE_DEFERRED_BATCH_SIZE)
+  const renderedTileSlotIndexes: number[] = []
+  for (const tile of batch) {
+    if (drawWaveformTile(tileBuffer, baseState, tile)) {
+      renderedTileSlotIndexes.push(tile.slotIndex)
+    }
+  }
+  const tilesPending = work.tiles.length > 0
+  if (renderedTileSlotIndexes.length > 0) {
+    // 屏幕外块画好后也要回报，主线程据此更新块池 ready，才能在后续滚动中复用它们。
+    // renderViewportOnly=true 让主线程只更新块池、不触碰 promote 与可见面。
+    postToMain({
+      type: 'rendered',
+      payload: {
+        renderToken: work.renderToken,
+        rangeStartSec: work.request.rangeStartSec,
+        rangeDurationSec: work.request.rangeDurationSec,
+        ready: true,
+        renderViewportOnly: true,
+        renderTargetIndex: work.targetIndex,
+        stableWaveformSource: work.request.stableWaveformSource === true,
+        renderedTileSlotIndexes,
+        tilesPending
+      }
+    })
+  }
+  if (!tilesPending) {
+    deferredTileWork = null
+    return
+  }
+  scheduleDeferredTiles()
+}
+
+/**
+ * 分块波形渲染：先画可见区（P0），把屏幕外块推入续画队列。
+ *
+ * 返回可见区是否就绪。false 时 processRender 回报 ready=false，主线程据现有
+ * `preserveSurfaceUntilNextReady` 语义继续显示旧可见面——不切换、不露白。
+ */
+const renderWaveformTiles = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  rawData: RawWaveformData | null
+) => {
+  const tilePlan = request.tilePlan
+  if (!tilePlan) return null
+  const targetIndex = request.renderTargetIndex === 1 ? 1 : 0
+  const tileBuffer = waveformTileBuffers[targetIndex] ?? null
+  if (!tileBuffer || !rawData) {
+    return {
+      visibleReady: false,
+      renderedTileSlotIndexes: [] as number[],
+      tilesPending: false
+    }
+  }
+  const baseState = resolveTileBaseState(request, rawData)
+  const visibleSlotSet = new Set(tilePlan.visibleSlotIndexes)
+  const visibleTiles = tilePlan.tiles.filter((tile) => visibleSlotSet.has(tile.slotIndex))
+  const offscreenTiles = tilePlan.tiles.filter((tile) => !visibleSlotSet.has(tile.slotIndex))
+
+  const renderedTileSlotIndexes: number[] = []
+  for (const tile of visibleTiles) {
+    if (!tileBuffer[tile.slotIndex]) continue
+    if (drawWaveformTile(tileBuffer, baseState, tile)) {
+      renderedTileSlotIndexes.push(tile.slotIndex)
+    }
+  }
+  // 可见区块要么本轮画成功，要么本就不在待画列表里（= 已复用上一代同块内容）。
+  const renderedSlotSet = new Set(renderedTileSlotIndexes)
+  const pendingSlotSet = new Set(tilePlan.tiles.map((tile) => tile.slotIndex))
+  const visibleReady = tilePlan.visibleSlotIndexes.every(
+    (slotIndex) => renderedSlotSet.has(slotIndex) || !pendingSlotSet.has(slotIndex)
+  )
+
+  clearDeferredTileWork()
+  if (offscreenTiles.length > 0) {
+    deferredTileWork = {
+      renderToken: request.renderToken,
+      targetIndex,
+      request,
+      tiles: offscreenTiles
+    }
+    scheduleDeferredTiles()
+  }
+  return {
+    visibleReady,
+    renderedTileSlotIndexes,
+    tilesPending: offscreenTiles.length > 0
   }
 }
 
@@ -1034,6 +1239,12 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
     canvasBufferManager.attach(
       message.payload.waveformCanvases ?? [message.payload.waveformCanvas],
       message.payload.overlayCanvases ?? [message.payload.overlayCanvas]
+    )
+    waveformTileBuffers = (message.payload.waveformTileCanvases ?? []).map((bufferTiles) =>
+      bufferTiles.flatMap((tileCanvas) => {
+        const tileCtx = tileCanvas.getContext('2d')
+        return tileCtx ? [{ canvas: tileCanvas, ctx: tileCtx }] : []
+      })
     )
     const selected = canvasBufferManager.resolve(0)
     canvas = selected?.canvas ?? null

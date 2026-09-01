@@ -54,12 +54,13 @@ const STABLE_REANCHOR_RETRY_MS = 96
 const STABLE_PENDING_PLAYBACK_START_EPSILON_SEC = 0.5
 const STABLE_STALE_FRAME_PLAYBACK_START_SEC = 1
 const STABLE_STATIC_TO_PLAYBACK_HANDOFF_SEC = 0.75
+const STABLE_RENDER_REVISION_ADOPTION_ANCHOR_EPSILON_SEC = 0.08
 
 const normalizeRenderRevision = (value: unknown) => Math.max(0, Math.floor(Number(value) || 0))
 
 export const applyHorizontalBrowseStableCanvasPresentation = (
-  waveformCanvas: HTMLCanvasElement | null,
-  overlayCanvas: HTMLCanvasElement | null,
+  waveformCanvas: HTMLElement | null,
+  overlayCanvas: HTMLElement | null,
   offsetCssPx: number
 ) => {
   applyHorizontalBrowseCanvasPresentationOffset(waveformCanvas, overlayCanvas, offsetCssPx, true)
@@ -81,8 +82,10 @@ type StableCanvasPresentationControllerOptions = {
   playbackRate: () => number
   renderRevision?: () => number
   resolveViewportRangeStartSec: (seconds: number, visibleDurationOverrideSec?: number) => number
-  waveformCanvas: () => HTMLCanvasElement | null
-  overlayCanvas: () => HTMLCanvasElement | null
+  // 分块路径下波形侧是块容器 div，旧路径下是单张超宽 canvas；两者 left / width / transform
+  // 语义一致，presentation 逻辑无需区分。
+  waveformCanvas: () => HTMLElement | null
+  overlayCanvas: () => HTMLElement | null
   scheduleDraw: () => void
   onPresentationApplied?: () => void
 }
@@ -236,6 +239,28 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       reanchorPending = false
       reanchorPendingAtMs = 0
     }
+  }
+
+  /**
+   * 拖动松手完成时，presentation owner 会从 drag 切回 playback，并产生一个纯展示层 revision。
+   * 刚刚按最终锚点画好的帧内容并未失效；在锚点严格匹配时把它收编到新 revision，避免同一松手
+   * 紧接着再画、再 promote 一张内容等价的帧。
+   */
+  const adoptCurrentFrameRenderRevision = (seconds: number) => {
+    if (!options.isActive() || !currentFrame) return false
+    const safeSeconds = Number(seconds)
+    if (
+      !Number.isFinite(safeSeconds) ||
+      Math.abs(Number(currentFrame.anchorSec) - safeSeconds) >
+        STABLE_RENDER_REVISION_ADOPTION_ANCHOR_EPSILON_SEC
+    ) {
+      return false
+    }
+    currentFrame = {
+      ...currentFrame,
+      renderRevision: resolveRenderRevision()
+    }
+    return true
   }
 
   const queueRenderFrame = (
@@ -546,6 +571,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     clear,
     queueFrame,
     queueRenderFrame,
+    adoptCurrentFrameRenderRevision,
     handleRendered,
     measure,
     apply,
