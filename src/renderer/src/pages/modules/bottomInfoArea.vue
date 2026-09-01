@@ -12,6 +12,7 @@ import {
   resolveAnalysisRuntimeDownloadTitle
 } from '@renderer/utils/analysisRuntimeDownloadUi'
 import { useBottomInfoVisibleAnalysisProgress } from './bottomInfoAreaVisibleAnalysis'
+import { useBottomInfoTaskProgressMirror } from './useBottomInfoTaskProgressMirror'
 import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 const runtime = useRuntimeStore()
 
@@ -131,6 +132,16 @@ const hasAnyVisibleTask = computed(
     libraryStemTaskVisible.value ||
     tasks.value.length > 0
 )
+useBottomInfoTaskProgressMirror({
+  runtime,
+  analysisRuntimeVisible: analysisRuntimeTaskVisible,
+  analysisRuntimePercent: analysisRuntimeTaskPercent,
+  cloudSyncVisible: cloudSyncTaskVisible,
+  cloudSyncPercent: cloudSyncTaskPercent,
+  libraryStemVisible: libraryStemTaskVisible,
+  libraryStemPercent: libraryStemTaskPercent,
+  tasks
+})
 const showTotalRow = ref(!hasAnyVisibleTask.value)
 const cancelMenuTaskId = ref<string | null>(null)
 const backgroundTaskId = 'key-analysis.background'

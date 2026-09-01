@@ -28,6 +28,7 @@ import {
   type MiniPlayerPlayhead,
   type MiniPlayerSession
 } from '../../shared/miniPlayerWindow'
+import type { MiniPlayerTaskProgress } from '../../shared/miniPlayerTaskProgress'
 
 let miniPlayerWindow: BrowserWindow | null = null
 let getMainWindow: () => BrowserWindow | null = () => null
@@ -466,6 +467,9 @@ const ensureIpcHandlers = () => {
   })
   ipcMain.on(MINI_PLAYER_CHANNELS.playhead, (_event, payload: MiniPlayerPlayhead) => {
     forwardToMini(MINI_PLAYER_CHANNELS.playhead, payload)
+  })
+  ipcMain.on(MINI_PLAYER_CHANNELS.taskProgress, (_event, payload: MiniPlayerTaskProgress) => {
+    forwardToMini(MINI_PLAYER_CHANNELS.taskProgress, payload)
   })
   ipcMain.on(MINI_PLAYER_CHANNELS.command, (_event, payload: MiniPlayerCommand) => {
     forwardToMain(MINI_PLAYER_CHANNELS.command, payload)

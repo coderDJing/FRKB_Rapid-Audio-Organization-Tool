@@ -20,6 +20,10 @@ import type {
 import { DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO } from '@shared/browserPlayerRightTrackInfo'
 import { DEFAULT_PLAYER_GLOBAL_SHORTCUTS } from '@shared/playerGlobalShortcuts'
 import type { MiniPlayerSession } from '@shared/miniPlayerWindow'
+import {
+  HIDDEN_MINI_PLAYER_TASK_PROGRESS,
+  type MiniPlayerTaskProgress
+} from '@shared/miniPlayerTaskProgress'
 import type { LibrarySetupErrorHint, LibrarySetupMode } from '@shared/librarySetup'
 export type LibrarySelection =
   | 'FilterLibrary'
@@ -191,6 +195,7 @@ interface Runtime {
     playingSongListData: ISongInfo[]
   }
   miniPlayerSession: MiniPlayerSession
+  bottomInfoTaskProgress: MiniPlayerTaskProgress
   mainWindowPlaybackHandoff: MainWindowPlaybackHandoff | null
   horizontalBrowseDecks: {
     topSong: null | ISongInfo
@@ -294,6 +299,7 @@ export const useRuntimeStore = defineStore('runtime', {
       creatingSongListUUID: '', //正在创建中的歌单（用于微动效）
       welcomeCreatedPlaylistUUID: '',
       isProgressing: false, //正在执行某计算或IO任务
+      bottomInfoTaskProgress: { ...HIDDEN_MINI_PLAYER_TASK_PROGRESS },
       analysisRuntime: {
         available: false,
         downloadOverlayMinimized: false,

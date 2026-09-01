@@ -3,6 +3,7 @@ import type {
   MiniPlayerHostState,
   MiniPlayerPioneerPreviewWaveform
 } from '@shared/miniPlayerWindow'
+import { cloneMiniPlayerTaskProgress } from '@shared/miniPlayerTaskProgress'
 import {
   clampPlaybackRangePercent,
   type PlaybackRangeHandleVisual,
@@ -145,5 +146,6 @@ export const cloneMiniPlayerHostState = (state: MiniPlayerHostState): MiniPlayer
   pioneerPreviewWaveform: clonePioneerPreviewWaveform(state.pioneerPreviewWaveform),
   playbackRange: cloneMiniPlayerPlaybackRange(state.playbackRange),
   canDeleteAllAbove: !!state.canDeleteAllAbove,
-  deleteAllAboveCount: Math.max(0, Math.floor(Number(state.deleteAllAboveCount) || 0))
+  deleteAllAboveCount: Math.max(0, Math.floor(Number(state.deleteAllAboveCount) || 0)),
+  taskProgress: cloneMiniPlayerTaskProgress(state.taskProgress)
 })

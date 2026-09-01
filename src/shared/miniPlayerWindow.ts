@@ -1,4 +1,5 @@
 import type { CompactVisualWaveformData } from './compactVisualWaveform'
+import type { MiniPlayerTaskProgress } from './miniPlayerTaskProgress'
 import type { PlaybackRangeHandleVisual } from './playbackRange'
 import type { ISongInfo } from 'src/types/globals'
 
@@ -56,6 +57,7 @@ export type MiniPlayerHostState = {
   playbackRange: PlaybackRangeHandleVisual
   canDeleteAllAbove: boolean
   deleteAllAboveCount: number
+  taskProgress: MiniPlayerTaskProgress
 }
 
 export type MiniPlayerPlayhead = {
@@ -207,6 +209,7 @@ export const MINI_PLAYER_CHANNELS = {
   setPopupHeight: 'mini-player:set-popup-height',
   hostState: 'mini-player:host-state',
   playhead: 'mini-player:playhead',
+  taskProgress: 'mini-player:task-progress',
   command: 'mini-player:command',
   rendererReady: 'mini-player:renderer-ready',
   session: 'mini-player:session',

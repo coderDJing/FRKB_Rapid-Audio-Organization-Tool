@@ -13,6 +13,10 @@ import { useCover } from '@renderer/pages/modules/songPlayer/useCover'
 import { usePlayerHotkeys } from '@renderer/pages/modules/songPlayer/usePlayerHotkeys'
 import { useMiniPlayerRemoteWaveform } from '@renderer/composables/miniPlayer/useMiniPlayerRemoteWaveform'
 import { cloneMiniPlayerHostState } from '@renderer/composables/miniPlayer/miniPlayerStateClone'
+import {
+  cloneMiniPlayerTaskProgress,
+  type MiniPlayerTaskProgress
+} from '@shared/miniPlayerTaskProgress'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
@@ -55,6 +59,14 @@ const waveformMode = computed(() => hostState.value?.waveformMode || 'half')
 const compactVisualWaveform = computed(() => hostState.value?.compactVisualWaveform || null)
 const pioneerPreviewWaveform = computed(() => hostState.value?.pioneerPreviewWaveform || null)
 const playbackRange = computed(() => hostState.value?.playbackRange || null)
+const taskProgressVisible = computed(() => !!hostState.value?.taskProgress?.visible)
+const taskProgressPercent = computed(() => {
+  const percent = hostState.value?.taskProgress?.percent
+  return percent === null || percent === undefined ? null : percent
+})
+const taskProgressBarStyle = computed(() => ({
+  width: taskProgressPercent.value === null ? '100%' : `${taskProgressPercent.value}%`
+}))
 const waveformContainerWidth = ref(0)
 let waveformResizeObserver: ResizeObserver | null = null
 let focusCanvasResizeObserver: ResizeObserver | null = null
@@ -212,6 +224,14 @@ const handlePlayhead = (_event: unknown, payload: MiniPlayerPlayhead) => {
     durationSeconds: Number(payload?.durationSeconds) || 0,
     isPlaying: !!payload?.isPlaying,
     volume: Number(payload?.volume) || 0
+  }
+}
+
+const handleTaskProgress = (_event: unknown, payload: MiniPlayerTaskProgress) => {
+  if (!hostState.value) return
+  hostState.value = {
+    ...hostState.value,
+    taskProgress: cloneMiniPlayerTaskProgress(payload)
   }
 }
 
@@ -605,6 +625,7 @@ onMounted(() => {
   window.addEventListener('blur', handleRendererBlur)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.hostState, handleHostState)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.playhead, handlePlayhead)
+  window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.taskProgress, handleTaskProgress)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.session, handleSession)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.windowFocus, handleWindowFocus)
   window.electron.ipcRenderer.on(MINI_PLAYER_CHANNELS.coverPopupPointer, handleCoverPopupPointer)
@@ -637,6 +658,7 @@ onUnmounted(() => {
   window.electron.ipcRenderer.send(MINI_PLAYER_CHANNELS.hideTooltip)
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.hostState, handleHostState)
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.playhead, handlePlayhead)
+  window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.taskProgress, handleTaskProgress)
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.session, handleSession)
   window.electron.ipcRenderer.removeListener(MINI_PLAYER_CHANNELS.windowFocus, handleWindowFocus)
   window.electron.ipcRenderer.removeListener(
@@ -657,6 +679,14 @@ onUnmounted(() => {
     @pointerdown="focusKeyboardTarget"
   >
     <canvas ref="focusCanvas" class="mini-player__focus-source" aria-hidden="true"></canvas>
+    <div
+      v-if="taskProgressVisible"
+      class="mini-player__task-progress"
+      :class="{ 'is-indeterminate': taskProgressPercent === null }"
+      aria-hidden="true"
+    >
+      <div class="mini-player__task-progress-bar" :style="taskProgressBarStyle"></div>
+    </div>
     <div class="mini-player__bar canDrag">
       <div ref="coverAnchorRef" class="mini-player__cover canNotDrag">
         <PlayerCoverSlot
@@ -769,6 +799,12 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .mini-player {
   --mini-player-inset: 5px;
+  --task-progress-start: #3a7afe;
+  --task-progress-end: #4da3ff;
+  --task-progress-stripe-strong: rgba(255, 255, 255, 0.12);
+  --task-progress-stripe-soft: rgba(255, 255, 255, 0.04);
+  --task-progress-shine: rgba(255, 255, 255, 0.25);
+  --task-progress-track: rgba(58, 122, 254, 0.28);
   width: 100%;
   height: 100%;
   display: flex;
@@ -777,6 +813,101 @@ onUnmounted(() => {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
+}
+
+:global(.theme-light) .mini-player {
+  --task-progress-start: #2b66d9;
+  --task-progress-end: #4b88ff;
+  --task-progress-stripe-strong: rgba(255, 255, 255, 0.18);
+  --task-progress-stripe-soft: rgba(255, 255, 255, 0.08);
+  --task-progress-shine: rgba(255, 255, 255, 0.32);
+  --task-progress-track: rgba(43, 102, 217, 0.22);
+}
+
+.mini-player__task-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--task-progress-track);
+}
+
+.mini-player__task-progress-bar {
+  position: relative;
+  height: 100%;
+  background: linear-gradient(90deg, var(--task-progress-start), var(--task-progress-end));
+  background-size: 200% 100%;
+  animation: mini-player-task-slide-bg 3s linear infinite;
+  overflow: hidden;
+  will-change: background-position, width;
+  transition: width 0.2s ease;
+}
+
+.mini-player__task-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--task-progress-stripe-strong) 0 8px,
+    var(--task-progress-stripe-soft) 8px 16px
+  );
+  mix-blend-mode: overlay;
+  animation: mini-player-task-move-stripes 2s linear infinite;
+  will-change: background-position;
+}
+
+.mini-player__task-progress-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    var(--task-progress-shine) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: mini-player-task-shine 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes mini-player-task-slide-bg {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes mini-player-task-move-stripes {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 100px 0;
+  }
+}
+
+@keyframes mini-player-task-shine {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .mini-player__bar {

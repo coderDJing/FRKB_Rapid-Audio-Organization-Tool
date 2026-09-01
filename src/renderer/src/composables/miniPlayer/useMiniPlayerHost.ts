@@ -14,6 +14,7 @@ import type {
   LibraryTransferTarget
 } from '@renderer/utils/libraryTransfer'
 import { cloneMiniPlayerHostState } from '@renderer/composables/miniPlayer/miniPlayerStateClone'
+import { cloneMiniPlayerTaskProgress } from '@shared/miniPlayerTaskProgress'
 import { isRuntimeLibraryTree } from '@renderer/utils/appRuntimeStateGuards'
 import {
   normalizePlaybackRangeSectionKinds,
@@ -99,7 +100,8 @@ export function useMiniPlayerHost(params: {
         params.playerWaveformDurationSec.value
       ),
       canDeleteAllAbove: deleteAllAbove.canDeleteAllAbove,
-      deleteAllAboveCount: deleteAllAbove.deleteAllAboveCount
+      deleteAllAboveCount: deleteAllAbove.deleteAllAboveCount,
+      taskProgress: params.runtime.bottomInfoTaskProgress
     })
   }
 
@@ -253,6 +255,22 @@ export function useMiniPlayerHost(params: {
       normalizePlaybackRangeSectionKinds(params.runtime.setting.playbackRangeSectionKinds).join('|')
     ],
     () => publishHostState()
+  )
+
+  const publishTaskProgress = () => {
+    if (!isMiniPlayerOpen.value) return
+    window.electron.ipcRenderer.send(
+      MINI_PLAYER_CHANNELS.taskProgress,
+      cloneMiniPlayerTaskProgress(params.runtime.bottomInfoTaskProgress)
+    )
+  }
+
+  watch(
+    () => [
+      params.runtime.bottomInfoTaskProgress.visible,
+      params.runtime.bottomInfoTaskProgress.percent
+    ],
+    () => publishTaskProgress()
   )
 
   watch(
