@@ -103,7 +103,7 @@ export const createHorizontalBrowseDetailPresentationActions = (
 
   const applyIncomingPreviewTimeScale = (
     scheduleFrame = true,
-    options: { keepCurrentFrame?: boolean } = {}
+    options: { keepCurrentFrame?: boolean; forceFrameWhenUnchanged?: boolean } = {}
   ) => {
     const keepCurrentFrame = options.keepCurrentFrame === true
     const safeNextScale = Math.max(0.25, Number(params.resolveIncomingPreviewTimeScale()) || 1)
@@ -117,6 +117,12 @@ export const createHorizontalBrowseDetailPresentationActions = (
       Math.abs(safeNextScale - safePreviousScale) <= 0.000001 &&
       Math.abs(nextVisible - previousVisible) <= 0.0001
     ) {
+      if (options.forceFrameWhenUnchanged && scheduleFrame) {
+        params.maybeContinueWaveformSource(params.resolveWaveformCurrentSeconds())
+        clearPlaybackStableFrameRenderTimer()
+        params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
+        return true
+      }
       return false
     }
     params.setLastAppliedPreviewTimeScale(safeNextScale)

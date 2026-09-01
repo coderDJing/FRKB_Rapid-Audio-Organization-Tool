@@ -80,7 +80,7 @@ type StableCanvasPresentationControllerOptions = {
   currentSeconds: () => number
   playbackRate: () => number
   renderRevision?: () => number
-  resolveViewportRangeStartSec: (seconds: number) => number
+  resolveViewportRangeStartSec: (seconds: number, visibleDurationOverrideSec?: number) => number
   waveformCanvas: () => HTMLCanvasElement | null
   overlayCanvas: () => HTMLCanvasElement | null
   scheduleDraw: () => void
@@ -194,6 +194,19 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     return frame.viewportRangeStartSec + (Number.isFinite(elapsedSec) ? elapsedSec : 0)
   }
 
+  // 该帧视口（去掉左右 overscan）对应的可见时长 = 帧自身密度下一屏的时间宽度。
+  const resolveFrameViewportVisibleDurationSec = (
+    frame: HorizontalBrowseStableCanvasPresentationFrame
+  ) => {
+    const renderWidth = Math.max(1, Number(frame.renderWidth) || 1)
+    const viewportWidth = Math.max(
+      1,
+      renderWidth - Math.max(0, Number(frame.overscanCssPx) || 0) * 2
+    )
+    const rangeDurationSec = Math.max(0.0001, Number(frame.rangeDurationSec) || 0.0001)
+    return (rangeDurationSec * viewportWidth) / renderWidth
+  }
+
   const shouldDeferPlaybackStartForPendingFrame = (seconds: number) => {
     if (!isCurrentRenderRevision(pendingFrame)) return !isCurrentRenderRevision(currentFrame)
     if (
@@ -288,10 +301,14 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
         reanchorNeeded: false
       }
     }
+    // 用当前显示帧自身密度对应的可见时长来定位播放头。普通播放帧密度==当前 rate，
+    // 该值与 resolveViewportRangeStartSec 内部默认一致、行为不变；tempo 预览过渡期显示的是旧密度帧，
+    // 若按当前 rate 的 visibleDuration 对齐会让屏幕 50% 偏离真实播放头，松手换新密度帧时回弹成横跳。
+    const frameViewportVisibleSec = resolveFrameViewportVisibleDurationSec(measuredFrame)
     const viewportRangeStartSec =
       revisionHandoffFrame && measureOptions.useFrameViewportForRevisionHandoff === true
         ? resolveFramePlaybackViewportRangeStartSec(measuredFrame, seconds)
-        : options.resolveViewportRangeStartSec(seconds)
+        : options.resolveViewportRangeStartSec(seconds, frameViewportVisibleSec)
     const offsetCssPx = resolveHorizontalBrowseStableCanvasOffsetCssPx(
       measuredFrame,
       viewportRangeStartSec
@@ -499,6 +516,18 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
           renderedFrame.anchorSec +
           (Math.max(0, performance.now() - renderedFrame.anchorStartedAtMs) / 1000) *
             renderedFrame.playbackRate
+        // promote 帧定位与后续 RAF tick 必须同相：playbackClock 是独立外推器，松手后不再被
+        // reanchor，会与 render-sync currentSeconds 自由脱相。若 promote 用回调时刻的
+        // estimatePlaybackSeconds() 定位、下一帧 RAF 又用同一 clock 的 vsync 采样，两次采样相位
+        // 不同，promote 帧就相对相邻帧偏 ±几 ms（亚像素抖动）。promote 时先把 playbackClock 重锚到
+        // render-sync currentSeconds，使这一帧与后续帧共用同一相位基准，消除单帧错位。不改播放
+        // 速率、不露白、不触音频。
+        if (playbackClock) {
+          const renderSyncSeconds = Number(options.currentSeconds())
+          if (Number.isFinite(renderSyncSeconds)) {
+            reanchorPlayback(renderSyncSeconds, playbackClock.playbackRate)
+          }
+        }
         const seconds = playbackClock ? estimatePlaybackSeconds() : pendingPlaybackSeconds
         const result = apply(seconds)
         if (result.applied && options.isPlaying()) {

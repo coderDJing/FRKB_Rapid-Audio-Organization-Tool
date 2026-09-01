@@ -47,12 +47,13 @@ describe('horizontalBrowseLiveTempoPreview', () => {
     expect(surface.style.transform).toContain('0.909')
   })
 
-  it('显示倍率已经等于目标时清掉 transform', () => {
+  it('显示倍率等于目标时写入恒等 3D 变换而非移除，保持合成层不被销毁', () => {
+    // 移除 transform 会让元素退回普通层，触发图层销毁+重新光栅化。归零必须保留合成层。
     const surface = createSurface()
     applyHorizontalBrowseLiveTempoPreviewTransform([surface], 1, 1.1)
     applyHorizontalBrowseLiveTempoPreviewTransform([surface], 1.1, 1.1)
-    expect(surface.style.transform).toBe('')
-    expect(surface.style.willChange).toBe('')
+    expect(surface.style.transform).toBe('scale3d(1, 1, 1)')
+    expect(surface.style.willChange).toBe('transform')
   })
 })
 

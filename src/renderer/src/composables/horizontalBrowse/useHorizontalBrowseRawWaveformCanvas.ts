@@ -144,7 +144,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     currentSeconds: () => Number(options.currentSeconds()) || 0,
     playbackRate: () => Number(options.playbackRate()) || 1,
     renderRevision: () => resolveStableRenderRevision(),
-    resolveViewportRangeStartSec: (seconds) => resolvePlaybackAlignedStart(seconds),
+    resolveViewportRangeStartSec: (seconds, visibleDurationOverrideSec) =>
+      resolvePlaybackAlignedStart(seconds, visibleDurationOverrideSec),
     waveformCanvas: () => liveCanvasBuffers.presentationWaveformCanvas(),
     overlayCanvas: () => liveCanvasBuffers.presentationOverlayCanvas(),
     scheduleDraw: () => drawWaveformNow(),

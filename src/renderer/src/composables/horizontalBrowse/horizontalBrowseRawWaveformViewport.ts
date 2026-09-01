@@ -76,13 +76,23 @@ export const createHorizontalBrowseRawWaveformViewport = (
 
   const resolveWaveformLayout = (): HorizontalBrowseWaveformLayout => options.waveformLayout()
 
-  const resolvePlaybackAlignedStart = (seconds: number) =>
-    resolveHorizontalBrowsePlaybackAlignedStart(
+  // visibleDurationOverrideSec：tempo 预览过渡期，stable canvas 需按“当前显示帧自身密度”对应的
+  // 可见时长来定位播放头（而非当前 rate 的可见时长），否则旧密度帧被以当前 rate 的 visibleDuration
+  // 对齐，屏幕 50% 会偏离真实播放头，松手换新密度帧时回弹成横跳。普通播放两者相等，行为不变。
+  const resolvePlaybackAlignedStart = (seconds: number, visibleDurationOverrideSec?: number) => {
+    const visibleDuration =
+      visibleDurationOverrideSec != null &&
+      Number.isFinite(visibleDurationOverrideSec) &&
+      visibleDurationOverrideSec > 0
+        ? visibleDurationOverrideSec
+        : resolveVisibleDurationSec()
+    return resolveHorizontalBrowsePlaybackAlignedStart(
       seconds,
       resolvePreviewDurationSec(),
-      resolveVisibleDurationSec(),
+      visibleDuration,
       options.allowNegativeTimeline()
     )
+  }
 
   return {
     resolvePreviewTimeScale,

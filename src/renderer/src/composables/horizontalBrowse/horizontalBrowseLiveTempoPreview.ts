@@ -98,19 +98,18 @@ export const applyHorizontalBrowseLiveTempoPreviewTransform = (
   targetRate: number | null | undefined
 ) => {
   const scaleX = resolveHorizontalBrowseLiveTempoPreviewScaleX(displayedRate, targetRate)
-  const transform = Math.abs(scaleX - 1) > 0.0001 ? `scale3d(${scaleX}, 1, 1)` : ''
+  // 归零时保留 transform（恒等 scale3d(1,1,1)）而不移除：移除会让元素从 3D 合成层退回普通层，
+  // 触发图层销毁+重新光栅化。视觉与无变换完全等价，但图层生命周期稳定。
+  // 注：曾试过“稳态撤掉 will-change 以减少常驻合成层”，真机无效（松手卡顿依旧），已回退。
+  // 松手卡顿的真根因是 promote 时超宽合成层的一次性重合成（GPU 合成带宽），见
+  // drafts/intermittent-bugs/horizontal-browse-live-tempo-release-jitter.md。
+  const safeScaleX = Math.abs(scaleX - 1) > 0.0001 ? scaleX : 1
+  const transform = `scale3d(${safeScaleX}, 1, 1)`
 
   for (const scaler of scalers) {
     if (!scaler) continue
     scaler.style.transformOrigin = LIVE_TEMPO_ORIGIN
-    if (transform) {
-      scaler.style.transform = transform
-      scaler.style.willChange = 'transform'
-    } else {
-      scaler.style.transform = ''
-      scaler.style.willChange = ''
-      scaler.style.removeProperty('transform')
-      scaler.style.removeProperty('will-change')
-    }
+    scaler.style.transform = transform
+    scaler.style.willChange = 'transform'
   }
 }

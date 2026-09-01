@@ -1,3 +1,10 @@
+// stable canvas 位图的物理像素宽上限。
+// 权衡：越大 → overscan 越大、拖动/滚动越不容易漏出空波形；越小 → promote 时合成面积越小、
+// 松手卡顿越轻（实测空档与位图面积正相关：11823px→~105ms，8000px→~100ms，4096px→~66ms）。
+// 4096 会让 overscan 小到拖动大波形时漏出空波形（真机确认），故不可用。已恢复为原始值 15360——
+// 那是唯一经长期使用验证过滚动/拖动正常的值；8000 亦属未验证的缩水值，同样有漏空波形风险。
+// 松手卡顿改由分块/瓦片渲染等方向根治，而非牺牲 overscan。
+// 见 drafts/intermittent-bugs/horizontal-browse-live-tempo-release-jitter.md。
 const STABLE_MAX_RENDER_SCALED_WIDTH = 15360
 
 export const resolvePixelSnappedCssSize = (value: number, pixelRatio: number) => {

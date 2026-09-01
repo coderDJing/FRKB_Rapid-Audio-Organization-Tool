@@ -33,10 +33,8 @@ import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/composa
 import {
   applyHorizontalBrowseLiveTempoPreviewTransform,
   resolveHorizontalBrowseLiveTempoPreviewReleasePlan,
-  resolveHorizontalBrowseLiveTempoPreviewVisualGeometry,
   shouldFinishHorizontalBrowseLiveTempoPreviewRelease
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLiveTempoPreview'
-import { recordHorizontalBrowseLiveTempoReleaseDiag } from '@renderer/composables/horizontalBrowse/horizontalBrowseLiveTempoReleaseDiag'
 import { useHorizontalBrowseAudioEditDetailRaw } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseAudioEditDetailRaw'
 import {
   createPioneerDetailRawWaveform,
@@ -850,7 +848,11 @@ const applyLiveTempoPreviewRate = (liveRate: number | null | undefined) => {
   liveTempoPreviewReleasePendingScale = releasePlan.pendingScale
   liveTempoPreviewRateValue = releasePlan.pendingScale
   syncLiveTempoPreviewTransform()
-  if (!applyIncomingPreviewTimeScale(true, { keepCurrentFrame: true })) {
+  const scheduledNewFrame = applyIncomingPreviewTimeScale(true, {
+    keepCurrentFrame: true,
+    forceFrameWhenUnchanged: true
+  })
+  if (!scheduledNewFrame) {
     clearLiveTempoPreviewRelease()
   }
 }
