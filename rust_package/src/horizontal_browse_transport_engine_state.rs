@@ -445,9 +445,17 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
-  pub(super) fn refresh_sync_state(&mut self, allow_phase_alignment: bool) {
+  fn refresh_sync_state_with_multiplier_update(
+    &mut self,
+    allow_phase_alignment: bool,
+    update_bpm_multipliers: bool,
+  ) {
     self.auto_select_leader_from_playback();
-    self.update_multipliers();
+    if update_bpm_multipliers {
+      self.update_multipliers();
+    } else if let Some(leader) = self.leader {
+      self.bpm_multiplier[Self::deck_index(leader)] = 1.0;
+    }
     self.recompute_distances();
     for deck in [DeckId::Top, DeckId::Bottom] {
       let index = Self::deck_index(deck);
@@ -502,8 +510,18 @@ impl HorizontalBrowseTransportEngine {
 
         let leader_effective_bpm = self.effective_bpm_for_deck(leader);
         if let Some(tempo_rate) = {
-          let multiplier = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
-          self.bpm_multiplier[deck_index] = multiplier;
+          let multiplier = if update_bpm_multipliers {
+            let resolved = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
+            self.bpm_multiplier[deck_index] = resolved;
+            resolved
+          } else {
+            let current = self.bpm_multiplier[deck_index];
+            if current.is_finite() && current > 0.0 {
+              current
+            } else {
+              1.0
+            }
+          };
           self
             .original_beat_grid_at_sec(deck, target_current_sec)
             .and_then(|grid| {
@@ -520,7 +538,17 @@ impl HorizontalBrowseTransportEngine {
               }
             })
         } {
-          self.deck_mut(deck).playback_rate = tempo_rate;
+          let current_rate = Self::normalize_playback_rate(self.deck(deck).playback_rate);
+          if (current_rate - tempo_rate).abs() > 0.000001 {
+            // The follower was estimated with its previous rate above. Rebase it before changing
+            // rate so the new value is not applied retroactively to the whole observation window.
+            // Retroactive application accumulates a permanent phase offset during rapid tempo
+            // changes, even though both decks still report the same effective BPM.
+            let target = self.deck_mut(deck);
+            target.current_sec = target_current_sec;
+            target.last_observed_at_ms = now_ms;
+            target.playback_rate = tempo_rate;
+          }
         }
 
         if allow_phase_alignment
@@ -555,6 +583,14 @@ impl HorizontalBrowseTransportEngine {
       }
       self.recompute_distances();
     }
+  }
+
+  pub(super) fn refresh_sync_state(&mut self, allow_phase_alignment: bool) {
+    self.refresh_sync_state_with_multiplier_update(allow_phase_alignment, true);
+  }
+
+  fn refresh_sync_state_preserving_bpm_multipliers(&mut self, allow_phase_alignment: bool) {
+    self.refresh_sync_state_with_multiplier_update(allow_phase_alignment, false);
   }
 
   pub(super) fn refresh(&mut self) {
@@ -668,7 +704,10 @@ impl HorizontalBrowseTransportEngine {
       target.playback_rate = Self::normalize_playback_rate(playback_rate);
     }
     self.sync_master_tempo_state_after_change(deck, was_master_tempo_active, false);
-    self.refresh_sync_state(false);
+    // A tempo control changes speed, not the user's half/double BeatSync interpretation.
+    // Re-resolving the multiplier on every drag event can flip 1x <-> 0.5x at a threshold and
+    // redefine the follower grid without phase alignment.
+    self.refresh_sync_state_preserving_bpm_multipliers(false);
   }
 
   pub(super) fn set_tempo_nudge_playback_rate(

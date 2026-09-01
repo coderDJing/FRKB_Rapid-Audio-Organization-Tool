@@ -4,6 +4,10 @@ import type {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 
 type DeckKey = HorizontalBrowseDeckKey
+type BeatSyncDeckSnapshot = Pick<
+  HorizontalBrowseTransportDeckSnapshot,
+  'syncEnabled' | 'syncLock' | 'leader'
+>
 
 export type HorizontalBrowseBeatSyncDecks = {
   leader: DeckKey
@@ -13,10 +17,10 @@ export type HorizontalBrowseBeatSyncDecks = {
 type ResolveHorizontalBrowseBeatSyncDecksParams = {
   deck: DeckKey
   hasDeckSong: (deck: DeckKey) => boolean
-  resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
+  resolveTransportDeckSnapshot: (deck: DeckKey) => BeatSyncDeckSnapshot
 }
 
-const isFullBeatSyncDeck = (snapshot: HorizontalBrowseTransportDeckSnapshot) =>
+const isFullBeatSyncDeck = (snapshot: BeatSyncDeckSnapshot) =>
   snapshot.syncEnabled && snapshot.syncLock === 'full'
 
 export const resolveOtherHorizontalBrowseDeck = (deck: DeckKey): DeckKey =>

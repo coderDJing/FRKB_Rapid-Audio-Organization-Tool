@@ -424,6 +424,55 @@ fn master_tempo_and_rate_commands_preserve_audio_owned_playhead() {
 }
 
 #[test]
+fn rapid_synced_leader_tempo_changes_preserve_follower_phase_and_multiplier() {
+  let mut engine = setup_full_sync_grid_shift_engine();
+  engine.deck_mut(DeckId::Bottom).bpm = Some(123.0);
+  engine.beatsync(DeckId::Bottom);
+
+  let follower_index = HorizontalBrowseTransportEngine::deck_index(DeckId::Bottom);
+  let initial_multiplier = engine.bpm_multiplier[follower_index];
+  assert!((initial_multiplier - 1.0).abs() < 0.0001);
+
+  for (now_ms, playback_rate) in [
+    (1010.0, 0.94),
+    (1020.0, 0.63),
+    (1030.0, 1.04),
+    (1040.0, 0.57),
+    (1050.0, 0.87),
+  ] {
+    let follower_before =
+      HorizontalBrowseTransportEngine::estimate_current_sec(engine.deck(DeckId::Bottom), now_ms);
+
+    engine.set_playback_rate(DeckId::Top, now_ms, playback_rate);
+
+    assert!((engine.deck(DeckId::Bottom).current_sec - follower_before).abs() < 0.000001);
+    assert!((engine.deck(DeckId::Bottom).last_observed_at_ms - now_ms).abs() < 0.000001);
+    assert!((engine.bpm_multiplier[follower_index] - initial_multiplier).abs() < 0.000001);
+
+    let leader_phase = engine
+      .sync_beat_distance_at_sec(
+        DeckId::Top,
+        HorizontalBrowseTransportEngine::estimate_current_sec(engine.deck(DeckId::Top), now_ms),
+      )
+      .unwrap()
+      .rem_euclid(1.0);
+    let follower_phase = engine
+      .sync_beat_distance_at_sec(
+        DeckId::Bottom,
+        HorizontalBrowseTransportEngine::estimate_current_sec(engine.deck(DeckId::Bottom), now_ms),
+      )
+      .unwrap()
+      .rem_euclid(1.0);
+    let phase_delta = (leader_phase - follower_phase).abs();
+    let circular_phase_delta = phase_delta.min(1.0 - phase_delta);
+    assert!(circular_phase_delta < 0.000001);
+
+    let snapshot = engine.snapshot(now_ms);
+    assert!((snapshot.top.effective_bpm - snapshot.bottom.effective_bpm).abs() < 0.000001);
+  }
+}
+
+#[test]
 fn tempo_nudge_rate_keeps_sync_tempo_only_without_phase_alignment() {
   let mut engine = setup_full_sync_grid_shift_engine();
   let expected_current =

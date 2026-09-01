@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   clampDeckPlaybackRate,
+  resolveDeckTempoControlPlan,
   resolveDeckTargetPlaybackRate,
   shouldApplyDeckTargetBpm
 } from './horizontalBrowseDeckTempo'
@@ -26,5 +27,54 @@ describe('horizontalBrowseDeckTempo', () => {
     expect(clampDeckPlaybackRate(0.1)).toBe(0.25)
     expect(clampDeckPlaybackRate(8)).toBe(4)
     expect(clampDeckPlaybackRate(1.25)).toBe(1.25)
+  })
+
+  it('BeatSync 时拖动从轨 BPM 应改主轨速度，并同步预览两轨速度', () => {
+    const snapshots = {
+      top: {
+        playbackRate: 1,
+        effectiveBpm: 120
+      },
+      bottom: {
+        playbackRate: 120 / 136,
+        effectiveBpm: 120
+      }
+    }
+    const plan = resolveDeckTempoControlPlan({
+      deck: 'bottom',
+      targetBpm: 132,
+      activeSyncDecks: {
+        leader: 'top',
+        follower: 'bottom'
+      },
+      resolveBaseGridBpm: (deck) => (deck === 'top' ? 120 : 136),
+      resolveSnapshot: (deck) => snapshots[deck]
+    })
+
+    expect(plan?.playbackDeck).toBe('top')
+    expect(plan?.playbackRate).toBeCloseTo(1.1, 6)
+    expect(plan?.previewPlaybackRates.top).toBeCloseTo(1.1, 6)
+    expect(plan?.previewPlaybackRates.bottom).toBeCloseTo(132 / 136, 6)
+  })
+
+  it('未启用 BeatSync 时仍只修改当前轨', () => {
+    const plan = resolveDeckTempoControlPlan({
+      deck: 'bottom',
+      targetBpm: 132,
+      activeSyncDecks: null,
+      resolveBaseGridBpm: (deck) => (deck === 'top' ? 120 : 128),
+      resolveSnapshot: () => ({
+        playbackRate: 1,
+        effectiveBpm: 128
+      })
+    })
+
+    expect(plan).toEqual({
+      playbackDeck: 'bottom',
+      playbackRate: 132 / 128,
+      previewPlaybackRates: {
+        bottom: 132 / 128
+      }
+    })
   })
 })

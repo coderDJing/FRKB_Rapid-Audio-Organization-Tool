@@ -2,15 +2,20 @@ import { onUnmounted, reactive, watch } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import { normalizePreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import {
-  resolveDeckTargetPlaybackRate,
+  resolveDeckTempoControlPlan,
   shouldApplyDeckTargetBpm
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseDeckTempo'
+import {
+  resolveHorizontalBrowseBeatSyncDecks,
+  type HorizontalBrowseBeatSyncDecks
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatSyncDecks'
 import type { ISongInfo } from 'src/types/globals'
 
 type TempoControlSnapshot = {
   playbackRate: number
   effectiveBpm: number
   syncEnabled: boolean
+  syncLock: string
   leader: boolean
 }
 
@@ -34,19 +39,21 @@ const LIVE_AUDIO_INTERVAL_MS = 32
 type LiveTempoSession = {
   pendingBpm: number | null
   pendingRate: number | null
+  playbackDeck: HorizontalBrowseDeckKey | null
+  previewDecks: HorizontalBrowseDeckKey[]
   lastSentRate: number | null
   lastSentAtMs: number
   audioTimer: ReturnType<typeof setTimeout> | null
-  releasingSync: boolean
 }
 
 const createLiveTempoSession = (): LiveTempoSession => ({
   pendingBpm: null,
   pendingRate: null,
+  playbackDeck: null,
+  previewDecks: [],
   lastSentRate: null,
   lastSentAtMs: 0,
-  audioTimer: null,
-  releasingSync: false
+  audioTimer: null
 })
 
 export const useHorizontalBrowseDeckTempoControls = (
@@ -76,14 +83,7 @@ export const useHorizontalBrowseDeckTempoControls = (
     return Number.isFinite(songBpm) && songBpm > 0 ? songBpm : 0
   }
 
-  const applyLiveVisualPlaybackRate = (deck: HorizontalBrowseDeckKey, targetBpm: number) => {
-    const nextRate = resolveDeckTargetPlaybackRate(targetBpm, resolveDeckBaseGridBpm(deck))
-    if (nextRate == null) return
-    params.nativeTransport.setLiveClockPlaybackRate(deck, nextRate)
-    params.onLiveVisualPlaybackRate?.(deck, nextRate)
-  }
-
-  const clearLiveVisualPlaybackRate = (deck: HorizontalBrowseDeckKey) => {
+  const clearDeckLivePreview = (deck: HorizontalBrowseDeckKey) => {
     params.nativeTransport.setLiveClockPlaybackRate(deck, null)
     params.onLiveVisualPlaybackRate?.(deck, null)
   }
@@ -95,45 +95,83 @@ export const useHorizontalBrowseDeckTempoControls = (
     session.audioTimer = null
   }
 
+  const resolveActiveBeatSyncDecks = (
+    deck: HorizontalBrowseDeckKey
+  ): HorizontalBrowseBeatSyncDecks | null =>
+    resolveHorizontalBrowseBeatSyncDecks({
+      deck,
+      hasDeckSong: (targetDeck) => Boolean(params.resolveDeckSong(targetDeck)),
+      resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
+    })
+
+  const resolveTempoControlPlan = (deck: HorizontalBrowseDeckKey, targetBpm: number) =>
+    resolveDeckTempoControlPlan({
+      deck,
+      targetBpm,
+      activeSyncDecks: resolveActiveBeatSyncDecks(deck),
+      resolveBaseGridBpm: resolveDeckBaseGridBpm,
+      resolveSnapshot: params.resolveTransportDeckSnapshot
+    })
+
+  const applyLiveTempoPreview = (
+    deck: HorizontalBrowseDeckKey,
+    previewPlaybackRates: Partial<Record<HorizontalBrowseDeckKey, number>>
+  ) => {
+    const session = liveTempoSessions[deck]
+    const nextPreviewDecks = (['top', 'bottom'] as const).filter(
+      (targetDeck) => previewPlaybackRates[targetDeck] != null
+    )
+    session.previewDecks
+      .filter((targetDeck) => !nextPreviewDecks.includes(targetDeck))
+      .forEach(clearDeckLivePreview)
+    nextPreviewDecks.forEach((targetDeck) => {
+      const playbackRate = previewPlaybackRates[targetDeck]
+      if (playbackRate == null) return
+      params.nativeTransport.setLiveClockPlaybackRate(targetDeck, playbackRate)
+      params.onLiveVisualPlaybackRate?.(targetDeck, playbackRate)
+    })
+    session.previewDecks = nextPreviewDecks
+  }
+
+  const clearSessionLivePreview = (deck: HorizontalBrowseDeckKey) => {
+    const session = liveTempoSessions[deck]
+    session.previewDecks.forEach(clearDeckLivePreview)
+    session.previewDecks = []
+  }
+
   const cancelDeckLiveTargetBpm = (deck: HorizontalBrowseDeckKey) => {
     const session = liveTempoSessions[deck]
     session.pendingBpm = null
     session.pendingRate = null
+    session.playbackDeck = null
     session.lastSentRate = null
     session.lastSentAtMs = 0
-    session.releasingSync = false
     clearLiveAudioTimer(deck)
-    clearLiveVisualPlaybackRate(deck)
+    clearSessionLivePreview(deck)
   }
 
   const setDeckTargetBpm = async (deck: HorizontalBrowseDeckKey, targetBpm: number) => {
     if (!params.resolveDeckSong(deck)) return
 
-    let snapshot = params.resolveTransportDeckSnapshot(deck)
-    if (snapshot.syncEnabled && !snapshot.leader) {
-      await params.nativeTransport.setSyncEnabled(deck, false)
-      snapshot = params.resolveTransportDeckSnapshot(deck)
-    }
-
-    const baseGridBpm = resolveDeckBaseGridBpm(deck)
-    const nextPlaybackRate = resolveDeckTargetPlaybackRate(targetBpm, baseGridBpm)
-    if (nextPlaybackRate == null) return
-
     const normalizedTargetBpm = normalizePreviewBpm(targetBpm)
+    const plan = resolveTempoControlPlan(deck, normalizedTargetBpm)
+    if (!plan) return
+    const snapshot = params.resolveTransportDeckSnapshot(plan.playbackDeck)
     const currentEffectiveBpm = Number(snapshot.effectiveBpm) || 0
     if (!shouldApplyDeckTargetBpm(currentEffectiveBpm, normalizedTargetBpm)) {
       const currentPlaybackRate = Number(snapshot.playbackRate) || 1
-      if (Math.abs(currentPlaybackRate - nextPlaybackRate) <= RATE_EPSILON) return
+      if (Math.abs(currentPlaybackRate - plan.playbackRate) <= RATE_EPSILON) return
     }
 
-    await params.nativeTransport.setPlaybackRate(deck, nextPlaybackRate)
+    await params.nativeTransport.setPlaybackRate(plan.playbackDeck, plan.playbackRate)
   }
 
   const sendLivePlaybackRate = (deck: HorizontalBrowseDeckKey, playbackRate: number) => {
     const session = liveTempoSessions[deck]
+    const playbackDeck = session.playbackDeck ?? deck
     session.lastSentRate = playbackRate
     session.lastSentAtMs = performance.now()
-    params.nativeTransport.setPlaybackRateLive(deck, playbackRate)
+    params.nativeTransport.setPlaybackRateLive(playbackDeck, playbackRate)
   }
 
   const flushLiveAudio = (deck: HorizontalBrowseDeckKey) => {
@@ -169,27 +207,19 @@ export const useHorizontalBrowseDeckTempoControls = (
       return
     }
     const normalizedTargetBpm = normalizePreviewBpm(targetBpm)
-    const nextRate = resolveDeckTargetPlaybackRate(
-      normalizedTargetBpm,
-      resolveDeckBaseGridBpm(deck)
-    )
-    if (nextRate == null) return
-    applyLiveVisualPlaybackRate(deck, normalizedTargetBpm)
+    const plan = resolveTempoControlPlan(deck, normalizedTargetBpm)
+    if (!plan) return
     const session = liveTempoSessions[deck]
-    session.pendingBpm = normalizedTargetBpm
-    session.pendingRate = nextRate
-
-    const snapshot = params.resolveTransportDeckSnapshot(deck)
-    if (snapshot.syncEnabled && !snapshot.leader && !session.releasingSync) {
-      session.releasingSync = true
-      void params.nativeTransport.setSyncEnabled(deck, false).finally(() => {
-        session.releasingSync = false
-        if (session.pendingRate != null) queueLiveAudio(deck, session.pendingRate)
-      })
-      return
+    if (session.playbackDeck !== plan.playbackDeck) {
+      clearLiveAudioTimer(deck)
+      session.lastSentRate = null
+      session.lastSentAtMs = 0
     }
-    if (session.releasingSync) return
-    queueLiveAudio(deck, nextRate)
+    session.playbackDeck = plan.playbackDeck
+    session.pendingBpm = normalizedTargetBpm
+    session.pendingRate = plan.playbackRate
+    applyLiveTempoPreview(deck, plan.previewPlaybackRates)
+    queueLiveAudio(deck, plan.playbackRate)
   }
 
   const commitDeckTargetBpm = async (deck: HorizontalBrowseDeckKey, targetBpm: number) => {
@@ -201,14 +231,22 @@ export const useHorizontalBrowseDeckTempoControls = (
     session.pendingBpm = normalizePreviewBpm(targetBpm)
     session.pendingRate = null
     clearLiveAudioTimer(deck)
+    // 先撤掉本地时钟覆盖，使提交返回的双轨快照可以同时落地；CSS 预览在快照
+    // 到达后再释放，避免旧密度帧提前弹回。
+    session.previewDecks.forEach((targetDeck) => {
+      params.nativeTransport.setLiveClockPlaybackRate(targetDeck, null)
+    })
     try {
       await setDeckTargetBpm(deck, session.pendingBpm)
     } finally {
       session.pendingBpm = null
+      session.playbackDeck = null
       session.lastSentRate = null
       session.lastSentAtMs = 0
-      session.releasingSync = false
-      clearLiveVisualPlaybackRate(deck)
+      session.previewDecks.forEach((targetDeck) => {
+        params.onLiveVisualPlaybackRate?.(targetDeck, null)
+      })
+      session.previewDecks = []
     }
   }
 
