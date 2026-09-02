@@ -734,13 +734,13 @@ export async function buildLibraryMergePlan(params: {
   if (params.appVersion && !isManifestCompatible(sourceManifest, params.appVersion)) {
     throw new LibraryMergeError(
       'SOURCE_VERSION_INCOMPATIBLE',
-      '来源库版本不受当前 FRKB 支持，请先升级 FRKB 后再合并'
+      '来源库版本不受当前软件支持，请先升级 Track Studio 后再合并'
     )
   }
   if (params.appVersion && !isManifestCompatible(targetManifest, params.appVersion)) {
     throw new LibraryMergeError(
       'TARGET_VERSION_INCOMPATIBLE',
-      '当前库版本不受当前 FRKB 支持，请先升级 FRKB 后再合并'
+      '当前库版本不受当前软件支持，请先升级 Track Studio 后再合并'
     )
   }
   // Source may be external / untrusted — quick_check + FK. Target is already open in the
@@ -757,7 +757,7 @@ export async function buildLibraryMergePlan(params: {
   if (sourceSchemaVersion !== targetSchemaVersion) {
     throw new LibraryMergeError(
       'SOURCE_SCHEMA_UNSUPPORTED',
-      `来源库与当前库的版本不一致（来源 ${sourceSchemaVersion}，当前 ${targetSchemaVersion}）。请先用当前 FRKB 打开来源库完成升级后再合并`
+      `来源库与当前库的版本不一致（来源 ${sourceSchemaVersion}，当前 ${targetSchemaVersion}）。请先用当前版本打开来源库完成升级后再合并`
     )
   }
   requireKnownTables(params.sourceDb)

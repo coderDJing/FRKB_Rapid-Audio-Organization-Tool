@@ -5,17 +5,17 @@
     "skip": "Close",
     "progress": "{current} / {total}",
     "settingTitle": "User guide",
-    "settingHint": "Hidden if you already know FRKB. Rekordbox users see differences only. Can be changed anytime.",
+    "settingHint": "Hidden if you already know Track Studio. Rekordbox users see differences only. Can be changed anytime.",
     "identity": {
-      "welcome": "Welcome to FRKB",
-      "title": "Select how you use FRKB",
+      "welcome": "Welcome to Track Studio",
+      "title": "Select how you use Track Studio",
       "line1": "This controls whether the guide is shown and how it is worded.",
       "line2": "You can change this in Settings.",
       "rekordbox": "I use Rekordbox",
       "rekordboxDesc": "Explain differences from Rekordbox. Shared concepts are not repeated.",
       "general": "I do not use Rekordbox",
       "generalDesc": "Explain browsing, playback, and import.",
-      "veteran": "I already know FRKB",
+      "veteran": "I already know Track Studio",
       "veteranDesc": "Do not show the guide. You can turn it back on in Settings."
     },
     "browser": {

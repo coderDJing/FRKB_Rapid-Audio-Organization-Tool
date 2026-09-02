@@ -66,8 +66,8 @@
     "currentLibraryPath": "当前音乐库所在路径",
     "currentLibraryPathHint": "这里显示当前正在使用的音乐库根目录，方便确认和排查。",
     "openCurrentLibraryInExplorer": "在资源浏览器中打开",
-    "explorerContextMenuLabel": "在 FRKB 中播放",
-    "enableExplorerContextMenu": "资源管理器右键菜单“在 FRKB 中播放”",
+    "explorerContextMenuLabel": "在 Track Studio 中播放",
+    "enableExplorerContextMenu": "资源管理器右键菜单“在 Track Studio 中播放”",
     "clearDirtyData": {
       "title": "清理库分析与网格缓存（仅开发/预发布）",
       "desc": "保留歌曲、歌单与库树、指纹、设置、回收站记录；清空调性、BPM、首拍、小节线、波形缓存及 Mixtape 自动录制相关缓存。",
@@ -93,7 +93,7 @@
       "partialFailedInstalledRoot": "运行时目录仍未删除，可能还有文件被当前进程占用。",
       "partialFailedDownloadCache": "下载缓存仍未删除。",
       "partialFailedBundledRuntimes": "仍有 {count} 个内置 runtime* 目录未删除。",
-      "partialFailedHint": "建议先重启 FRKB 后再重试；若仍失败，再检查是否有进程占用相关文件。",
+      "partialFailedHint": "建议先重启 Track Studio 后再重试；若仍失败，再检查是否有进程占用相关文件。",
       "failed": "清除本地分析运行时失败"
     },
     "ultraStemModel": {

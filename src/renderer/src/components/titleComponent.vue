@@ -16,6 +16,7 @@ import {
   WINDOW_SCREENSHOT_SHORTCUT,
   isWindowScreenshotFeatureAvailable
 } from '@shared/windowScreenshotFeature'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 
 const chromeMaximize = chromeMaximizeAsset
 const chromeRestore = chromeRestoreAsset
@@ -62,7 +63,7 @@ const resolveChannel = (action: 'maximize' | 'minimize' | 'close') => {
 }
 const titleMeta = computed(() => {
   const custom = String(props.titleText || '').trim()
-  const title = custom || `FRKB - ${t('app.name')}`
+  const title = custom || `${PRODUCT_DISPLAY_NAME} - ${t('app.name')}`
   const matched = title.match(/^(.*?)(?:\s*)\[dev:([^\]]+)\]\s*$/i)
   if (!matched) {
     return {

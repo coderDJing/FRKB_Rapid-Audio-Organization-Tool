@@ -5,9 +5,9 @@
     "skip": "关闭",
     "progress": "{current} / {total}",
     "settingTitle": "用户指引",
-    "settingHint": "熟悉 FRKB 则不显示。Rekordbox 用户按差异说明。可随时更改。",
+    "settingHint": "熟悉 Track Studio 则不显示。Rekordbox 用户按差异说明。可随时更改。",
     "identity": {
-      "welcome": "欢迎使用 FRKB",
+      "welcome": "欢迎使用 Track Studio",
       "title": "请选择使用方式",
       "line1": "将决定是否显示指引，以及说明方式。",
       "line2": "可在设置中更改。",
@@ -15,7 +15,7 @@
       "rekordboxDesc": "按与 Rekordbox 的差异说明，不重复相同概念。",
       "general": "我不是 Rekordbox 用户",
       "generalDesc": "说明浏览、播放与导入等基本操作。",
-      "veteran": "我已熟悉 FRKB",
+      "veteran": "我已熟悉 Track Studio",
       "veteranDesc": "不显示指引。可在设置中重新开启。"
     },
     "browser": {

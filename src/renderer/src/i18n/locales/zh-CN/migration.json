@@ -5,8 +5,8 @@
     "moveLibrary": "移动音乐库",
     "mergePreparing": "正在准备…",
     "mergeFiles": "个文件",
-    "mergeLockedHint": "合并期间当前库已锁定，请勿关闭 FRKB。",
-    "mergeCuratedLockedHint": "合并期间当前库已锁定，请勿关闭 FRKB。",
+    "mergeLockedHint": "合并期间当前库已锁定，请勿关闭 Track Studio。",
+    "mergeCuratedLockedHint": "合并期间当前库已锁定，请勿关闭 Track Studio。",
     "mergeDialog": {
       "title": "合并音乐库",
       "intro": "把另一份音乐库合并到当前库。",
@@ -18,7 +18,7 @@
       "playlist": "两边都保留；来源同名歌单会加 “(from …)” 后缀。",
       "startSetup": "开始设置",
       "sourceTitle": "选择来源音乐库",
-      "sourceInstruction": "请选择来源库里的 FRKB.database.frkbdb。",
+      "sourceInstruction": "请选择来源库里的音乐库声明文件（.frkbdb）。",
       "selectSource": "选择来源音乐库",
       "sourceSelected": "已选择",
       "sourceRequired": "请先选择来源音乐库。",
@@ -27,7 +27,7 @@
       "sourceIssues": {
         "invalid-selection": {
           "title": "请选择音乐库文件",
-          "description": "请选择来源库根目录中的 FRKB.database.frkbdb。"
+          "description": "请选择来源库根目录中的音乐库声明文件（.frkbdb）。"
         },
         "same-library": {
           "title": "不能合并到自己",
@@ -39,7 +39,7 @@
         },
         "version-incompatible": {
           "title": "来源库版本过旧",
-          "description": "请升级 FRKB，并用新版本打开来源库后再合并。"
+          "description": "请升级 Track Studio，并用新版本打开来源库后再合并。"
         },
         "unregistered-data": {
           "title": "来源库含未登记数据",
@@ -47,7 +47,7 @@
         },
         "invalid-library": {
           "title": "来源库无法安全合并",
-          "description": "请确认是完整、未手动改动的音乐库，或先用 FRKB 打开检查。"
+          "description": "请确认是完整、未手动改动的音乐库，或先用 Track Studio 打开检查。"
         },
         "empty-curated-library": {
           "title": "来源精选库为空",
@@ -67,7 +67,7 @@
         },
         "unavailable": {
           "title": "暂时无法使用此来源库",
-          "description": "请重新选择；若仍失败，请确认两个库都能在 FRKB 中打开。"
+          "description": "请重新选择；若仍失败，请确认两个库都能在 Track Studio 中打开。"
         }
       },
       "modeTitle": "来源库",
@@ -116,7 +116,7 @@
       "playlist": "同名文件夹会合并；同名歌单可在设置里选择保留两个或并入现有歌单。",
       "startSetup": "开始设置",
       "sourceTitle": "选择来源音乐库",
-      "sourceInstruction": "请选择来源库里的 FRKB.database.frkbdb。",
+      "sourceInstruction": "请选择来源库里的音乐库声明文件（.frkbdb）。",
       "selectSource": "选择来源音乐库",
       "sourceSelected": "已选择",
       "sourceRequired": "请先选择来源音乐库。",
@@ -130,7 +130,7 @@
       "sourceIssues": {
         "invalid-selection": {
           "title": "请选择音乐库文件",
-          "description": "请选择来源库根目录中的 FRKB.database.frkbdb。"
+          "description": "请选择来源库根目录中的音乐库声明文件（.frkbdb）。"
         },
         "same-library": {
           "title": "不能合并到自己",
@@ -142,7 +142,7 @@
         },
         "version-incompatible": {
           "title": "来源库版本过旧",
-          "description": "请升级 FRKB，并用新版本打开来源库后再合并。"
+          "description": "请升级 Track Studio，并用新版本打开来源库后再合并。"
         },
         "unregistered-data": {
           "title": "来源库含未登记数据",
@@ -150,7 +150,7 @@
         },
         "invalid-library": {
           "title": "来源库无法安全合并",
-          "description": "请确认是完整、未手动改动的音乐库，或先用 FRKB 打开检查。"
+          "description": "请确认是完整、未手动改动的音乐库，或先用 Track Studio 打开检查。"
         },
         "empty-curated-library": {
           "title": "来源精选库为空",
@@ -170,7 +170,7 @@
         },
         "unavailable": {
           "title": "暂时无法使用此来源库",
-          "description": "请重新选择；若仍失败，请确认两个库都能在 FRKB 中打开。"
+          "description": "请重新选择；若仍失败，请确认两个库都能在 Track Studio 中打开。"
         }
       },
       "modeTitle": "来源精选库",
@@ -250,7 +250,7 @@
       "currentPath": "当前路径：{path}",
       "newPath": "新路径：{path}",
       "sizeSummary": "占用体积：{size}（{count} 个文件）",
-      "crossVolume": "目标在另一块磁盘上，需要先复制再删除，可能较久。请保持 FRKB 打开直到完成。",
+      "crossVolume": "目标在另一块磁盘上，需要先复制再删除，可能较久。请保持 Track Studio 打开直到完成。",
       "sameVolume": "目标与当前库在同一磁盘，将直接搬过去。",
       "confirmAction": "开始移动",
       "checking": "正在检查目标位置…",
@@ -294,7 +294,7 @@
     "moveHint": {
       "prompt": "上次移动尚未完成。继续将从中断处接着拷贝；放弃会清理不完整的新目录，并继续使用旧位置。",
       "abortOnly": "旧音乐库已不可访问。放弃后会清理不完整的新目录，然后重新选择音乐库。",
-      "locked": "移动期间请勿关闭 FRKB。中断后下次启动可以继续或放弃。",
+      "locked": "移动期间请勿关闭 Track Studio。中断后下次启动可以继续或放弃。",
       "sourceCleanupFailed": "请手动删除旧目录：",
       "enterLibrary": "进入音乐库",
       "continue": "继续移动",
@@ -304,7 +304,7 @@
     "legacyTitle": "音乐库升级",
     "legacyInProgress": "检测到上次升级未完成，将重新执行。",
     "legacyRequired": "检测到旧音乐库，需要升级后继续使用。",
-    "legacyActions": "升级会整理音乐库数据，升级后的音乐库不兼容旧版本 FRKB，请勿在旧版本中打开。若音乐库较大可能耗时较久，请勿强制退出。",
+    "legacyActions": "升级会整理音乐库数据，升级后的音乐库不兼容旧版本 Track Studio，请勿在旧版本中打开。若音乐库较大可能耗时较久，请勿强制退出。",
     "legacyConfirm": "开始升级",
     "legacyExit": "退出"
   }

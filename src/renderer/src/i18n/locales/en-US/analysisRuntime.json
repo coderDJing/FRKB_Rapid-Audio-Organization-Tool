@@ -2,7 +2,7 @@
   "analysisRuntime": {
     "promptTitle": "An analysis runtime component is available",
     "promptBody": "This computer supports using {title} to accelerate BPM/grid analysis, dual-track horizontal browse, and stem separation. You can download this component ({size}) now. Until it is installed, those features stay unavailable.",
-    "promptHint": "If GitHub is unreachable from the current network, try enabling a VPN or make sure the system proxy / PAC is applied to FRKB.",
+    "promptHint": "If GitHub is unreachable from the current network, try enabling a VPN or make sure the system proxy / PAC is applied to Track Studio.",
     "downloadNow": "Download now",
     "downloadLater": "Later",
     "downloadTitle": "Downloading {title}",

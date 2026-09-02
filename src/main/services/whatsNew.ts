@@ -6,10 +6,10 @@ import whatsNewWindow, { type WhatsNewReleasePayload } from '../window/whatsNewW
 import type { ISettingConfig } from '../../types/globals'
 import { persistSettingConfig } from '../settingsPersistence'
 import { fetchWithSystemProxy } from '../fetchWithSystemProxy'
+import { GITHUB_RELEASES_LATEST_API_URL, buildProductUserAgent } from '../../shared/productBrand'
 import { isLibrarySetupActive } from '../librarySetupState'
 
-const WHATS_NEW_RELEASE_URL =
-  'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+const WHATS_NEW_RELEASE_URL = GITHUB_RELEASES_LATEST_API_URL
 
 type WhatsNewStatePatch = Partial<
   Pick<ISettingConfig, 'lastSeenWhatsNewVersion' | 'pendingWhatsNewForVersion'>
@@ -40,7 +40,7 @@ async function fetchLatestStableRelease(
     const res = await fetchWithSystemProxy(WHATS_NEW_RELEASE_URL, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': `FRKB/${currentVersion}`
+        'User-Agent': buildProductUserAgent(currentVersion)
       }
     })
     if (!res.ok) {

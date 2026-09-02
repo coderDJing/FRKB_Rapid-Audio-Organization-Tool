@@ -43,6 +43,7 @@ import {
   hasWindowsContextMenu,
   removeWindowsContextMenu
 } from './platform/windowsContextMenu'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 import { loadLayoutConfigSync } from './layoutConfig'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
 import {
@@ -630,9 +631,9 @@ app.whenReady().then(async () => {
   } catch (error) {
     log.error('[previewProtocol] register failed', error)
   }
-  // 设置应用显示名称为 FRKB（影响菜单栏左上角 App 菜单标题）
+  // 设置应用显示名称（影响菜单栏左上角 App 菜单标题）；不改变 appId / userData
   try {
-    app.setName('FRKB')
+    app.setName(PRODUCT_DISPLAY_NAME)
   } catch {}
   // 启动即按设置应用主题
   applyThemeFromSettings()

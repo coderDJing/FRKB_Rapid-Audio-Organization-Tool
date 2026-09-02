@@ -1,6 +1,7 @@
 import { app, BrowserWindow, nativeTheme } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import path = require('path')
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 import store from '../store'
 
 type StartupStage =
@@ -20,8 +21,8 @@ type StartupState = {
 
 const startupMessages: Record<StartupStage, { zhCN: string; enUS: string }> = {
   starting: {
-    zhCN: '正在启动 FRKB…',
-    enUS: 'Starting FRKB…'
+    zhCN: '正在启动 Track Studio…',
+    enUS: 'Starting Track Studio…'
   },
   'checking-library': {
     zhCN: '正在检查音乐库…',
@@ -84,7 +85,7 @@ const createWindow = async (): Promise<void> => {
     frame: false,
     show: false,
     backgroundColor: resolveState().theme === 'light' ? '#f7f7f7' : '#181818',
-    title: 'FRKB',
+    title: PRODUCT_DISPLAY_NAME,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index'),
       sandbox: false,

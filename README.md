@@ -1,12 +1,12 @@
 <p align="center">
-  <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" alt="FRKB" />
-  <h2 align="center">FRKB</h2>
+  <img width="100px" src="https://github.com/coderDJing/Track-Studio/blob/main/build/icon.png?raw=true" alt="Track Studio" />
+  <h2 align="center">Track Studio</h2>
   <p align="center">Rapid Audio Organization Tool</p>
 </p>
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/main)
-[![GitHub last commit](https://img.shields.io/github/last-commit/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/main)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/coderDJing/Track-Studio)](https://github.com/coderDJing/Track-Studio/releases/latest)
+[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/Track-Studio)](https://github.com/coderDJing/Track-Studio/commits/main)
+[![GitHub last commit](https://img.shields.io/github/last-commit/coderDJing/Track-Studio)](https://github.com/coderDJing/Track-Studio/commits/main)
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos)
 
@@ -16,46 +16,52 @@
   <a href="/readme/README_CN.md">简体中文</a>
 </p>
 
-## FRKB
+## Track Studio
 
 <p align="center">
-  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot.png?raw=true">
+  <img alt="Track Studio in action" src="https://github.com/coderDJing/Track-Studio/blob/main/screenshot/softwareScreenshot.png?raw=true">
 </p>
 
 ## What It Is
 
-**FRKB** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, SET playlist preparation, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, section and energy analysis, library merge, dual-deck auditioning, recording, metadata cleanup, conversion, similar-track discovery, cloud fingerprint sync, single-track stem separation, and Mixtape preparation in one Windows/macOS app.
+**Track Studio** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, SET playlist preparation, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, section and energy analysis, library merge, dual-deck auditioning, recording, metadata cleanup, conversion, similar-track discovery, cloud fingerprint sync, single-track stem separation, and Mixtape preparation in one Windows/macOS app.
 
-FRKB is built around a simple rule: the structure you see in the app should match the actual music files on disk. It is not just a reference manager. When you organize, move, export, deduplicate, or restore tracks, the file system stays aligned with your library.
+Track Studio is built around a simple rule: the structure you see in the app should match the actual music files on disk. It is not just a reference manager. When you organize, move, export, deduplicate, or restore tracks, the file system stays aligned with your library.
+
+## Rename from the previous name
+
+This project used to be called **FRKB**. The product is now **Track Studio**, and the GitHub repository is [Track-Studio](https://github.com/coderDJing/Track-Studio).
+
+Existing installs can keep using in-app update. The updater still replaces the same installation (same app identity), so your settings and music library stay in place. Desktop and Start Menu shortcuts are recreated as **Track Studio**. The Windows install folder and executable stay `FRKB` on purpose, so the new build can overwrite the old one instead of installing side by side.
 
 ## Download
 
-1. Download FRKB from the website or GitHub Releases.
-   - Website: https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/
-   - Releases: https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases
+1. Download Track Studio from the website or GitHub Releases.
+   - Website: https://coderDJing.github.io/Track-Studio/
+   - Releases: https://github.com/coderDJing/Track-Studio/releases
 2. Pick the Windows or macOS installer.
-3. Install and launch FRKB from the desktop shortcut or application launcher.
+3. Install and launch Track Studio from the desktop shortcut or application launcher.
 
 ## System Requirements
 
 - Windows 10 or later (x64)
 - macOS 12 or later
 
-FRKB does not provide an official Linux release.
+Track Studio does not provide an official Linux release.
 
 ## Feature Overview
 
 ### Library Organization
 
-- **Real file management**: FRKB manages the audio files themselves, so playlists and library folders stay reflected on disk.
+- **Real file management**: Track Studio manages the audio files themselves, so playlists and library folders stay reflected on disk.
 - **Filter and Curated libraries**: A two-stage DJ workflow for fast triage and long-term selection.
 - **SET playlists**: Prepare performance sets as mapping-based playlists that support duplicate entries, stable track indices, drag reordering, and deletion protection for referenced source tracks.
 - **SET duration**: Estimate SET length in playlist order, using Hot Cues as start and end points when available.
-- **Merge FRKB libraries**: Merge another FRKB library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library. Integrity and disk space are checked first, and same-name playlists are kept on both sides. Curated libraries can also be merged separately.
-- **Move FRKB library**: Relocate the current FRKB library to a new folder, including same-disk and cross-disk transfers with resume. Settings can also open the library folder in Explorer or Finder.
+- **Merge Track Studio libraries**: Merge another Track Studio library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library. Integrity and disk space are checked first, and same-name playlists are kept on both sides. Curated libraries can also be merged separately.
+- **Move Track Studio library**: Relocate the current Track Studio library to a new folder, including same-disk and cross-disk transfers with resume. Settings can also open the library folder in Explorer or Finder.
 - **Playlist tree sorting**: Sort the playlist tree by name or track count, or switch back to manual order.
 - **Drag-and-drop import and movement**: Import files or folders, move tracks between playlists, and drag copies out to Explorer/Finder with Ctrl/Option.
-- **Safe recycle bin**: Deleted tracks and deduplicated items go to FRKB's recycle bin and can be restored to their original playlists.
+- **Safe recycle bin**: Deleted tracks and deduplicated items go to Track Studio's recycle bin and can be restored to their original playlists.
 - **Playlist cleanup tools**: Clear playlists with visible progress, batch rename playlist tracks, clean missing external-library records, and keep selection counts visible before bulk operations.
 - **Portable library state**: Library data can be moved with the music collection for use across devices.
 
@@ -105,19 +111,19 @@ FRKB does not provide an official Linux release.
 - **Dedicated recording area**: Recordings are stored in a separate Recording Library instead of being mixed into the normal organization flow.
 - **High-quality WAV output**: Recordings are saved as uncompressed WAV with the current output device sample rate.
 - **Live duration display**: The recording control shows millisecond-level duration while recording.
-- **Post-recording summary**: After stopping, FRKB shows the saved file name, format, duration, and path.
+- **Post-recording summary**: After stopping, Track Studio shows the saved file name, format, duration, and path.
 - **Analysis isolation**: Recording-library files are excluded from normal background analysis candidates so fresh recordings do not steal resources from library work.
 
 ### Rekordbox And Pioneer Library Integration
 
 - **Local Rekordbox database browsing**: Read Rekordbox playlists directly without manually exporting XML first.
-- **Cue and Loop support**: Read Hot Cues, Memory Cues, and Loop data from Rekordbox/Pioneer sources and preserve them when copying into local FRKB libraries.
+- **Cue and Loop support**: Read Hot Cues, Memory Cues, and Loop data from Rekordbox/Pioneer sources and preserve them when copying into local Track Studio libraries.
 - **Rekordbox playlist operations**: Browse playlists, reorder tracks, create or move playlist nodes where supported, and export XML for Pioneer workflows.
 - **Pioneer USB support**: Read Device Library and OneLibrary USB structures, including playlist trees, waveform previews, multi-drive identity, and track playback.
 - **External-library context menus**: Use familiar right-click actions on Rekordbox and Pioneer rows, including copying to Filter or Curated libraries.
 - **Keyboard multi-selection**: Select multiple songs in Rekordbox/Pioneer lists with keyboard-style range selection.
 - **Curated artist import**: Import curated artist data from Rekordbox and Pioneer USB libraries to keep selection tags useful across sources.
-- **Read-only analysis for external tracks**: Analyze BPM, beat grid, energy, and sections for Rekordbox, Pioneer USB, and ordinary external tracks. Results stay inside FRKB and are not written back to the source library.
+- **Read-only analysis for external tracks**: Analyze BPM, beat grid, energy, and sections for Rekordbox, Pioneer USB, and ordinary external tracks. Results stay inside Track Studio and are not written back to the source library.
 - **Missing-file handling**: Missing source files are clearly marked, blocked from playback, and can be cleaned from Rekordbox playlist records when appropriate.
 
 ### Mixtape And Stem Workflow
@@ -166,13 +172,13 @@ FRKB does not provide an official Linux release.
 - **Song filtering**: Filter by title, artist, album, duration, format, BPM, date added, and more, with optional persistence after restart. Date-added supports a between-date range.
 - **NetEase Cloud search**: Search the selected track on NetEase Cloud Music from the context menu.
 - **Similar tracks query**: Query multiple sources for tracks with a similar vibe, launch recommendations from library menus, and hide tracks you no longer want suggested.
-- **Cloud fingerprint sync**: Sync local SHA256 fingerprints with the FRKB cloud backend, including diff analysis, paginated pulls, batched uploads, quotas, rate limiting, clear summaries, and a minimizable progress window.
+- **Cloud fingerprint sync**: Sync local SHA256 fingerprints with the Track Studio cloud backend, including diff analysis, paginated pulls, batched uploads, quotas, rate limiting, clear summaries, and a minimizable progress window.
 - **Curated artist sync**: Split and link multi-artist tracks and sync curated artist data across devices.
 - **Internationalization**: Built-in Simplified Chinese and English language packs.
 
 ## Project Background
 
-As a DJ, I need to organize large batches of music files quickly. Many existing tools either require too much mouse work, use shortcuts that are not comfortable for long sessions, or only organize references while leaving the actual folders messy. FRKB exists to make library work faster, more physical, and less fragile: sort the music, hear the music, move the real files, and keep the structure usable outside the app.
+As a DJ, I need to organize large batches of music files quickly. Many existing tools either require too much mouse work, use shortcuts that are not comfortable for long sessions, or only organize references while leaving the actual folders messy. Track Studio exists to make library work faster, more physical, and less fragile: sort the music, hear the music, move the real files, and keep the structure usable outside the app.
 
 ## Development
 
@@ -212,7 +218,7 @@ Issues, feature suggestions, and pull requests are welcome.
 
 ## License
 
-FRKB project code written by CoderDJing is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) for noncommercial use. The current packaged application includes GPL/LGPL third-party components; see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Track Studio project code written by CoderDJing is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) for noncommercial use. The current packaged application includes GPL/LGPL third-party components; see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Backlog
 

@@ -22,6 +22,12 @@ import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 import emitter from './utils/mitt'
 import { replaceExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import {
+  PRODUCT_DISPLAY_NAME,
+  GITHUB_REPO_URL,
+  GITHUB_PAGES_URL,
+  GITHUB_THIRD_PARTY_NOTICES_URL
+} from '@shared/productBrand'
 import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
@@ -79,7 +85,9 @@ const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
 const { stageMainWindowPlaybackHandoff } = useMainWindowPlaybackHandoff(runtime)
 const handleLayoutConfigReaded = createLayoutConfigReadHandler(runtime)
 useMainWindowBrowseModeState(runtime)
-const mainWindowTitleText = computed(() => formatWindowTitle(`FRKB - ${t('app.name')}`))
+const mainWindowTitleText = computed(() =>
+  formatWindowTitle(`${PRODUCT_DISPLAY_NAME} - ${t('app.name')}`)
+)
 watch(
   mainWindowTitleText,
   (title) => {
@@ -449,23 +457,14 @@ const openDialog = async (item: string) => {
     })
   }
   if (item === 'menu.thirdPartyNotices') {
-    window.electron.ipcRenderer.send(
-      'openLocalBrowser',
-      'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/THIRD_PARTY_NOTICES.md'
-    )
+    window.electron.ipcRenderer.send('openLocalBrowser', GITHUB_THIRD_PARTY_NOTICES_URL)
     return
   }
   if (item === 'menu.visitGithub') {
-    window.electron.ipcRenderer.send(
-      'openLocalBrowser',
-      'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool'
-    )
+    window.electron.ipcRenderer.send('openLocalBrowser', GITHUB_REPO_URL)
   }
   if (item === 'menu.visitWebsite') {
-    window.electron.ipcRenderer.send(
-      'openLocalBrowser',
-      'https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/'
-    )
+    window.electron.ipcRenderer.send('openLocalBrowser', GITHUB_PAGES_URL)
   }
   if (item === 'menu.checkUpdate') {
     window.electron.ipcRenderer.send('checkForUpdates')

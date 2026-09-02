@@ -7,6 +7,7 @@ import { ProxyAgent, fetch as undiciFetch, type RequestInit as UndiciRequestInit
 import { IMusicBrainzAcoustIdPayload, IMusicBrainzMatch } from '../../types/globals'
 import store from '../store'
 import { getSystemProxy } from '../utils'
+import { buildProductUserAgent } from '../../shared/productBrand'
 
 // 原生 Chromaprint（进程内调用，无子进程开销）
 let nativeChromaprintAvailable = false
@@ -322,7 +323,7 @@ async function lookupAcoustId(
         body,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': `FRKB/${app.getVersion()}`
+          'User-Agent': buildProductUserAgent(app.getVersion())
         },
         signal: controller.signal
       }
@@ -530,7 +531,7 @@ export async function validateAcoustIdClientKeyValue(clientKey: string): Promise
       body,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': `FRKB/${app.getVersion()}`
+        'User-Agent': buildProductUserAgent(app.getVersion())
       },
       signal: controller.signal
     }

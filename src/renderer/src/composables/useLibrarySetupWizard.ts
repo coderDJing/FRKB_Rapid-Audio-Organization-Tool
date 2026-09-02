@@ -6,11 +6,12 @@ import confirm from '@renderer/components/confirmDialog'
 import choice from '@renderer/components/choiceDialog'
 import { applyLibrarySetupState } from '@renderer/utils/librarySetupRuntime'
 import type { LibrarySetupErrorHint } from '@shared/librarySetup'
+import { DEFAULT_LIBRARY_FOLDER_NAME } from '@shared/productBrand'
 
 export type LibrarySetupStep = 'choice' | 'create-path' | 'create-fingerprint' | 'existing'
 type FingerprintMode = 'pcm' | 'file'
 
-const DEFAULT_DB_NAME = 'FRKB'
+const DEFAULT_DB_NAME = DEFAULT_LIBRARY_FOLDER_NAME
 const LIBRARY_SETUP_HOTKEY_SCOPE = 'windowGlobal'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -50,9 +51,7 @@ export const useLibrarySetupWizard = (flashArea: Ref<string>) => {
       ? folderPathVal.value.replace(/[\\/]+$/, '') + sep.value + dbName.value.trim()
       : ''
   )
-  const manifestDisplayName = computed(() =>
-    windowsHideExt.value ? 'FRKB.database' : 'FRKB.database.frkbdb'
-  )
+  const manifestDisplayName = computed(() => '.frkbdb')
   const fingerprintModeModel = computed<string>({
     get: () => fingerprintMode.value,
     set: (value) => {

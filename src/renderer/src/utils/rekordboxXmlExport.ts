@@ -39,12 +39,12 @@ const buildSelectedTracksDefaultPlaylistName = () =>
   t('rekordboxXmlExport.defaultPlaylistName', { time: buildTimestampLabel() })
 
 const buildDefaultExportDirName = (playlistName: string) => {
-  const baseName = sanitizeBaseName(playlistName, 'FRKB Export')
+  const baseName = sanitizeBaseName(playlistName, 'Track Studio Export')
   return `${baseName} ${buildTimestampLabel()}`
 }
 
 const buildDefaultXmlFileName = (playlistName: string) => {
-  const baseName = sanitizeBaseName(playlistName, 'FRKB Export')
+  const baseName = sanitizeBaseName(playlistName, 'Track Studio Export')
   return `${baseName}.xml`
 }
 

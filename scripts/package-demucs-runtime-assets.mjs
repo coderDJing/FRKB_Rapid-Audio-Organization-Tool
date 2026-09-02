@@ -51,7 +51,7 @@ const repoMatch = repoUrl.match(/github\.com[:/](.+?)\/(.+?)(?:\.git)?$/i)
 const githubOwner = getArgValue('--github-owner', repoMatch?.[1] || 'coderDjing')
 const githubRepo = getArgValue(
   '--github-repo',
-  repoMatch?.[2] || 'FRKB_Rapid-Audio-Organization-Tool'
+  repoMatch?.[2] || 'Track-Studio'
 )
 
 const toBaseVersion = (value) =>

@@ -15,7 +15,7 @@ const throwIfCancelledInternal = (throwIfCancelled?: () => void) => {
 }
 
 export const resolveUniqueDirectoryPath = async (targetRootDir: string, directoryName: string) => {
-  const baseName = sanitizePathSegment(directoryName, 'FRKB Rekordbox Export')
+  const baseName = sanitizePathSegment(directoryName, 'Track Studio Rekordbox Export')
   const initialPath = path.join(targetRootDir, baseName)
   if (!(await fs.pathExists(initialPath))) return initialPath
   let counter = 1

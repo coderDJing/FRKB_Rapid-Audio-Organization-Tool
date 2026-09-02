@@ -1,5 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import confirmDialog from '@renderer/components/confirmDialog'
@@ -236,7 +237,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     )
   })
   const titleLabel = computed(() => {
-    return `FRKB - ${t('mixtape.title')} - ${displayName.value}`
+    return `${PRODUCT_DISPLAY_NAME} - ${t('mixtape.title')} - ${displayName.value}`
   })
   const mixtapePlaylistId = computed(() => String(payload.value.playlistId || ''))
   const normalizeMixtapeMixMode = (value: unknown): MixtapeMixMode =>

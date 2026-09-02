@@ -146,7 +146,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path vendor/ffmpeg/win32-x64 | Out-Null
           $headers = @{
-            'User-Agent' = 'FRKB-Release'
+            'User-Agent' = 'TrackStudio-Release'
             'Authorization' = "Bearer $env:GH_TOKEN"
             'X-GitHub-Api-Version' = '2022-11-28'
           }
@@ -185,7 +185,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $headers = @{
-            'User-Agent' = 'FRKB-Release'
+            'User-Agent' = 'TrackStudio-Release'
             'Authorization' = "Bearer $env:GH_TOKEN"
             'X-GitHub-Api-Version' = '2022-11-28'
           }
@@ -804,8 +804,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.yml
-            dist/FRKB-*-mac-universal.zip
-            dist/FRKB-*-mac-universal.zip.blockmap
+            dist/Track-Studio-*-mac-universal.zip
+            dist/Track-Studio-*-mac-universal.zip.blockmap
             dist/*.blockmap
             dist/*.zip
 

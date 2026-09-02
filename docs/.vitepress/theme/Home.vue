@@ -90,8 +90,7 @@ onUnmounted(() => {
 // 下载相关状态
 const showWin = ref(false)
 const showMac = ref(false)
-const latestReleasePage =
-  'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+const latestReleasePage = 'https://github.com/coderDJing/Track-Studio/releases/latest'
 const winUrl = ref(latestReleasePage)
 const macUrl = ref(latestReleasePage)
 const version = ref('')
@@ -108,8 +107,7 @@ const findAssetUrl = (assets, matchers) => {
 // 初始化下载按钮
 const initDownloadButtons = async () => {
   try {
-    const api =
-      'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+    const api = 'https://api.github.com/repos/coderDJing/Track-Studio/releases/latest'
     const res = await fetch(api)
     if (!res.ok) throw new Error('Failed to fetch')
 
@@ -163,7 +161,7 @@ const zhContent = {
     titleTop: '终结混乱的',
     titleBottom: 'DJ 音频工作站',
     subtitle:
-      '不再需要在多个软件间疲于奔命。从真实文件整理、SET 歌单、指纹去重、波形试听、Rekordbox 库集成、段落与能量分析、本地库合并，到双轨横推、录音库、单曲 Stem 分离与 Mixtape 工作流，FRKB 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
+      '不再需要在多个软件间疲于奔命。从真实文件整理、SET 歌单、指纹去重、波形试听、Rekordbox 库集成、段落与能量分析、本地库合并，到双轨横推、录音库、单曲 Stem 分离与 Mixtape 工作流，Track Studio 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
   },
   impacts: [
     {
@@ -317,7 +315,7 @@ const enContent = {
     titleTop: 'End the Chaos.',
     titleBottom: 'The Ultimate DJ Audio Workspace.',
     subtitle:
-      'Stop bouncing between apps. From real file organization, SET playlists, fingerprint dedup, waveform preview, Rekordbox integration, section and energy analysis, and library merge, to dual-deck browsing, the Recording Library, single-track stem separation, and Mixtape workflows. FRKB delivers an all-in-one, WYSIWYG desktop engine built around keyboard-first control.'
+      'Stop bouncing between apps. From real file organization, SET playlists, fingerprint dedup, waveform preview, Rekordbox integration, section and energy analysis, and library merge, to dual-deck browsing, the Recording Library, single-track stem separation, and Mixtape workflows. Track Studio is a keyboard-first, WYSIWYG desktop engine for DJs.'
   },
   impacts: [
     {
@@ -510,14 +508,16 @@ const handleKeydown = (e) => {
     <nav class="nav">
       <div class="container nav-inner">
         <a class="brand" :href="withBase('/')">
-          <img :src="withBase('/assets/icon.webp')" alt="FRKB" style="width: 32px; height: 32px" />
-          FRKB
+          <img
+            :src="withBase('/assets/icon.webp')"
+            alt="Track Studio"
+            style="width: 32px; height: 32px"
+          />
+          Track Studio
         </a>
         <div class="nav-left">
           <a v-for="item in pageContent.nav" :key="item.href" :href="item.href">{{ item.label }}</a>
-          <a href="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool" target="_blank"
-            >GitHub</a
-          >
+          <a href="https://github.com/coderDJing/Track-Studio" target="_blank">GitHub</a>
         </div>
         <div class="nav-right">
           <button
@@ -730,7 +730,12 @@ const handleKeydown = (e) => {
 
     <footer class="footer">
       <div class="container">
-        <small>© 2026 FRKB Project. Crafted for Excellence.</small>
+        <small>
+          © 2026 Track Studio.
+          <a class="footer-alias" :href="withBase(isEn ? '/en/frkb' : '/frkb')">{{
+            isEn ? 'Rename note' : '更名说明'
+          }}</a>
+        </small>
       </div>
     </footer>
 
@@ -787,6 +792,13 @@ const handleKeydown = (e) => {
   text-align: center;
   border-top: 1px solid var(--glass-border);
   color: var(--muted);
+}
+
+.footer-alias {
+  margin-left: 8px;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* 图片放大查看样式 */

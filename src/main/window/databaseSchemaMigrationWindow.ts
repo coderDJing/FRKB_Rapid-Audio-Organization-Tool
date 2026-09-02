@@ -3,6 +3,7 @@ import { is } from '@electron-toolkit/utils'
 import path from 'node:path'
 import { type LibrarySchemaV36MigrationProgress } from '../librarySchemaV36Migration'
 import { restrictExternalNavigation } from './externalNavigation'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 
 let databaseSchemaMigrationWindow: BrowserWindow | null = null
 let schemaMigrationProgress: LibrarySchemaV36MigrationProgress | null = null
@@ -38,7 +39,7 @@ const createWindow = () => {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
     show: false,
-    title: 'FRKB',
+    title: PRODUCT_DISPLAY_NAME,
     backgroundColor: '#000000',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index'),

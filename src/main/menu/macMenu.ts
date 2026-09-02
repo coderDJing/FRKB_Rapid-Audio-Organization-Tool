@@ -10,6 +10,7 @@ import enUSFingerprintsLocale from '../../renderer/src/i18n/locales/en-US/finger
 import enUSLibraryLocale from '../../renderer/src/i18n/locales/en-US/library.json'
 import enUSMenuLocale from '../../renderer/src/i18n/locales/en-US/menu.json'
 import enUSMigrationLocale from '../../renderer/src/i18n/locales/en-US/migration.json'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 import store from '../store'
 import mainWindow from '../window/mainWindow'
 import { openLogFile } from '../log'
@@ -75,16 +76,28 @@ export const setMacMainWindowBrowseMode = (mode: MainWindowBrowseMode) => {
 const buildAppOnlyMenu = () =>
   Menu.buildFromTemplate([
     {
-      label: 'FRKB',
+      label: PRODUCT_DISPLAY_NAME,
       submenu: [
-        { role: 'hide', label: getCurrentLocaleId() === 'en-US' ? 'Hide FRKB' : '隐藏 FRKB' },
+        {
+          role: 'hide',
+          label:
+            getCurrentLocaleId() === 'en-US'
+              ? `Hide ${PRODUCT_DISPLAY_NAME}`
+              : `隐藏 ${PRODUCT_DISPLAY_NAME}`
+        },
         {
           role: 'hideOthers',
           label: getCurrentLocaleId() === 'en-US' ? 'Hide Others' : '隐藏其他'
         },
         { role: 'unhide', label: getCurrentLocaleId() === 'en-US' ? 'Show All' : '显示全部' },
         { type: 'separator' },
-        { role: 'quit', label: getCurrentLocaleId() === 'en-US' ? 'Quit FRKB' : '退出 FRKB' }
+        {
+          role: 'quit',
+          label:
+            getCurrentLocaleId() === 'en-US'
+              ? `Quit ${PRODUCT_DISPLAY_NAME}`
+              : `退出 ${PRODUCT_DISPLAY_NAME}`
+        }
       ]
     }
   ])
@@ -93,16 +106,28 @@ const buildFullMenu = () => {
   const librarySetupActive = isLibrarySetupActive()
   return Menu.buildFromTemplate([
     {
-      label: 'FRKB',
+      label: PRODUCT_DISPLAY_NAME,
       submenu: [
-        { role: 'hide', label: getCurrentLocaleId() === 'en-US' ? 'Hide FRKB' : '隐藏 FRKB' },
+        {
+          role: 'hide',
+          label:
+            getCurrentLocaleId() === 'en-US'
+              ? `Hide ${PRODUCT_DISPLAY_NAME}`
+              : `隐藏 ${PRODUCT_DISPLAY_NAME}`
+        },
         {
           role: 'hideOthers',
           label: getCurrentLocaleId() === 'en-US' ? 'Hide Others' : '隐藏其他'
         },
         { role: 'unhide', label: getCurrentLocaleId() === 'en-US' ? 'Show All' : '显示全部' },
         { type: 'separator' },
-        { role: 'quit', label: getCurrentLocaleId() === 'en-US' ? 'Quit FRKB' : '退出 FRKB' }
+        {
+          role: 'quit',
+          label:
+            getCurrentLocaleId() === 'en-US'
+              ? `Quit ${PRODUCT_DISPLAY_NAME}`
+              : `退出 ${PRODUCT_DISPLAY_NAME}`
+        }
       ]
     },
     {

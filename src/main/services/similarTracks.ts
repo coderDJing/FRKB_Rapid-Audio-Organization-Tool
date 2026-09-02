@@ -20,6 +20,7 @@ import { matchTrackWithAcoustId } from './acoustId'
 import { searchMusicBrainz } from './musicBrainz'
 import mainWindow from '../window/mainWindow'
 import { createRateLimitedQueue } from './rateLimitedQueue'
+import { buildProductUserAgent } from '../../shared/productBrand'
 
 const LISTENBRAINZ_URL = 'https://labs.api.listenbrainz.org/similar-recordings/json'
 const LISTENBRAINZ_ALGORITHM =
@@ -181,7 +182,7 @@ async function ensureProxyInitialized(): Promise<void> {
 }
 
 function getUserAgent() {
-  return `FRKB/${app.getVersion()} (https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/)`
+  return buildProductUserAgent(app.getVersion())
 }
 
 async function requestJson<T>(url: string): Promise<T> {

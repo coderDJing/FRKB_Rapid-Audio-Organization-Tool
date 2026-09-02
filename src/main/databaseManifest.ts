@@ -25,7 +25,7 @@ function getManifestPath(dirPath: string): string {
 export async function readManifestFile(filePath: string): Promise<FrkbManifest> {
   const data = await fs.readJSON(filePath)
   if (!isValidManifest(data)) {
-    throw new Error('Invalid FRKB manifest')
+    throw new Error('Invalid music library manifest')
   }
   return data as FrkbManifest
 }

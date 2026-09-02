@@ -56,7 +56,7 @@ export async function createUpgradedSourceSchemaSnapshot(params: {
   if (sourceSchemaVersion > targetSchemaVersion) {
     throw new LibraryMergeError(
       'SOURCE_SCHEMA_UNSUPPORTED',
-      `来源库版本高于当前库（来源 ${sourceSchemaVersion}，当前 ${targetSchemaVersion}），请升级 FRKB 后再合并`
+      `来源库版本高于当前库（来源 ${sourceSchemaVersion}，当前 ${targetSchemaVersion}），请升级 Track Studio 后再合并`
     )
   }
   const reserveBytes = getSourceSchemaSnapshotReserveBytes(params.sourceDb)

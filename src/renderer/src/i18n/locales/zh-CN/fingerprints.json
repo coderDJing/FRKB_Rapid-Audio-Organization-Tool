@@ -16,7 +16,7 @@
     "selectDatabaseFile": "选择指纹库文件",
     "notValidFile": "不是有效的指纹库文件",
     "importMergeHint": "导入后新的指纹库将和旧的指纹库进行合并",
-    "exportHint": "导出后的文件可在其他设备中的FRKB选择\"导入指纹库文件\"，进行导入合并",
+    "exportHint": "导出后的文件可在其他设备中的 Track Studio 选择\"导入指纹库文件\"，进行导入合并",
     "currentCount": "指纹库中目前有 {count} 首曲目",
     "scanningFiles": "扫描文件中",
     "analyzingFingerprints": "分析声音指纹中",

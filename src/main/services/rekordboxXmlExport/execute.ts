@@ -389,12 +389,12 @@ export async function runRekordboxXmlExportJob(
         : request.xmlPlaylistName
     const normalizedExportDirName = sanitizePathSegment(
       request.exportDirName,
-      fallbackDirBase || 'FRKB Rekordbox Export'
+      fallbackDirBase || 'Track Studio Rekordbox Export'
     )
     const normalizedXmlFileName = normalizeXmlFileName(request.xmlFileName, normalizedExportDirName)
     const normalizedPlaylistName = normalizePlaylistName(
       request.xmlPlaylistName,
-      request.source.kind === 'playlist' ? request.source.playlistName : 'FRKB Export'
+      request.source.kind === 'playlist' ? request.source.playlistName : 'Track Studio Export'
     )
 
     await reportProgress(options, {

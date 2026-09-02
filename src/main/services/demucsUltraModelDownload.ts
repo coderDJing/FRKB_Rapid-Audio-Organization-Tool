@@ -10,6 +10,7 @@ import {
   type VerifiedArchiveEntry
 } from './mixtapeStemRuntimeDownloadInstall'
 import { normalizeText } from './mixtapeStemSeparationShared'
+import { buildGithubReleaseDownloadUrl } from '../../shared/productBrand'
 
 const ULTRA_MODEL_NAME = 'htdemucs_ft'
 const ULTRA_MODEL_PROFILE = 'ultra'
@@ -96,7 +97,7 @@ let modelDownloadState: DemucsUltraModelDownloadState = {
 export const demucsUltraModelDownloadEvents = new EventEmitter()
 
 const buildModelManifestUrl = (releaseTag: string) =>
-  `https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/download/${releaseTag}/${MODEL_MANIFEST_FILE_NAME}`
+  buildGithubReleaseDownloadUrl(releaseTag, MODEL_MANIFEST_FILE_NAME)
 
 const resolveModelManifestUrl = () =>
   normalizeText(process.env.FRKB_DEMUCS_MODEL_MANIFEST_URL, 2000) ||

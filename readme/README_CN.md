@@ -1,12 +1,12 @@
 <p align="center">
-  <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" alt="FRKB" />
-  <h2 align="center">FRKB</h2>
+  <img width="100px" src="https://github.com/coderDJing/Track-Studio/blob/main/build/icon.png?raw=true" alt="Track Studio" />
+  <h2 align="center">Track Studio</h2>
   <p align="center">快速音频整理工具</p>
 </p>
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/main)
-[![GitHub last commit](https://img.shields.io/github/last-commit/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/main)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/coderDJing/Track-Studio)](https://github.com/coderDJing/Track-Studio/releases/latest)
+[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/Track-Studio)](https://github.com/coderDJing/Track-Studio/commits/main)
+[![GitHub last commit](https://img.shields.io/github/last-commit/coderDJing/Track-Studio)](https://github.com/coderDJing/Track-Studio/commits/main)
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos)
 
@@ -16,46 +16,52 @@
   <a href="/readme/README_CN.md">简体中文</a>
 </p>
 
-## FRKB
+## Track Studio
 
 <p align="center">
-  <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot_cn.png?raw=true">
+  <img alt="Track Studio in action" src="https://github.com/coderDJing/Track-Studio/blob/main/screenshot/softwareScreenshot_cn.png?raw=true">
 </p>
 
 ## 这是什么
 
-**FRKB** 是一款面向 DJ 和音乐收藏整理场景的桌面音频工作流工具。它把真实文件整理、SET 歌单准备、波形试听、指纹去重、Rekordbox 与 Pioneer 库读取、段落与能量分析、本地库合并、双轨横推试听、录音、元数据补齐、格式转换、相似歌曲发现、云端指纹同步、单曲 Stem 分离和 Mixtape 编排整合在同一个 Windows/macOS 应用里。
+**Track Studio** 是一款面向 DJ 和音乐收藏整理场景的桌面音频工作流工具。它把真实文件整理、SET 歌单准备、波形试听、指纹去重、Rekordbox 与 Pioneer 库读取、段落与能量分析、本地库合并、双轨横推试听、录音、元数据补齐、格式转换、相似歌曲发现、云端指纹同步、单曲 Stem 分离和 Mixtape 编排整合在同一个 Windows/macOS 应用里。
 
-FRKB 的核心原则很简单：界面里看到的整理结构，应该能真实反映到磁盘文件。它不只是引用管理器。移动、导出、去重、删除和恢复曲目时，文件系统会跟着整理结果一起保持清楚。
+Track Studio 的核心原则很简单：界面里看到的整理结构，应该能真实反映到磁盘文件。它不只是引用管理器。移动、导出、去重、删除和恢复曲目时，文件系统会跟着整理结果一起保持清楚。
+
+## 更名说明
+
+本项目以前叫 **FRKB**，现在产品名是 **Track Studio**，GitHub 仓库是 [Track-Studio](https://github.com/coderDJing/Track-Studio)。
+
+已经安装的版本可以继续用应用内更新。更新仍会覆盖同一套安装身份，设置和音乐库不会丢。桌面快捷方式和开始菜单会改成 **Track Studio**。Windows 安装目录和可执行文件仍叫 `FRKB`，这是为了让新版本覆盖旧版本，而不是并排再装一份。
 
 ## 下载
 
-1. 前往官网或 GitHub Releases 下载 FRKB。
-   - 官网：https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/
-   - Releases：https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases
+1. 前往官网或 GitHub Releases 下载 Track Studio。
+   - 官网：https://coderDJing.github.io/Track-Studio/
+   - Releases：https://github.com/coderDJing/Track-Studio/releases
 2. 按系统选择 Windows 或 macOS 安装包。
-3. 安装后从桌面快捷方式或应用启动器打开 FRKB。
+3. 安装后从桌面快捷方式或应用启动器打开 Track Studio。
 
 ## 系统要求
 
 - Windows 10 或更高版本（x64）
 - macOS 12 或更高版本
 
-FRKB 暂无 Linux 正式版。
+Track Studio 暂无 Linux 正式版。
 
 ## 功能介绍
 
 ### 音乐库整理
 
-- **真实文件管理**：FRKB 直接管理音频文件本身，歌单和库目录会真实对应到磁盘结构。
+- **真实文件管理**：Track Studio 直接管理音频文件本身，歌单和库目录会真实对应到磁盘结构。
 - **筛选库与精选库**：按 DJ 选曲习惯设计的双阶段整理流程，先快速筛，再沉淀精选。
 - **SET 托管歌单**：按演出或场景准备映射型歌单，支持重复曲目、稳定序号、拖拽重排，并保护被引用的源曲目不被误删。
 - **SET 时长**：按歌单顺序估算 SET 时长，起止可用 Hot Cue。
-- **合并 FRKB 库**：把另一个 FRKB 库合并到当前库，覆盖歌单、曲目、分析、SET 和 Mixtape；来源库本身不会被修改。合并前检查完整性和磁盘空间，同名歌单两边都保留。精选库也可单独合并。
-- **移动 FRKB 库**：将当前 FRKB 库整体搬到新位置，支持同盘/跨盘和中断续传。设置里也可在资源管理器或 Finder 中打开音乐库。
+- **合并 Track Studio 库**：把另一个 Track Studio 库合并到当前库，覆盖歌单、曲目、分析、SET 和 Mixtape；来源库本身不会被修改。合并前检查完整性和磁盘空间，同名歌单两边都保留。精选库也可单独合并。
+- **移动 Track Studio 库**：将当前 Track Studio 库整体搬到新位置，支持同盘/跨盘和中断续传。设置里也可在资源管理器或 Finder 中打开音乐库。
 - **歌单树排序**：歌单树可按名称或曲目数排序，也可切回手动排序。
 - **拖拽导入与移动**：支持拖入文件/文件夹，曲目可在歌单间拖拽移动，按 Ctrl/Option 可外拖复制到资源管理器/Finder。
-- **安全回收站**：删除和去重移除的曲目会进入 FRKB 回收站，可恢复到原歌单。
+- **安全回收站**：删除和去重移除的曲目会进入 Track Studio 回收站，可恢复到原歌单。
 - **歌单整理工具**：清空歌单有进度反馈，支持歌单内批量重命名、清理外部库失效记录、底部显示选中数量，批量操作前更容易确认范围。
 - **便携库状态**：数据库可以跟随音乐收藏一起迁移，适合在不同设备之间携带。
 
@@ -84,7 +90,7 @@ FRKB 暂无 Linux 正式版。
 - **大波形浏览**：双轨和编辑模式的大波形支持精确拖拽、Cue 定位、网格检查和播放中的平滑重绘。
 - **轻量波形缓存**：RGB 显示数据与不同界面的专用缓存，让大波形、列表预览和 Mixtape 时间线在重复打开时更快响应。
 - **标题栏音频可视化**：在标题栏实时查看音频能量，不占用主界面空间。
-- **文件关联与外部试听**：可从系统直接用 FRKB 打开支持的音频文件，临时试听但不强制入库。
+- **文件关联与外部试听**：可从系统直接用 Track Studio 打开支持的音频文件，临时试听但不强制入库。
 - **全局快捷键**：窗口最小化时也能控制播放，并支持自定义呼出/隐藏快捷键。
 
 ### 双轨横推模式
@@ -111,13 +117,13 @@ FRKB 暂无 Linux 正式版。
 ### Rekordbox 与 Pioneer 库集成
 
 - **本机 Rekordbox 读取**：直接读取本机 Rekordbox 数据库和歌单，无需先手动导出 XML。
-- **Cue 与 Loop 支持**：可读取 Rekordbox/Pioneer 来源的 Hot Cue、Memory Cue 与 Loop，并在复制到 FRKB 本地库时保留。
+- **Cue 与 Loop 支持**：可读取 Rekordbox/Pioneer 来源的 Hot Cue、Memory Cue 与 Loop，并在复制到 Track Studio 本地库时保留。
 - **Rekordbox 歌单操作**：可浏览歌单、拖拽排序曲目，在支持范围内创建或移动歌单节点，并可导出 XML 用于 Pioneer 流程。
 - **Pioneer U 盘库支持**：支持读取 Device Library 与 OneLibrary，包含歌单树、预览波形、多盘识别和曲目播放。
 - **外部库右键菜单**：Rekordbox 与 Pioneer 曲目列表支持常用右键操作，包括复制到筛选库或精选库。
 - **键盘多选**：Rekordbox/Pioneer 歌曲列表支持类似本地列表的键盘范围多选。
 - **精选表演者导入**：可从 Rekordbox 与 Pioneer U 盘库导入精选表演者数据，让跨来源选曲标签继续可用。
-- **外部曲目只读分析**：Rekordbox、Pioneer U 盘和普通外部曲目可做 BPM、网格、能量和段落分析，结果留在 FRKB 内，不改写源库。
+- **外部曲目只读分析**：Rekordbox、Pioneer U 盘和普通外部曲目可做 BPM、网格、能量和段落分析，结果留在 Track Studio 内，不改写源库。
 - **缺失文件处理**：找不到原文件的曲目会标红并阻止播放，必要时可清理 Rekordbox 歌单里的失效记录。
 
 ### Mixtape 与 Stem 工作流
@@ -166,13 +172,13 @@ FRKB 暂无 Linux 正式版。
 - **歌曲筛选**：可按标题、艺术家、专辑、时长、格式、BPM、加入时间等条件筛选，加入时间支持介于范围，并可选择重启后保留筛选条件。
 - **网易云搜索**：右键菜单可直接用网易云音乐网页搜索当前曲目。
 - **相似歌曲查询**：从多个来源检索风格相近的歌曲，可从库菜单快速发起，也可以屏蔽不想再看到的推荐。
-- **云端指纹同步**：支持将本地 SHA256 指纹与 FRKB 云端双向同步，包含差异分析、分页拉取、分批上传、配额、频控、清晰摘要和可最小化进度窗口。
+- **云端指纹同步**：支持将本地 SHA256 指纹与 Track Studio 云端双向同步，包含差异分析、分页拉取、分批上传、配额、频控、清晰摘要和可最小化进度窗口。
 - **精选表演者同步**：多表演者曲目可自动拆分联动，精选表演者数据可跨设备同步。
 - **国际化**：内置简体中文和英文语言包。
 
 ## 项目背景
 
-作为 DJ，我日常需要整理大量音乐文件。很多现有工具要么鼠标操作太多，要么快捷键不适合长时间工作，要么只是整理引用，真实文件夹仍然一团乱。FRKB 的目标是让整理更快、更直接、更不脆弱：听得到、看得到、移动的是真文件，离开软件后目录也仍然能用。
+作为 DJ，我日常需要整理大量音乐文件。很多现有工具要么鼠标操作太多，要么快捷键不适合长时间工作，要么只是整理引用，真实文件夹仍然一团乱。Track Studio 的目标是让整理更快、更直接、更不脆弱：听得到、看得到、移动的是真文件，离开软件后目录也仍然能用。
 
 ## 开发
 
@@ -212,7 +218,7 @@ pnpm run build:mac
 
 ## 许可证
 
-CoderDJing 编写的 FRKB 项目代码遵循 [PolyForm Noncommercial License 1.0.0](../LICENSE)，仅允许非商业使用。当前打包应用包含 GPL/LGPL 第三方组件；详见 [LICENSE](../LICENSE) 和 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
+CoderDJing 编写的 Track Studio 项目代码遵循 [PolyForm Noncommercial License 1.0.0](../LICENSE)，仅允许非商业使用。当前打包应用包含 GPL/LGPL 第三方组件；详见 [LICENSE](../LICENSE) 和 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
 ## 计划开发的功能清单
 

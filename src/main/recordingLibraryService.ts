@@ -3,7 +3,7 @@ import fs = require('fs-extra')
 import store from './store'
 import { getCoreFsDirName } from './coreLibraries'
 
-const RECORDING_FILE_PREFIX = 'FRKB Recording'
+const RECORDING_FILE_PREFIX = 'Track Studio Recording'
 const RECORDING_FILE_EXT = '.wav'
 
 const pad2 = (value: number) => String(value).padStart(2, '0')

@@ -5,8 +5,8 @@
     "moveLibrary": "Move Music Library",
     "mergePreparing": "Preparing…",
     "mergeFiles": "files",
-    "mergeLockedHint": "Library locked during merge. Do not close FRKB.",
-    "mergeCuratedLockedHint": "Library locked during merge. Do not close FRKB.",
+    "mergeLockedHint": "Library locked during merge. Do not close Track Studio.",
+    "mergeCuratedLockedHint": "Library locked during merge. Do not close Track Studio.",
     "mergeDialog": {
       "title": "Merge Music Libraries",
       "intro": "Merge another music library into the current one.",
@@ -18,7 +18,7 @@
       "playlist": "Both are kept; the source playlist gets a “(from …)” suffix.",
       "startSetup": "Set Up",
       "sourceTitle": "Source music library",
-      "sourceInstruction": "Select FRKB.database.frkbdb in the source library.",
+      "sourceInstruction": "Select the music library manifest (.frkbdb) in the source library.",
       "selectSource": "Choose Source",
       "sourceSelected": "Selected",
       "sourceRequired": "Choose a source music library first.",
@@ -27,7 +27,7 @@
       "sourceIssues": {
         "invalid-selection": {
           "title": "Choose the music library file",
-          "description": "Select FRKB.database.frkbdb in the source library root."
+          "description": "Select the music library manifest (.frkbdb) in the source library root."
         },
         "same-library": {
           "title": "Cannot merge into itself",
@@ -39,7 +39,7 @@
         },
         "version-incompatible": {
           "title": "Source library is too old",
-          "description": "Update FRKB, open the source library once, then merge."
+          "description": "Update Track Studio, open the source library once, then merge."
         },
         "unregistered-data": {
           "title": "Unregistered source data",
@@ -47,7 +47,7 @@
         },
         "invalid-library": {
           "title": "Source cannot be merged safely",
-          "description": "Use a complete, unmodified music library, or open it in FRKB first."
+          "description": "Use a complete, unmodified music library, or open it in Track Studio first."
         },
         "empty-curated-library": {
           "title": "Source curated library is empty",
@@ -67,7 +67,7 @@
         },
         "unavailable": {
           "title": "Source library unavailable",
-          "description": "Choose again. If it continues, confirm both libraries open in FRKB."
+          "description": "Choose again. If it continues, confirm both libraries open in Track Studio."
         }
       },
       "modeTitle": "Source library",
@@ -116,7 +116,7 @@
       "playlist": "Same-name folders merge. For same-name playlists, choose keep both or merge into existing in setup.",
       "startSetup": "Set Up",
       "sourceTitle": "Source music library",
-      "sourceInstruction": "Select FRKB.database.frkbdb in the source library.",
+      "sourceInstruction": "Select the music library manifest (.frkbdb) in the source library.",
       "selectSource": "Choose Source",
       "sourceSelected": "Selected",
       "sourceRequired": "Choose a source music library first.",
@@ -130,7 +130,7 @@
       "sourceIssues": {
         "invalid-selection": {
           "title": "Choose the music library file",
-          "description": "Select FRKB.database.frkbdb in the source library root."
+          "description": "Select the music library manifest (.frkbdb) in the source library root."
         },
         "same-library": {
           "title": "Cannot merge into itself",
@@ -142,7 +142,7 @@
         },
         "version-incompatible": {
           "title": "Source library is too old",
-          "description": "Update FRKB, open the source library once, then merge."
+          "description": "Update Track Studio, open the source library once, then merge."
         },
         "unregistered-data": {
           "title": "Unregistered source data",
@@ -150,7 +150,7 @@
         },
         "invalid-library": {
           "title": "Source cannot be merged safely",
-          "description": "Use a complete, unmodified music library, or open it in FRKB first."
+          "description": "Use a complete, unmodified music library, or open it in Track Studio first."
         },
         "empty-curated-library": {
           "title": "Source curated library is empty",
@@ -170,7 +170,7 @@
         },
         "unavailable": {
           "title": "Source library unavailable",
-          "description": "Choose again. If it continues, confirm both libraries open in FRKB."
+          "description": "Choose again. If it continues, confirm both libraries open in Track Studio."
         }
       },
       "modeTitle": "Source curated library",
@@ -250,7 +250,7 @@
       "currentPath": "Current path: {path}",
       "newPath": "New path: {path}",
       "sizeSummary": "Size: {size} ({count} files)",
-      "crossVolume": "The destination is on another disk, so files will be copied first. Keep FRKB open until it finishes.",
+      "crossVolume": "The destination is on another disk, so files will be copied first. Keep Track Studio open until it finishes.",
       "sameVolume": "The destination is on the same disk. The library folder will be moved directly.",
       "confirmAction": "Move now",
       "checking": "Checking destination…",
@@ -294,7 +294,7 @@
     "moveHint": {
       "prompt": "The previous move did not finish. Continue resumes the copy; abort removes the incomplete new folder and keeps the old location.",
       "abortOnly": "The old music library is no longer accessible. Abort will clean up the incomplete new folder, then you can choose a music library again.",
-      "locked": "Do not close FRKB while moving. If interrupted, the next launch can continue or abort.",
+      "locked": "Do not close Track Studio while moving. If interrupted, the next launch can continue or abort.",
       "sourceCleanupFailed": "Please delete the old folder manually:",
       "enterLibrary": "Open music library",
       "continue": "Continue",
@@ -304,7 +304,7 @@
     "legacyTitle": "Music library upgrade",
     "legacyInProgress": "Previous upgrade didn't finish. It will run again.",
     "legacyRequired": "A legacy music library was detected. Upgrade required to continue.",
-    "legacyActions": "The upgrade will reorganize music library data. The upgraded music library won't work with older FRKB versions. Please don't open it with older versions. Large music libraries may take longer. Please don't force quit.",
+    "legacyActions": "The upgrade will reorganize music library data. The upgraded music library won't work with older Track Studio versions. Please don't open it with older versions. Large music libraries may take longer. Please don't force quit.",
     "legacyConfirm": "Start upgrade",
     "legacyExit": "Exit"
   }

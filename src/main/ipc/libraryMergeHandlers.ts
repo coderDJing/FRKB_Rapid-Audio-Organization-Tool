@@ -134,7 +134,7 @@ const selectSourceRoot = async (): Promise<string | null> => {
   if (result.canceled || !result.filePaths[0]) return null
   const manifestPath = result.filePaths[0]
   if (path.basename(manifestPath) !== 'FRKB.database.frkbdb') {
-    throw new LibraryMergeError('SOURCE_MANIFEST_INVALID', '请选择 FRKB.database.frkbdb')
+    throw new LibraryMergeError('SOURCE_MANIFEST_INVALID', '请选择音乐库声明文件（.frkbdb）')
   }
   return path.dirname(manifestPath)
 }

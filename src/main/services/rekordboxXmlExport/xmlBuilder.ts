@@ -9,6 +9,7 @@ import {
 import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
 import type { ISongHotCue, ISongMemoryCue } from '../../../types/globals'
 import type { RekordboxXmlExportStagedTrack } from './types'
+import { PRODUCT_DISPLAY_NAME } from '../../../shared/productBrand'
 
 const escapeXmlAttribute = (value: string) =>
   String(value || '')
@@ -186,7 +187,11 @@ export const buildRekordboxXml = (params: {
   const lines: string[] = []
   lines.push('<?xml version="1.0" encoding="UTF-8"?>')
   lines.push('<DJ_PLAYLISTS Version="1.0.0">')
-  lines.push(`  <PRODUCT Name="FRKB" Version="${escapeXmlAttribute(appVersion)}" Company="FRKB" />`)
+  const productName = escapeXmlAttribute(PRODUCT_DISPLAY_NAME)
+  const productVersion = escapeXmlAttribute(appVersion)
+  lines.push(
+    `  <PRODUCT Name="${productName}" Version="${productVersion}" Company="${productName}" />`
+  )
   lines.push(`  <COLLECTION Entries="${tracks.length}">`)
   for (const track of tracks) {
     const resolvedName =

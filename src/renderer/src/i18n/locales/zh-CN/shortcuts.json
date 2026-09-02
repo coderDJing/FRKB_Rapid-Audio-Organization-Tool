@@ -1,6 +1,6 @@
 {
   "shortcuts": {
-    "globalCallShortcut": "聚焦/最小化 FRKB 窗口快捷键",
+    "globalCallShortcut": "聚焦/最小化 Track Studio 窗口快捷键",
     "enterNewShortcut": "请直接在键盘上输入新的快捷键",
     "shortcutSetFailed": "快捷键设置失败，可能是由于冲突或错误",
     "tryOtherCombinations": "请尝试其他组合",

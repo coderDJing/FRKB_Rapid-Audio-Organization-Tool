@@ -262,7 +262,7 @@ export function registerFilesystemHandlers() {
   ipcMain.handle('select-existing-database-file', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'FRKB.database', extensions: ['frkbdb'] }]
+      filters: [{ name: 'Track Studio library', extensions: ['frkbdb'] }]
     })
     if (result.canceled) return null
     const filePath = result.filePaths[0]

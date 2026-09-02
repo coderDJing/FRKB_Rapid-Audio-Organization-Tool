@@ -18,14 +18,14 @@ import {
   logIfUnexpectedUpdateError,
   type UpdateErrorKind
 } from '../services/updateError'
+import { GITHUB_RELEASES_URL } from '@shared/productBrand'
 import { isLibraryMergeActive } from '../services/libraryMerge'
 import { installResumableAutoUpdaterDownload } from '../services/resumableAutoUpdaterDownload'
 import { openSafeExternalUrl, restrictExternalNavigation } from './externalNavigation'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 const autoUpdater = electronUpdater.autoUpdater
 let updateWindow: BrowserWindow | null = null
-const RELEASES_BASE_URL =
-  'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases'
+const RELEASES_BASE_URL = GITHUB_RELEASES_URL
 const DEFAULT_MANUAL_UPDATE_URL = `${RELEASES_BASE_URL}/latest`
 let autoUpdaterListenersRegistered = false
 let latestMacManualUpdateAsset: ManualMacUpdateAsset | null = null

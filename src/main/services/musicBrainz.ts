@@ -15,6 +15,7 @@ import {
 } from 'undici'
 import { log } from '../log'
 import { getSystemProxy } from '../utils'
+import { buildProductUserAgent } from '../../shared/productBrand'
 
 const MUSICBRAINZ_BASE = 'https://musicbrainz.org/ws/2'
 const COVER_ART_BASE = 'https://coverartarchive.org'
@@ -216,8 +217,7 @@ async function writeCache<T>(
 }
 
 function getUserAgent() {
-  const version = app.getVersion()
-  return `FRKB/${version} (https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/)`
+  return buildProductUserAgent(app.getVersion())
 }
 
 function mergeHeaders(extra?: UndiciHeadersInit): UndiciHeadersInit {

@@ -40,7 +40,7 @@
     "coverHintDontAsk": "不再提示",
     "acoustidSettingTitle": "AcoustID 声纹匹配",
     "acoustidSettingDesc1": "1. 打开 acoustid.org，点击右上角 Sign in / Sign up 并登录到你的帐户。",
-    "acoustidSettingDesc2": "2. 登录后在页面底部点击 “Create new application”，填写名称（如 FRKB on PC）并提交即可得到 12 位 Client Key。",
+    "acoustidSettingDesc2": "2. 登录后在页面底部点击 “Create new application”，填写名称（如 Track Studio on PC）并提交即可得到 12 位 Client Key。",
     "acoustidSettingDesc3": "3. 将该 Key 粘贴到下方输入框并保存。",
     "acoustidSettingPlaceholder": "例如 0XyPvB8SIW",
     "acoustidSettingOpenLink": "打开注册页面",

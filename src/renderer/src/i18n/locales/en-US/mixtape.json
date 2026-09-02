@@ -27,7 +27,7 @@
     "stemCpuSlowHintReasonGpuFailed": "GPU acceleration is currently unavailable, switched to CPU separation",
     "stemCpuSlowHintReasonGpuBackendMissing": "This computer does not currently support GPU acceleration, so CPU separation is used",
     "stemCpuSlowHintReasonUnknown": "GPU acceleration is unavailable right now, switched to CPU separation",
-    "stemRuntimeNetworkHint": "Check your network connection. If GitHub is unreachable from the current network, try enabling a VPN or make sure the system proxy / PAC is applied to FRKB.",
+    "stemRuntimeNetworkHint": "Check your network connection. If GitHub is unreachable from the current network, try enabling a VPN or make sure the system proxy / PAC is applied to Track Studio.",
     "stemSeparationProgressLabel": "Stem split",
     "stemSeparationProgressText": "{percent}% ({done}/{total}, running {running}, queued {pending})",
     "stemSeparationProgressTextWithFailed": "{percent}% ({done}/{total}, running {running}, queued {pending}, failed {failed})",

@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import path from 'node:path'
 import { restrictExternalNavigation } from './externalNavigation'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 import type { LibraryRelocateProgress } from '../services/libraryRelocate'
 
 type BrowserWindowWithVisualEffect = BrowserWindow & {
@@ -34,7 +35,7 @@ const createWindow = async (): Promise<BrowserWindow> => {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
     show: false,
-    title: 'FRKB',
+    title: PRODUCT_DISPLAY_NAME,
     backgroundColor: '#000000',
     maximizable: false,
     webPreferences: {

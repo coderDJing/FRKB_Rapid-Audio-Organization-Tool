@@ -17,7 +17,7 @@
     "copyingTracks": "Copying tracks for export...",
     "movingTracks": "Moving tracks for export...",
     "buildingXml": "Building Rekordbox XML...",
-    "defaultPlaylistName": "FRKB Export {time}",
+    "defaultPlaylistName": "Track Studio Export {time}",
     "successTitle": "Export completed",
     "successMode": "Mode: {mode}",
     "successTrackCount": "Tracks exported: {count}",

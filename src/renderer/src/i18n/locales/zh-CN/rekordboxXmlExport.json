@@ -17,7 +17,7 @@
     "copyingTracks": "正在复制导出曲目...",
     "movingTracks": "正在移动导出曲目...",
     "buildingXml": "正在生成 Rekordbox XML...",
-    "defaultPlaylistName": "FRKB 导出 {time}",
+    "defaultPlaylistName": "Track Studio 导出 {time}",
     "successTitle": "导出完成",
     "successMode": "导出模式：{mode}",
     "successTrackCount": "成功曲目数：{count}",

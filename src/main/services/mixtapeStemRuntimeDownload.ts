@@ -18,6 +18,7 @@ import {
   resolveInstalledDemucsPlatformRootPath
 } from '../demucs'
 import { getSystemProxy } from '../utils'
+import { buildGithubReleaseDownloadUrl } from '../../shared/productBrand'
 import {
   STEM_RUNTIME_INSTALL_VALIDATION_TIMEOUT_MS,
   buildStemProcessEnv,
@@ -131,7 +132,7 @@ export const stemRuntimeDownloadEvents = new EventEmitter()
 const isPrereleaseVersion = (value: string) => /-/.test(String(value || '').trim())
 
 const buildRuntimeManifestUrl = (releaseTag: string) =>
-  `https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/${releaseTag}/demucs-runtime-manifest.json`
+  buildGithubReleaseDownloadUrl(releaseTag, 'demucs-runtime-manifest.json')
 
 const resolveDefaultRuntimeReleaseTag = () => {
   const configuredReleaseTag = normalizeText(process.env.FRKB_DEMUCS_RUNTIME_RELEASE_TAG, 200)

@@ -4,7 +4,7 @@
 
 ### 1. 在 GitHub 仓库设置中启用 GitHub Pages
 
-1. 打开仓库页面：https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool
+1. 打开仓库页面：https://github.com/coderDJing/Track-Studio
 2. 点击 **Settings**（设置）
 3. 在左侧菜单中找到 **Pages**
 4. 在 **Source** 部分，选择：
@@ -20,8 +20,8 @@
 ### 3. 访问您的网站
 
 部署成功后，您的网站将在以下地址可用：
-- **中文版**：https://coderdjing.github.io/FRKB_Rapid-Audio-Organization-Tool/
-- **英文版**：https://coderdjing.github.io/FRKB_Rapid-Audio-Organization-Tool/en/
+- **中文版**：https://coderdjing.github.io/Track-Studio/
+- **英文版**：https://coderdjing.github.io/Track-Studio/en/
 
 ### 4. 手动触发部署（可选）
 
@@ -55,7 +55,7 @@
 **A**: 确保在 GitHub 仓库设置中将 Pages 的 Source 设置为 **GitHub Actions**，而不是 Deploy from a branch。
 
 ### Q: 样式或资源加载失败
-**A**: 检查 `docs/.vitepress/config.mts` 中的 `base` 配置是否为 `/FRKB_Rapid-Audio-Organization-Tool/`（仓库名称）。
+**A**: 检查 `docs/.vitepress/config.mts` 中的 `base` 配置是否为 `/Track-Studio/`（仓库名称）。
 
 ### Q: 如何查看部署日志
 **A**: 进入仓库的 **Actions** 标签页，点击对应的工作流运行记录即可查看详细日志。

@@ -1,6 +1,6 @@
 {
   "shortcuts": {
-    "globalCallShortcut": "Toggle FRKB focus/minimize",
+    "globalCallShortcut": "Toggle Track Studio focus/minimize",
     "enterNewShortcut": "Type a new shortcut.",
     "shortcutSetFailed": "Failed to set shortcut. May conflict.",
     "tryOtherCombinations": "Try another combo.",

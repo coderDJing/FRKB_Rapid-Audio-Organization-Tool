@@ -6,6 +6,7 @@ import { log } from '../log'
 import store from '../store'
 import { mergeLayoutConfig, persistLayoutConfig } from '../layoutConfig'
 import { restrictExternalNavigation } from './externalNavigation'
+import { PRODUCT_DISPLAY_NAME } from '@shared/productBrand'
 import {
   bindMiniPlayerCoverPopup,
   destroyCoverPopup,
@@ -297,7 +298,7 @@ const createMiniPlayerWindow = () => {
     show: false,
     alwaysOnTop: resolveAlwaysOnTop(),
     skipTaskbar: false,
-    title: 'FRKB',
+    title: PRODUCT_DISPLAY_NAME,
     maximizable: false,
     minimizable: false,
     fullscreenable: false,

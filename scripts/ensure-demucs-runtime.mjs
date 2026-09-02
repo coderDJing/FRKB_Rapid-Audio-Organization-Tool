@@ -86,7 +86,7 @@ const pipTimeoutSec = Number.isFinite(pipTimeoutSecArg)
 const runtimeRoot = path.resolve(runtimeRootArg)
 const isPrereleaseVersion = (value) => /-/.test(String(value || '').trim())
 const buildRuntimeManifestUrl = (releaseTag) =>
-  `https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/${releaseTag}/demucs-runtime-manifest.json`
+  `https://github.com/coderDJing/Track-Studio/releases/download/${releaseTag}/demucs-runtime-manifest.json`
 const resolveDefaultRuntimeReleaseTag = () => {
   const configuredReleaseTag =
     getArgValue('--runtime-release-tag', '').trim() ||

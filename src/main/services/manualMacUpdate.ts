@@ -10,7 +10,7 @@ import {
   type ResumableDownloadProgress
 } from './resumableHttpDownload'
 
-const MANUAL_UPDATE_DIR_NAME = 'FRKB Updates'
+const MANUAL_UPDATE_DIR_NAME = 'Track Studio Updates'
 
 export type ManualMacUpdateAssetKind = 'dmg' | 'pkg' | 'zip' | 'other'
 
@@ -78,7 +78,7 @@ const getSafeFileNameFromUrl = (input: string): string => {
     const fileName = path.basename(new URL(input).pathname)
     if (fileName) return fileName
   } catch {}
-  return path.basename(String(input || '').split('?')[0]) || `FRKB-update-${Date.now()}`
+  return path.basename(String(input || '').split('?')[0]) || `Track-Studio-update-${Date.now()}`
 }
 
 const getUniqueTargetPath = async (downloadDir: string, fileName: string): Promise<string> => {

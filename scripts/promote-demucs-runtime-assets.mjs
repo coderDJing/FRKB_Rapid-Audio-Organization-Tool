@@ -67,7 +67,7 @@ if (sourceChannel !== 'rc') {
 }
 
 const buildReleaseAssetUrl = (releaseTag, archiveName) =>
-  `https://github.com/coderDjing/FRKB_Rapid-Audio-Organization-Tool/releases/download/${releaseTag}/${archiveName}`
+  `https://github.com/coderDJing/Track-Studio/releases/download/${releaseTag}/${archiveName}`
 
 const copyFileChecked = (sourcePath, targetPath) => {
   if (!fs.existsSync(sourcePath)) {

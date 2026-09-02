@@ -1,5 +1,7 @@
-appId: com.frkbByCoderDjing.app
-productName: FRKB
+# 当前打包以 package.json 的 build 字段为准，本文件不加载。
+# 内容与 package.json 对齐，避免后人误把未生效的 appId 当成覆盖升级身份。
+appId: com.electron.frkb
+productName: Track Studio
 directories:
   buildResources: build
 files:
@@ -86,8 +88,8 @@ fileAssociations:
       - tak
       - tta
       - wv
-    name: FRKB Audio
-    description: Audio files supported by FRKB
+    name: Track Studio Audio
+    description: Audio files supported by Track Studio
     role: Editor
 win:
   executableName: FRKB
@@ -103,14 +105,15 @@ nsis:
   oneClick: false
   allowElevation: true
   allowToChangeInstallationDirectory: true
-  artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  artifactName: Track-Studio-${version}-${platform}-${arch}.${ext}
+  shortcutName: Track Studio
+  uninstallDisplayName: Track Studio
   createDesktopShortcut: 'always'
   installerIcon: 'build/icon.ico'
   uninstallerIcon: 'build/icon.ico'
   include: build/installer.nsh
 mac:
+  executableName: FRKB
   target:
     - dmg
     - zip
@@ -129,7 +132,7 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${productName}-${version}-${platform}-${arch}.${ext}
+  artifactName: Track-Studio-${version}-${platform}-${arch}.${ext}
 linux:
   target:
     - AppImage
@@ -156,7 +159,7 @@ npmRebuild: false
 publish:
   provider: github
   owner: 'coderDjing'
-  repo: 'FRKB_Rapid-Audio-Organization-Tool'
+  repo: 'Track-Studio'
 releaseInfo:
   releaseNotes: |
     New Features

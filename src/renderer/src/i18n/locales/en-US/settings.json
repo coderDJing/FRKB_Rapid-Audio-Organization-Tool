@@ -66,8 +66,8 @@
     "currentLibraryPath": "Current music library path",
     "currentLibraryPathHint": "Shows the music library root currently in use for quick confirmation and troubleshooting.",
     "openCurrentLibraryInExplorer": "Open in File Explorer",
-    "explorerContextMenuLabel": "Play in FRKB",
-    "enableExplorerContextMenu": "Explorer context menu: \"Play in FRKB\"",
+    "explorerContextMenuLabel": "Play in Track Studio",
+    "enableExplorerContextMenu": "Explorer context menu: \"Play in Track Studio\"",
     "clearDirtyData": {
       "title": "Clean Dirty Library Data (Dev/Prerelease only)",
       "desc": "Keeps songs, playlists/tree, fingerprints, settings and recycle-bin records; clears analysis and Mixtape Auto-Recording related data/caches.",
@@ -93,7 +93,7 @@
       "partialFailedInstalledRoot": "The runtime directory still exists. Some files may still be locked by the current process.",
       "partialFailedDownloadCache": "The download cache still exists.",
       "partialFailedBundledRuntimes": "{count} built-in runtime* directorie(s) could not be removed.",
-      "partialFailedHint": "Restart FRKB and try again. If it still fails, check for processes that are holding the related files.",
+      "partialFailedHint": "Restart Track Studio and try again. If it still fails, check for processes that are holding the related files.",
       "failed": "Failed to clear the local analysis runtime"
     },
     "ultraStemModel": {

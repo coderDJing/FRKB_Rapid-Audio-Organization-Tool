@@ -8,9 +8,9 @@ import {
   type ReleaseNotesEntry,
   type ReleaseNotesRangePayload
 } from '../../shared/releaseNotes'
+import { GITHUB_RELEASES_API_URL, buildProductUserAgent } from '../../shared/productBrand'
 
-const RELEASES_URL =
-  'https://api.github.com/repos/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases'
+const RELEASES_URL = GITHUB_RELEASES_API_URL
 const MAX_RELEASE_PAGES = 3
 const RELEASES_PER_PAGE = 100
 
@@ -51,7 +51,7 @@ async function fetchReleasePage(
   const res = await fetchWithSystemProxy(url, {
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': `FRKB/${currentVersion}`
+      'User-Agent': buildProductUserAgent(currentVersion)
     }
   })
   if (!res.ok) {

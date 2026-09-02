@@ -40,7 +40,7 @@
     "coverHintDontAsk": "Don't remind me again",
     "acoustidSettingTitle": "AcoustID Fingerprint Matching",
     "acoustidSettingDesc1": "1. Visit acoustid.org and sign in (create an account if you have none).",
-    "acoustidSettingDesc2": "2. After signing in, scroll to the bottom of the page, click \"Create new application\", give it any name (for example, FRKB on PC), submit it, and copy the 12-character Client Key.",
+    "acoustidSettingDesc2": "2. After signing in, scroll to the bottom of the page, click \"Create new application\", give it any name (for example, Track Studio on PC), submit it, and copy the 12-character Client Key.",
     "acoustidSettingDesc3": "3. Paste the Client Key below and save.",
     "acoustidSettingPlaceholder": "e.g. 0XyPvB8SIW",
     "acoustidSettingOpenLink": "Open registration page",
