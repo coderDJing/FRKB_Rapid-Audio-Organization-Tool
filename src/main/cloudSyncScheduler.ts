@@ -5,18 +5,14 @@ import {
   normalizeCloudSyncAutoIntervalMs
 } from '../shared/cloudSyncAuto'
 import { runCloudSync } from './cloudSync'
-import { logCloudSyncRc } from './cloudSyncDiagnostics'
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
 
-type CloudSyncAutoSkipReason = 'disabled' | 'library_setup' | 'library_not_ready' | 'no_user_key'
-
-function getCloudSyncAutoSkipReason(): CloudSyncAutoSkipReason | null {
-  if (!normalizeCloudSyncAutoEnabled(store.settingConfig?.cloudSyncAutoEnabled)) return 'disabled'
-  if (isLibrarySetupActive()) return 'library_setup'
-  if (!store.databaseDir) return 'library_not_ready'
-  if (!String(store.settingConfig?.cloudSyncUserKey || '').trim()) return 'no_user_key'
-  return null
+function isCloudSyncAutoRunnable(): boolean {
+  if (!normalizeCloudSyncAutoEnabled(store.settingConfig?.cloudSyncAutoEnabled)) return false
+  if (isLibrarySetupActive()) return false
+  if (!store.databaseDir) return false
+  return String(store.settingConfig?.cloudSyncUserKey || '').trim().length > 0
 }
 
 export function stopCloudSyncScheduler(): void {
@@ -26,28 +22,15 @@ export function stopCloudSyncScheduler(): void {
 }
 
 async function runScheduledTick(): Promise<void> {
-  const skipReason = getCloudSyncAutoSkipReason()
-  if (skipReason) {
-    logCloudSyncRc('scheduler.tick.skip', { reason: skipReason })
-    return
-  }
+  if (!isCloudSyncAutoRunnable()) return
   await runCloudSync('scheduled')
 }
 
 export function restartCloudSyncScheduler(options?: { immediate?: boolean }): void {
-  const hadTimer = intervalHandle !== null
   stopCloudSyncScheduler()
-  const skipReason = getCloudSyncAutoSkipReason()
+  if (!isCloudSyncAutoRunnable()) return
   const intervalMs = normalizeCloudSyncAutoIntervalMs(store.settingConfig?.cloudSyncAutoIntervalMs)
-  const immediate = options?.immediate !== false
-  logCloudSyncRc('scheduler.restart', {
-    hadTimer,
-    immediate,
-    intervalMs,
-    skipReason
-  })
-  if (skipReason) return
-  if (immediate) {
+  if (options?.immediate !== false) {
     void runScheduledTick()
   }
   intervalHandle = setInterval(() => {

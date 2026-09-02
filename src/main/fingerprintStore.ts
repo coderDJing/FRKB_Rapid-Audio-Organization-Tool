@@ -116,28 +116,27 @@ export function withFingerprintListMutation<T>(task: () => Promise<T> | T): Prom
 export async function getCollectionHashForSync(mode?: FingerprintMode): Promise<{
   hash: string
   fingerprints: string[]
-  fromCache: boolean
 }> {
   const resolvedMode = resolveMode(mode)
   return withFingerprintListMutation(async () => {
     const fingerprints = Array.from(
       new Set((store.songFingerprintList || []).map((item) => String(item).toLowerCase()))
     )
-    const resolved = await enqueue(async () => {
+    const hash = await enqueue(async () => {
       const db = getLibraryDb()
       if (db) {
         const cached = readCollectionHashCache(db, resolvedMode)
         if (cached && cached.dirty === false && isValidCollectionHash(cached.hash)) {
-          return { hash: cached.hash, fromCache: true }
+          return cached.hash
         }
       }
       const nextHash = calculateCollectionHashForSet(fingerprints)
       if (db) {
         writeCollectionHashCache(db, resolvedMode, { hash: nextHash, dirty: false })
       }
-      return { hash: nextHash, fromCache: false }
+      return nextHash
     })
-    return { hash: resolved.hash, fingerprints, fromCache: resolved.fromCache }
+    return { hash, fingerprints }
   })
 }
 

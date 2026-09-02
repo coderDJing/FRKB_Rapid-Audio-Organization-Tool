@@ -3,7 +3,6 @@ import { is } from '@electron-toolkit/utils'
 import store from './store'
 import { getCollectionHashForSync, unionFingerprintList } from './fingerprintStore'
 import { log } from './log'
-import { logCloudSyncRc } from './cloudSyncDiagnostics'
 import mainWindow from './window/mainWindow'
 import { persistSettingConfig } from './settingsPersistence'
 import { fetchWithSystemProxy } from './fetchWithSystemProxy'
@@ -272,7 +271,6 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
         })
         mainWindow.instance.webContents.send('cloudSync/state', 'failed')
       }
-      logCloudSyncRc('skip', { trigger, reason: 'rate_limited', retryAfterMs })
       return 'rate_limited'
     }
     // 第 9 次（窗口内已有 8 次，将要发起第 9 次）或第 10 次（已有 9 次，将要发起第 10 次）给提示
@@ -318,7 +316,6 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
       })
       mainWindow.instance.webContents.send('cloudSync/state', 'failed')
     }
-    logCloudSyncRc('skip', { trigger, reason: 'rate_limited', retryAfterMs })
     return 'rate_limited'
   }
   markSyncStarted()
@@ -330,7 +327,6 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
     if (is.dev) {
       cloudSyncConfig.userKey = DEV_DEFAULT_USER_KEY
     } else {
-      logCloudSyncRc('skip', { trigger, reason: 'not_configured' })
       return 'not_configured'
     }
   }
@@ -433,18 +429,7 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
 
     // 1) /check（集合哈希：小写、升序、无分隔符；空数组等价于 sha256('')）
     const mode = getFingerprintMode()
-    const {
-      hash,
-      fingerprints: clientFingerprints,
-      fromCache
-    } = await getCollectionHashForSync(mode)
-    logCloudSyncRc('collectionHash', {
-      trigger,
-      mode,
-      count: clientFingerprints.length,
-      hash,
-      fromCache
-    })
+    const { hash, fingerprints: clientFingerprints } = await getCollectionHashForSync(mode)
     const checkRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/check`, {
       method: 'POST',
       headers: {
@@ -480,16 +465,7 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
       serverLimit = limitFromServer
     }
     const fingerprintNeedSync = checkJson?.needSync === true
-    const checkReason = String(checkJson?.reason || '')
-    logCloudSyncRc('check', {
-      trigger,
-      needSync: fingerprintNeedSync,
-      reason: checkReason,
-      clientCount,
-      serverCount,
-      limit: serverLimit
-    })
-    if (checkReason === 'sync_in_progress') {
+    if (String(checkJson?.reason || '') === 'sync_in_progress') {
       if (silent) {
         sendState('cancelled')
         return 'sync_in_progress'
@@ -776,14 +752,7 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
 
       // 6) 提交后复查 /check
       sendProgress('finalizing', 93)
-      const verifyCollection = await getCollectionHashForSync(mode)
-      const verifyHash = verifyCollection.hash
-      logCloudSyncRc('verifyHash', {
-        trigger,
-        hash: verifyHash,
-        fromCache: verifyCollection.fromCache,
-        count: mergedList.length
-      })
+      const verifyHash = (await getCollectionHashForSync(mode)).hash
       try {
         const verifyRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/check`, {
           method: 'POST',
@@ -928,11 +897,6 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
     if (!alreadyLatest && !silent && mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/summary', summary)
     }
-    logCloudSyncRc('summary', {
-      trigger,
-      alreadyLatest,
-      ...summary
-    })
     sendState('success')
     return 'success'
   } catch (e: unknown) {
@@ -961,16 +925,10 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
 }
 
 export async function runCloudSync(trigger: CloudSyncTrigger = 'manual'): Promise<string> {
-  if (cloudSyncRunning) {
-    logCloudSyncRc('skip', { trigger, reason: 'already_running' })
-    return 'already_running'
-  }
+  if (cloudSyncRunning) return 'already_running'
   cloudSyncRunning = true
   try {
-    logCloudSyncRc('start', { trigger })
-    const result = await startCloudSync(trigger)
-    logCloudSyncRc('done', { trigger, result })
-    return result
+    return await startCloudSync(trigger)
   } finally {
     cloudSyncRunning = false
   }
