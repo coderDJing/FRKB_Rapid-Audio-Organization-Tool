@@ -221,10 +221,13 @@ export const useHorizontalBrowseFaderControls = (
           await params.nativeTransport.setPlaying('bottom', true)
         }
       }
-      // Let the render clock reanchor only when the native snapshot actually changed.
-      // For an already aligned close/open cycle, forcing both decks bumps playback
-      // revisions and creates a visible one-frame pause for no semantic change.
-      params.syncDeckRenderState()
+      // visualPending 会抑制普通 render sync，但此时 native 已完成对齐。这里必须先把
+      // 两轨 Renderer 时钟重锚到最新 snapshot，再提交最终视觉帧；同时保留现有
+      // playback revision，避免额外生成一轮替代帧和联结开启卡顿。
+      params.syncDeckRenderState({
+        force: 'all',
+        preserveRevision: true
+      })
       await nextTick()
       try {
         const commitStartedAtMs = performance.now()

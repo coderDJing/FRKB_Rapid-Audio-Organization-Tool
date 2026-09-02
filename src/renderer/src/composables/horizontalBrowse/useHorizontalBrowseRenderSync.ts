@@ -16,6 +16,7 @@ export type HorizontalBrowseRenderSyncOptions = {
   snapshotAtMs?: number
   force?: HorizontalBrowseRenderSyncTarget
   forceRevision?: boolean
+  preserveRevision?: boolean
 }
 
 type UseHorizontalBrowseRenderSyncParams = {
@@ -192,7 +193,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     snapshotAtMs: number,
     renderNowMs: number,
     force: boolean,
-    forceRevision: boolean
+    forceRevision: boolean,
+    preserveRevision: boolean
   ) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const snapshotSec = normalizeTimelineSeconds(snapshot.renderCurrentSec)
@@ -327,13 +329,15 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       fullSyncPhaseChanged ||
       (playbackSnapshotAuthoritative && driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)
     const shouldBumpPlaybackRevision =
-      (shouldReanchor && forceRevision) ||
-      (shouldReanchor &&
-        !confirmedPendingIntent &&
-        !forceConfirmsRecentIntent &&
-        (force ||
-          fullSyncPhaseChanged ||
-          (snapshot.playing && (!previousSignature || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC))))
+      !preserveRevision &&
+      ((shouldReanchor && forceRevision) ||
+        (shouldReanchor &&
+          !confirmedPendingIntent &&
+          !forceConfirmsRecentIntent &&
+          (force ||
+            fullSyncPhaseChanged ||
+            (snapshot.playing &&
+              (!previousSignature || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))))
     const visualPending = params.linkedGridVisualPending?.() === true
     const suppressedByVisualPending = visualPending && !force
 
@@ -376,14 +380,15 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const snapshotAtMs = typeof input === 'number' ? nowMs : (input.snapshotAtMs ?? nowMs)
     const forcedDecks = resolveForcedDecks(typeof input === 'number' ? undefined : input.force)
     const forceRevision = typeof input === 'number' ? false : input.forceRevision === true
+    const preserveRevision = typeof input === 'number' ? false : input.preserveRevision === true
     if (forcedDecks.size > 0) {
       for (const deck of forcedDecks) {
-        syncDeckFromSnapshot(deck, snapshotAtMs, nowMs, true, forceRevision)
+        syncDeckFromSnapshot(deck, snapshotAtMs, nowMs, true, forceRevision, preserveRevision)
       }
       return
     }
-    syncDeckFromSnapshot('top', snapshotAtMs, nowMs, false, false)
-    syncDeckFromSnapshot('bottom', snapshotAtMs, nowMs, false, false)
+    syncDeckFromSnapshot('top', snapshotAtMs, nowMs, false, false, false)
+    syncDeckFromSnapshot('bottom', snapshotAtMs, nowMs, false, false, false)
   }
 
   // 强制把某条 deck 的"渲染当前播放位置"立刻拉到指定秒数。
