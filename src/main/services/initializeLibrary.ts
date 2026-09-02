@@ -65,6 +65,11 @@ const completeLibrarySetup = (): void => {
   startKeyAnalysisBackground()
   void globalSongSearchEngine.warmup().catch(() => {})
   void maybeShowWhatsNew().catch(() => {})
+  void import('../cloudSyncScheduler')
+    .then(({ restartCloudSyncScheduler }) => {
+      restartCloudSyncScheduler({ immediate: true })
+    })
+    .catch(() => {})
 }
 
 export const initializeLibraryAtPath = async (

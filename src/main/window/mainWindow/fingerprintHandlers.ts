@@ -78,10 +78,10 @@ export function registerFingerprintHandlers({
     const uniqueFingerprints = new Set(songsAnalyseResult.map((item) => item.sha256_Hash))
     const removeDuplicatesFingerprintResults = Array.from(uniqueFingerprints)
     const beforeSongFingerprintListLength = store.songFingerprintList.length
-    store.songFingerprintList = Array.from(
-      new Set([...store.songFingerprintList, ...removeDuplicatesFingerprintResults])
+    await FingerprintStore.unionFingerprintList(
+      removeDuplicatesFingerprintResults,
+      getFingerprintMode()
     )
-    await FingerprintStore.saveList(store.songFingerprintList, getFingerprintMode())
     const fingerprintEndAt = Date.now()
     const duplicatesRemovedCount =
       songFileUrls.length -
@@ -170,7 +170,7 @@ export function registerFingerprintHandlers({
       )
       const fingerprintMode = getFingerprintMode()
       const beforeSongFingerprintListLength = store.songFingerprintList.length
-      const fingerprintSet = new Set(store.songFingerprintList)
+      const existingSet = new Set(store.songFingerprintList)
       const uniqueFingerprints = Array.from(
         new Set(
           songsAnalyseResult
@@ -180,14 +180,9 @@ export function registerFingerprintHandlers({
       )
       let fingerprintAlreadyExistingCount = 0
       for (const fingerprint of uniqueFingerprints) {
-        if (fingerprintSet.has(fingerprint)) {
-          fingerprintAlreadyExistingCount++
-        } else {
-          fingerprintSet.add(fingerprint)
-        }
+        if (existingSet.has(fingerprint)) fingerprintAlreadyExistingCount++
       }
-      store.songFingerprintList = Array.from(fingerprintSet)
-      await FingerprintStore.saveList(store.songFingerprintList, fingerprintMode)
+      await FingerprintStore.unionFingerprintList(uniqueFingerprints, fingerprintMode)
       const fingerprintEndAt = Date.now()
       const fingerprintAddedCount =
         store.songFingerprintList.length - beforeSongFingerprintListLength

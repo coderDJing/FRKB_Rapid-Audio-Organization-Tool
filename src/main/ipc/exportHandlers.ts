@@ -198,7 +198,7 @@ export function registerExportHandlers() {
   ipcMain.handle('importSongFingerprint', async (_e, filePath: string) => {
     assertLibraryMergeMutationAllowed()
     const merged = await importFromJsonFile(filePath)
-    store.songFingerprintList = merged
+    return merged
   })
 
   ipcMain.handle(

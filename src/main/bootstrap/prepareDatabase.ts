@@ -161,6 +161,8 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     databaseSchemaMigrationWindow.close()
     mainWindow.createWindow()
     libraryRelocateWindow.closeWindow()
+    const { restartCloudSyncScheduler } = await import('../cloudSyncScheduler')
+    restartCloudSyncScheduler({ immediate: true })
   } catch (error) {
     if (databaseSchemaMigrationWindow.hasFailedMigration()) return
     databaseSchemaMigrationWindow.close()

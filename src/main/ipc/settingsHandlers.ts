@@ -22,6 +22,10 @@ import {
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
 import { normalizeTrackReanalysisSelection } from '../../shared/trackReanalysisSelection'
+import {
+  normalizeCloudSyncAutoEnabled,
+  normalizeCloudSyncAutoIntervalMs
+} from '../../shared/cloudSyncAuto'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -41,6 +45,12 @@ export function registerSettingsHandlers(deps: Dependencies) {
       .catch(() => undefined)
       .then(async () => {
         assertLibraryMergeMutationAllowed()
+        const prevAutoEnabled = normalizeCloudSyncAutoEnabled(
+          store.settingConfig?.cloudSyncAutoEnabled
+        )
+        const prevAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
+          store.settingConfig?.cloudSyncAutoIntervalMs
+        )
         const prevContextMenu = !!store.settingConfig?.enableExplorerContextMenu
         const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
         const normalizedSetting = {
@@ -51,6 +61,10 @@ export function registerSettingsHandlers(deps: Dependencies) {
           ),
           trackReanalysisSelection: normalizeTrackReanalysisSelection(
             setting?.trackReanalysisSelection
+          ),
+          cloudSyncAutoEnabled: normalizeCloudSyncAutoEnabled(setting?.cloudSyncAutoEnabled),
+          cloudSyncAutoIntervalMs: normalizeCloudSyncAutoIntervalMs(
+            setting?.cloudSyncAutoIntervalMs
           )
         }
         store.settingConfig = normalizedSetting
@@ -91,6 +105,19 @@ export function registerSettingsHandlers(deps: Dependencies) {
             await removeWindowsContextMenu()
             await clearWindowsContextMenuSignature()
           }
+        }
+
+        const nextAutoEnabled = normalizeCloudSyncAutoEnabled(
+          store.settingConfig?.cloudSyncAutoEnabled
+        )
+        const nextAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
+          store.settingConfig?.cloudSyncAutoIntervalMs
+        )
+        if (nextAutoEnabled !== prevAutoEnabled || nextAutoIntervalMs !== prevAutoIntervalMs) {
+          const { restartCloudSyncScheduler } = await import('../cloudSyncScheduler')
+          restartCloudSyncScheduler({
+            immediate: nextAutoEnabled && !prevAutoEnabled
+          })
         }
       })
     setSettingQueue = task.catch(() => undefined)

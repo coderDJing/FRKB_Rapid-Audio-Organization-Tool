@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import fs = require('fs-extra')
 import path = require('path')
 import store from './store'
@@ -15,6 +16,8 @@ const META_FILE = 'latest.meta'
 type FingerprintMode = 'pcm' | 'file'
 
 const MIGRATION_META_PREFIX = 'fingerprints_migrated_'
+const COLLECTION_HASH_CACHE_PREFIX = 'fingerprints_collection_hash_cache_'
+const COLLECTION_HASH_REGEX = /^[a-f0-9]{64}$/
 
 function resolveMode(mode?: FingerprintMode): FingerprintMode {
   return mode === 'file' ? 'file' : 'pcm'
@@ -28,7 +31,68 @@ function getMigrationKey(mode: FingerprintMode): string {
   return `${MIGRATION_META_PREFIX}${mode}`
 }
 
-// 简单串行化队列，确保同一时间仅一次写入
+function getCollectionHashCacheKey(mode: FingerprintMode): string {
+  return `${COLLECTION_HASH_CACHE_PREFIX}${mode}`
+}
+
+type CollectionHashCache = {
+  hash: string
+  dirty: boolean
+}
+
+function isValidCollectionHash(hash: string): boolean {
+  return COLLECTION_HASH_REGEX.test(hash)
+}
+
+function parseCollectionHashCache(raw: string | null): CollectionHashCache | null {
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const record = parsed as Record<string, unknown>
+    const hash = typeof record.hash === 'string' ? record.hash.toLowerCase() : ''
+    const dirty = record.dirty === true
+    return { hash, dirty }
+  } catch {
+    return null
+  }
+}
+
+function readCollectionHashCache(
+  db: SqliteDatabase,
+  mode: FingerprintMode
+): CollectionHashCache | null {
+  return parseCollectionHashCache(getMetaValue(db, getCollectionHashCacheKey(mode)))
+}
+
+function writeCollectionHashCache(
+  db: SqliteDatabase,
+  mode: FingerprintMode,
+  cache: CollectionHashCache
+): void {
+  setMetaValue(db, getCollectionHashCacheKey(mode), JSON.stringify(cache))
+}
+
+function markCollectionHashDirty(db: SqliteDatabase, mode: FingerprintMode): void {
+  const current = readCollectionHashCache(db, mode)
+  writeCollectionHashCache(db, mode, {
+    hash: current?.hash && isValidCollectionHash(current.hash) ? current.hash : '',
+    dirty: true
+  })
+}
+
+export function calculateCollectionHashForSet(fingerprints: string[]): string {
+  if (!Array.isArray(fingerprints) || fingerprints.length === 0) {
+    return createHash('sha256').update('', 'utf8').digest('hex')
+  }
+  const concatenated = fingerprints
+    .map((fp) => String(fp).toLowerCase())
+    .sort()
+    .join('')
+  return createHash('sha256').update(concatenated, 'utf8').digest('hex')
+}
+
+// 简单串行化队列，确保同一时间仅一次写入 / 读缓存
 let writeQueue: Promise<unknown> = Promise.resolve()
 function enqueue<T>(task: () => Promise<T>): Promise<T> {
   const nextTask = writeQueue.then(task, task)
@@ -37,6 +101,44 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
     () => undefined
   )
   return nextTask
+}
+
+let mutationQueue: Promise<unknown> = Promise.resolve()
+export function withFingerprintListMutation<T>(task: () => Promise<T> | T): Promise<T> {
+  const nextTask = mutationQueue.then(task, task)
+  mutationQueue = nextTask.then(
+    () => undefined,
+    () => undefined
+  )
+  return nextTask
+}
+
+export async function getCollectionHashForSync(mode?: FingerprintMode): Promise<{
+  hash: string
+  fingerprints: string[]
+  fromCache: boolean
+}> {
+  const resolvedMode = resolveMode(mode)
+  return withFingerprintListMutation(async () => {
+    const fingerprints = Array.from(
+      new Set((store.songFingerprintList || []).map((item) => String(item).toLowerCase()))
+    )
+    const resolved = await enqueue(async () => {
+      const db = getLibraryDb()
+      if (db) {
+        const cached = readCollectionHashCache(db, resolvedMode)
+        if (cached && cached.dirty === false && isValidCollectionHash(cached.hash)) {
+          return { hash: cached.hash, fromCache: true }
+        }
+      }
+      const nextHash = calculateCollectionHashForSet(fingerprints)
+      if (db) {
+        writeCollectionHashCache(db, resolvedMode, { hash: nextHash, dirty: false })
+      }
+      return { hash: nextHash, fromCache: false }
+    })
+    return { hash: resolved.hash, fingerprints, fromCache: resolved.fromCache }
+  })
 }
 
 function getDir(mode?: FingerprintMode): string {
@@ -232,10 +334,37 @@ export async function saveList(list: string[], mode?: FingerprintMode): Promise<
     try {
       writeListToDb(db, resolvedMode, normalized)
       setMetaValue(db, getMigrationKey(resolvedMode), '1')
+      markCollectionHashDirty(db, resolvedMode)
       return
     } catch (error) {
       log.error('[fingerprint] sqlite save failed', error)
     }
+  })
+}
+
+export async function replaceFingerprintList(
+  list: string[],
+  mode?: FingerprintMode
+): Promise<string[]> {
+  return withFingerprintListMutation(async () => {
+    const next = normalizeList(list)
+    store.songFingerprintList = next
+    await saveList(next, mode)
+    return next
+  })
+}
+
+export async function unionFingerprintList(
+  extra: string[],
+  mode?: FingerprintMode
+): Promise<string[]> {
+  return withFingerprintListMutation(async () => {
+    const current = store.songFingerprintList || []
+    const next = normalizeList([...current, ...extra])
+    if (next.length === current.length) return current
+    store.songFingerprintList = next
+    await saveList(next, mode)
+    return next
   })
 }
 
@@ -246,9 +375,10 @@ export async function exportSnapshot(toFilePath: string, list: string[]): Promis
 export async function importFromJsonFile(filePath: string): Promise<string[]> {
   const json: unknown = await fs.readJSON(filePath)
   if (Array.isArray(json)) {
-    const merged = normalizeList([...(store.songFingerprintList || []), ...toStringArray(json)])
-    await saveList(merged)
-    return merged
+    return await unionFingerprintList(
+      toStringArray(json),
+      resolveMode(store.settingConfig?.fingerprintMode)
+    )
   }
   return store.songFingerprintList || []
 }
@@ -258,5 +388,10 @@ export default {
   loadList,
   saveList,
   exportSnapshot,
-  importFromJsonFile
+  importFromJsonFile,
+  replaceFingerprintList,
+  unionFingerprintList,
+  getCollectionHashForSync,
+  calculateCollectionHashForSet,
+  withFingerprintListMutation
 }

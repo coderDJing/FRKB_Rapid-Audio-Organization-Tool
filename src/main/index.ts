@@ -14,8 +14,9 @@ import {
   type LogLevel
 } from './log'
 import './cloudSync'
+import { stopCloudSyncScheduler } from './cloudSyncScheduler'
 import errorReport from './errorReport'
-import { saveList } from './fingerprintStore'
+import { replaceFingerprintList } from './fingerprintStore'
 import mainWindow from './window/mainWindow'
 import mixtapeWindow from './window/mixtapeWindow'
 import startupWindow from './window/startupWindow'
@@ -357,6 +358,7 @@ let appRuntimeCleanupDone = false
 const cleanupAppRuntimeResources = () => {
   if (appRuntimeCleanupDone) return
   appRuntimeCleanupDone = true
+  stopCloudSyncScheduler()
   terminateRegisteredChildProcesses()
   closeLibraryDb()
 }
@@ -818,8 +820,10 @@ ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {
     if (!store.databaseDir) {
       return { success: false, message: 'database.notConfigured' }
     }
-    store.songFingerprintList = []
-    await saveList(store.songFingerprintList)
+    await replaceFingerprintList(
+      [],
+      store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+    )
     return { success: true }
   } catch (error: unknown) {
     log.error('clearTracksFingerprintLibrary failed', error)

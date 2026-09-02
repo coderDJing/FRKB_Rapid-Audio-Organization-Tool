@@ -1,8 +1,9 @@
 import { ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
-import FingerprintStore from './fingerprintStore'
+import { getCollectionHashForSync, unionFingerprintList } from './fingerprintStore'
 import { log } from './log'
+import { logCloudSyncRc } from './cloudSyncDiagnostics'
 import mainWindow from './window/mainWindow'
 import { persistSettingConfig } from './settingsPersistence'
 import { fetchWithSystemProxy } from './fetchWithSystemProxy'
@@ -12,6 +13,7 @@ import {
   syncCuratedArtistCloudSnapshot
 } from './curatedArtistCloudSync'
 import { resolveBaseUrl } from './serverDiscovery'
+import type { CloudSyncTrigger } from '../types/cloudSync'
 
 const CLOUD_SYNC = {
   PREFIX: '/frkbapi/v1/fingerprint-sync',
@@ -63,6 +65,30 @@ const SYNC_WINDOW_MS = 5 * 60 * 1000
 const SYNC_MAX_IN_WINDOW = 10
 let syncStartTimestamps: number[] = []
 let cloudSyncRunning = false
+
+function isScheduledTrigger(trigger: CloudSyncTrigger): boolean {
+  return trigger === 'scheduled'
+}
+
+function isActionableScheduledFailure(message: string, error?: unknown): boolean {
+  if (
+    message === 'cloudSync.errors.keyInvalid' ||
+    message === 'cloudSync.errors.keyDisabled' ||
+    message === 'cloudSync.errors.limitExceeded' ||
+    message === 'cloudSync.errors.limitExceededOnCheck'
+  ) {
+    return true
+  }
+  const body = isRecord(error) ? error : null
+  const nested = isRecord(body?.error) ? body.error : body
+  const code = String(nested?.code || nested?.error || body?.error || '').toUpperCase()
+  return (
+    code === 'INVALID_USER_KEY' ||
+    code === 'USER_KEY_NOT_FOUND' ||
+    code === 'USER_KEY_INACTIVE' ||
+    code === 'FINGERPRINT_LIMIT_EXCEEDED'
+  )
+}
 function canStartSyncNow() {
   const now = Date.now()
   syncStartTimestamps = syncStartTimestamps.filter((t) => now - t < SYNC_WINDOW_MS)
@@ -181,6 +207,8 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
       cloudSyncConfig.userKey = json?.data?.userKey || userKey
       store.settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
       await persistSettingConfig()
+      const { restartCloudSyncScheduler } = await import('./cloudSyncScheduler')
+      restartCloudSyncScheduler({ immediate: true })
       return { success: true }
     }
     const error = String(json?.error || '').toUpperCase()
@@ -195,29 +223,6 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
     return { success: false, message: 'cloudSync.errors.cannotConnect' }
   }
 })
-
-// 计算指纹集合哈希（与后端一致）
-// - 统一小写
-// - 升序排序
-// - 直接拼接（无分隔符）
-// - sha256 输出 hex 小写
-// - 空数组等价于 sha256('')
-function calculateCollectionHashForSet(
-  crypto: typeof import('crypto'),
-  fingerprints: string[]
-): string {
-  if (!Array.isArray(fingerprints)) {
-    throw new Error('指纹数组参数无效')
-  }
-  if (fingerprints.length === 0) {
-    return crypto.createHash('sha256').update('', 'utf8').digest('hex')
-  }
-  const concatenated = fingerprints
-    .map((fp) => String(fp).toLowerCase())
-    .sort()
-    .join('')
-  return crypto.createHash('sha256').update(concatenated, 'utf8').digest('hex')
-}
 
 ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: string }) => {
   try {
@@ -244,7 +249,8 @@ ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: stri
   }
 })
 
-async function startCloudSync() {
+async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
+  const silent = isScheduledTrigger(trigger)
   // 频控：限制 5 分钟内最多 10 次同步启动
   // 在接近上限时（第 9 次或第 10 次）给出友好提示并告知下一次安全操作时间
   {
@@ -253,7 +259,7 @@ async function startCloudSync() {
     if (windowTs.length >= SYNC_MAX_IN_WINDOW) {
       const oldestTs = windowTs[0] ?? now
       const retryAfterMs = Math.max(0, SYNC_WINDOW_MS - (now - oldestTs))
-      if (mainWindow.instance) {
+      if (!silent && mainWindow.instance) {
         mainWindow.instance.webContents.send('cloudSync/error', {
           message: '操作过于频繁：5 分钟内最多允许发起 10 次同步',
           error: {
@@ -266,10 +272,14 @@ async function startCloudSync() {
         })
         mainWindow.instance.webContents.send('cloudSync/state', 'failed')
       }
+      logCloudSyncRc('skip', { trigger, reason: 'rate_limited', retryAfterMs })
       return 'rate_limited'
     }
     // 第 9 次（窗口内已有 8 次，将要发起第 9 次）或第 10 次（已有 9 次，将要发起第 10 次）给提示
-    if (windowTs.length === SYNC_MAX_IN_WINDOW - 2 || windowTs.length === SYNC_MAX_IN_WINDOW - 1) {
+    if (
+      !silent &&
+      (windowTs.length === SYNC_MAX_IN_WINDOW - 2 || windowTs.length === SYNC_MAX_IN_WINDOW - 1)
+    ) {
       const oldestTs = windowTs[0] ?? now
       const retryAfterMs = Math.max(0, SYNC_WINDOW_MS - (now - oldestTs))
       const seconds = Math.ceil(retryAfterMs / 1000)
@@ -295,7 +305,7 @@ async function startCloudSync() {
     syncStartTimestamps = syncStartTimestamps.filter((t) => now - t < SYNC_WINDOW_MS)
     const oldestTs = syncStartTimestamps[0] ?? now
     const retryAfterMs = Math.max(0, SYNC_WINDOW_MS - (now - oldestTs))
-    if (mainWindow.instance) {
+    if (!silent && mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/error', {
         message: '操作过于频繁：5 分钟内最多允许发起 10 次同步',
         error: {
@@ -308,22 +318,28 @@ async function startCloudSync() {
       })
       mainWindow.instance.webContents.send('cloudSync/state', 'failed')
     }
+    logCloudSyncRc('skip', { trigger, reason: 'rate_limited', retryAfterMs })
     return 'rate_limited'
   }
   markSyncStarted()
   const baseUrl = await resolveBaseUrl()
   if (!cloudSyncConfig.userKey) {
+    cloudSyncConfig.userKey = String(store.settingConfig?.cloudSyncUserKey || '').trim()
+  }
+  if (!cloudSyncConfig.userKey) {
     if (is.dev) {
       cloudSyncConfig.userKey = DEV_DEFAULT_USER_KEY
     } else {
+      logCloudSyncRc('skip', { trigger, reason: 'not_configured' })
       return 'not_configured'
     }
   }
 
   let cancelRequested = false
-  ipcMain.once('cloudSync/cancel', () => {
+  const onCancel = () => {
     cancelRequested = true
-  })
+  }
+  ipcMain.once('cloudSync/cancel', onCancel)
 
   let lastProgressPercent = 0
   const sendProgress = (phase: string, percent: number, details?: unknown) => {
@@ -344,8 +360,15 @@ async function startCloudSync() {
     }
   }
   const sendError = (message: string, error?: unknown) => {
+    if (silent && !isActionableScheduledFailure(message, error)) return
     if (mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/error', { message, error })
+    }
+  }
+  const sendNotice = (payload: Record<string, unknown>) => {
+    if (silent) return
+    if (mainWindow.instance) {
+      mainWindow.instance.webContents.send('cloudSync/notice', payload)
     }
   }
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -371,13 +394,6 @@ async function startCloudSync() {
     // 服务器端为当前 userKey 设置的上限（来自 /check）
     let serverLimit: number | null = null
     // 不再掩码敏感信息，应用户要求完整打印
-
-    // 读取本地集合（存储为 SHA256，小写、去重），后端接口已统一为 64hex SHA256
-    const crypto = await import('crypto')
-    // 选择当前模式的本地集合
-    const clientFingerprints = Array.from(
-      new Set<string>((store.songFingerprintList || []).map((m) => String(m).toLowerCase()))
-    )
 
     // 0) validate-user-key：在进入流程前快速校验 userKey 是否有效且启用
     try {
@@ -416,8 +432,19 @@ async function startCloudSync() {
     }
 
     // 1) /check（集合哈希：小写、升序、无分隔符；空数组等价于 sha256('')）
-    const hash = calculateCollectionHashForSet(crypto, clientFingerprints)
     const mode = getFingerprintMode()
+    const {
+      hash,
+      fingerprints: clientFingerprints,
+      fromCache
+    } = await getCollectionHashForSync(mode)
+    logCloudSyncRc('collectionHash', {
+      trigger,
+      mode,
+      count: clientFingerprints.length,
+      hash,
+      fromCache
+    })
     const checkRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/check`, {
       method: 'POST',
       headers: {
@@ -453,6 +480,24 @@ async function startCloudSync() {
       serverLimit = limitFromServer
     }
     const fingerprintNeedSync = checkJson?.needSync === true
+    const checkReason = String(checkJson?.reason || '')
+    logCloudSyncRc('check', {
+      trigger,
+      needSync: fingerprintNeedSync,
+      reason: checkReason,
+      clientCount,
+      serverCount,
+      limit: serverLimit
+    })
+    if (checkReason === 'sync_in_progress') {
+      if (silent) {
+        sendState('cancelled')
+        return 'sync_in_progress'
+      }
+      sendError('cloudSync.errors.syncInProgress', checkJson)
+      sendState('failed')
+      return 'sync_in_progress'
+    }
     sendProgress('checking', 5, { clientCount, serverCount })
     // 配额上限预检查：若客户端集合数量已大于上限，直接终止
     if (serverLimit && clientCount > serverLimit) {
@@ -726,13 +771,19 @@ async function startCloudSync() {
       }
 
       // 本地保存（多版本+指针，原子切换）
-      mergedList = Array.from(mergedSet)
-      await FingerprintStore.saveList(mergedList)
-      clientFinalCount = clientCount + pulledToClientTotal
+      mergedList = await unionFingerprintList(Array.from(mergedSet), mode)
+      clientFinalCount = mergedList.length
 
       // 6) 提交后复查 /check
       sendProgress('finalizing', 93)
-      const verifyHash = calculateCollectionHashForSet(crypto, mergedList)
+      const verifyCollection = await getCollectionHashForSync(mode)
+      const verifyHash = verifyCollection.hash
+      logCloudSyncRc('verifyHash', {
+        trigger,
+        hash: verifyHash,
+        fromCache: verifyCollection.fromCache,
+        count: mergedList.length
+      })
       try {
         const verifyRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/check`, {
           method: 'POST',
@@ -805,11 +856,9 @@ async function startCloudSync() {
       const responsePayload = getCuratedArtistSyncErrorPayload(curatedError)
       if (responsePayload) {
         if (isCuratedArtistSyncUnsupportedServer(responsePayload)) {
-          if (mainWindow.instance) {
-            mainWindow.instance.webContents.send('cloudSync/notice', {
-              message: 'cloudSync.curatedArtistSkippedUnsupported'
-            })
-          }
+          sendNotice({
+            message: 'cloudSync.curatedArtistSkippedUnsupported'
+          })
           curatedArtistClientInitialCount = 0
           curatedArtistClientCountAfter = 0
           curatedArtistServerInitialCount = 0
@@ -852,8 +901,8 @@ async function startCloudSync() {
     await wait(120)
     sendProgress('finalizing', 100)
     const alreadyLatest = !fingerprintNeedSync && !curatedArtistNeedSync
-    if (alreadyLatest && mainWindow.instance) {
-      mainWindow.instance.webContents.send('cloudSync/notice', {
+    if (alreadyLatest) {
+      sendNotice({
         message: 'cloudSync.errors.alreadyLatest'
       })
     }
@@ -876,11 +925,15 @@ async function startCloudSync() {
       totalServerCountAfter: toNumber(serverFinalCount),
       verifiedHashMatched
     }
-    if (!alreadyLatest && mainWindow.instance) {
+    if (!alreadyLatest && !silent && mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/summary', summary)
     }
+    logCloudSyncRc('summary', {
+      trigger,
+      alreadyLatest,
+      ...summary
+    })
     sendState('success')
-    store.songFingerprintList = mergedList
     return 'success'
   } catch (e: unknown) {
     const error = (isRecord(e) ? e : null) as ErrorLike | null
@@ -902,15 +955,28 @@ async function startCloudSync() {
     sendError(msg, e)
     sendState('failed')
     return 'failed'
+  } finally {
+    ipcMain.removeListener('cloudSync/cancel', onCancel)
   }
 }
 
-ipcMain.handle('cloudSync/start', async () => {
-  if (cloudSyncRunning) return 'already_running'
+export async function runCloudSync(trigger: CloudSyncTrigger = 'manual'): Promise<string> {
+  if (cloudSyncRunning) {
+    logCloudSyncRc('skip', { trigger, reason: 'already_running' })
+    return 'already_running'
+  }
   cloudSyncRunning = true
   try {
-    return await startCloudSync()
+    logCloudSyncRc('start', { trigger })
+    const result = await startCloudSync(trigger)
+    logCloudSyncRc('done', { trigger, result })
+    return result
   } finally {
     cloudSyncRunning = false
   }
+}
+
+ipcMain.handle('cloudSync/start', async (_e, payload?: { trigger?: CloudSyncTrigger }) => {
+  const trigger = payload?.trigger === 'scheduled' ? 'scheduled' : 'manual'
+  return runCloudSync(trigger)
 })

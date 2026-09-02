@@ -50,6 +50,7 @@ export const LIBRARY_METADATA_CONTRACTS: readonly LibraryMetadataContract[] = [
   { kind: 'exact', key: 'waveform_cache_purged_v1', strategy: 'local' },
   { kind: 'exact', key: 'recycle_bin_migrated_v1', strategy: 'local' },
   { kind: 'prefix', prefix: 'fingerprints_migrated_', strategy: 'local' },
+  { kind: 'prefix', prefix: 'fingerprints_collection_hash_cache_', strategy: 'local' },
   { kind: 'prefix', prefix: 'library_merge.', strategy: 'local' }
 ]
 

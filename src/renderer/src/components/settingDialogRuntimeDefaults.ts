@@ -6,6 +6,10 @@ import {
   DEFAULT_BROWSER_PLAYER_RIGHT_TRACK_INFO,
   normalizeBrowserPlayerRightTrackInfo
 } from '@shared/browserPlayerRightTrackInfo'
+import {
+  normalizeCloudSyncAutoEnabled,
+  normalizeCloudSyncAutoIntervalMs
+} from '@shared/cloudSyncAuto'
 
 export const AUDIO_OUTPUT_FOLLOW_SYSTEM_ID = ''
 
@@ -95,6 +99,12 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.audioOutputDeviceId === undefined) {
     runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
   }
+  runtime.setting.cloudSyncAutoEnabled = normalizeCloudSyncAutoEnabled(
+    runtime.setting.cloudSyncAutoEnabled
+  )
+  runtime.setting.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
+    runtime.setting.cloudSyncAutoIntervalMs
+  )
   if (runtime.setting.waveformMode === undefined) {
     runtime.setting.waveformMode = 'half'
   }

@@ -26,6 +26,12 @@ import {
   sanitizeUserGuideAudience,
   sanitizeUserGuideDismissedSteps
 } from '../../shared/userGuide'
+import {
+  DEFAULT_CLOUD_SYNC_AUTO_ENABLED,
+  DEFAULT_CLOUD_SYNC_AUTO_INTERVAL_MS,
+  normalizeCloudSyncAutoEnabled,
+  normalizeCloudSyncAutoIntervalMs
+} from '../../shared/cloudSyncAuto'
 import fs = require('fs-extra')
 
 const platform = process.platform
@@ -129,6 +135,8 @@ const defaultSettings = {
   errorReportRetryMsSinceLastFailure: -1,
   fingerprintMode: 'pcm' as 'pcm',
   cloudSyncUserKey: '',
+  cloudSyncAutoEnabled: DEFAULT_CLOUD_SYNC_AUTO_ENABLED,
+  cloudSyncAutoIntervalMs: DEFAULT_CLOUD_SYNC_AUTO_INTERVAL_MS,
   convertDefaults: defaultConvertDefaults,
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: '',
@@ -223,6 +231,12 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   delete (finalSettings as StoredSettings).isRekordboxUser
   finalSettings.userGuideDismissedSteps = sanitizeUserGuideDismissedSteps(
     finalSettings.userGuideDismissedSteps
+  )
+  finalSettings.cloudSyncAutoEnabled = normalizeCloudSyncAutoEnabled(
+    finalSettings.cloudSyncAutoEnabled
+  )
+  finalSettings.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
+    finalSettings.cloudSyncAutoIntervalMs
   )
 
   try {

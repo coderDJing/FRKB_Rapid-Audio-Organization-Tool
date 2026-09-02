@@ -623,13 +623,12 @@ export async function startAudioConversion(
           const list = (res?.songsAnalyseResult || []).map((x) => x.sha256_Hash)
           if (list.length > 0) {
             const beforeLen = store.songFingerprintList.length
-            store.songFingerprintList = Array.from(new Set([...store.songFingerprintList, ...list]))
-            if (store.songFingerprintList.length !== beforeLen) {
-              await FingerprintStore.saveList(
-                store.songFingerprintList,
-                store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
-              )
-              fingerprintAddedCount += store.songFingerprintList.length - beforeLen
+            const nextList = await FingerprintStore.unionFingerprintList(
+              list,
+              store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+            )
+            if (nextList.length !== beforeLen) {
+              fingerprintAddedCount += nextList.length - beforeLen
             }
           }
         } catch {}

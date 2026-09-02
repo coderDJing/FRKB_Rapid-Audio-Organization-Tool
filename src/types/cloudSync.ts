@@ -12,6 +12,8 @@ export type CloudSyncPhase =
 
 export type CloudSyncState = 'syncing' | 'success' | 'failed' | 'cancelled'
 
+export type CloudSyncTrigger = 'manual' | 'scheduled'
+
 export type CloudSyncProgressDetails = {
   clientCount?: number
   serverCount?: number

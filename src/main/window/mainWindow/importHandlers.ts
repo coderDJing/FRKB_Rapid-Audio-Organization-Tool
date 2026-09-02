@@ -207,13 +207,7 @@ export function registerImportHandlers(
 
       if (isPushSongFingerprintLibrary && fingerprintsToAdd.length > 0) {
         const uniqueToAdd = Array.from(new Set(fingerprintsToAdd))
-        const beforeLen = store.songFingerprintList.length
-        store.songFingerprintList = Array.from(
-          new Set([...store.songFingerprintList, ...uniqueToAdd])
-        )
-        if (store.songFingerprintList.length !== beforeLen) {
-          await FingerprintStore.saveList(store.songFingerprintList, getFingerprintMode())
-        }
+        await FingerprintStore.unionFingerprintList(uniqueToAdd, getFingerprintMode())
       }
 
       const importEndAt = Date.now()

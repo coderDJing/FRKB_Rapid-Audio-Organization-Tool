@@ -713,6 +713,10 @@ interface ISettingConfig {
   fingerprintMode?: 'pcm' | 'file'
   // 云同步用户 Key（由设置页配置）
   cloudSyncUserKey?: string
+  // 是否启用云同步定时循环（默认关闭）
+  cloudSyncAutoEnabled?: boolean
+  // 云同步定时间隔（毫秒）；勾选启用后默认 1 小时
+  cloudSyncAutoIntervalMs?: number
   // 音频转换默认项（记住用户上次选择）
   convertDefaults?: {
     targetFormat:
