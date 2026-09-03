@@ -348,7 +348,17 @@ export const shouldSkipRestoringCloudFile = (
   if (locallyRemoved) {
     return options.knownFileIds == null || options.knownFileIds.has(file.fileId)
   }
-  return !identity && !!options.knownFileIds?.has(file.fileId)
+  if (!options.knownFileIds?.has(file.fileId)) return false
+  const abs =
+    identity?.location === 'curated' && identity.relativePath
+      ? curatedRelativeToAbs(identity.relativePath)
+      : null
+  if (!abs) return true
+  try {
+    return !fs.pathExistsSync(abs)
+  } catch {
+    return true
+  }
 }
 
 export const shouldSkipRecreatingCloudNode = (
@@ -370,9 +380,13 @@ export const collectUnappliedCloudIds = (
   return {
     files: new Set(
       snapshot.files
-        .filter(
-          (file) => !localFileIds.has(file.fileId) && !shouldSkipRestoringCloudFile(file, options)
-        )
+        .filter((file) => {
+          if (localFileIds.has(file.fileId)) return false
+          if (shouldSkipRestoringCloudFile(file, options)) return false
+          // 上一轮已经落到本机、现在扫描不到：用户删了，不要当成落地失败而保留云端
+          if (options.knownFileIds?.has(file.fileId)) return false
+          return true
+        })
         .map((file) => file.fileId)
     ),
     nodes: new Set(

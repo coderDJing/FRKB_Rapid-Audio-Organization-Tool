@@ -14,6 +14,7 @@ let bulkOperationDepth = 0
 let pendingBulkReconcileWindow: BrowserWindow | null = null
 let mutationListener: (() => void) | null = null
 let pendingCuratedContentChange = false
+let watchWindow: BrowserWindow | null = null
 
 const WATCH_DEBOUNCE_MS = 400
 
@@ -21,18 +22,22 @@ export function bindLibraryTreeMutationListener(listener: (() => void) | null): 
   mutationListener = listener
 }
 
+const watchPathEquals = (left: string, right: string): boolean =>
+  process.platform === 'win32'
+    ? left.toLocaleLowerCase() === right.toLocaleLowerCase()
+    : left === right
+
 const isCuratedLibraryWatchPath = (filename: string | Buffer | null | undefined): boolean => {
   const raw = String(filename || '')
     .replace(/\\/g, '/')
     .replace(/^\/+/, '')
   if (!raw) return true
-  const curatedName = getCoreFsDirName('CuratedLibrary')
   const first = raw.split('/')[0] || ''
-  const equals = (left: string, right: string) =>
-    process.platform === 'win32'
-      ? left.toLocaleLowerCase() === right.toLocaleLowerCase()
-      : left === right
-  if (equals(first, curatedName) || equals(first, '精选库')) return true
+  const curatedName = getCoreFsDirName('CuratedLibrary')
+  const recycleName = getCoreFsDirName('RecycleBin')
+  if (watchPathEquals(first, curatedName) || watchPathEquals(first, '精选库')) return true
+  // 删除曲目是搬进回收站；Windows 上 rename 常常只报 RecycleBin 路径
+  if (watchPathEquals(first, recycleName) || watchPathEquals(first, '回收站')) return true
   return !raw.includes('/')
 }
 
@@ -131,7 +136,14 @@ export function beginLibraryTreeWatcherBulkOperation(): () => void {
   }
 }
 
+/** 精选库内容变了（含删除后文件落在回收站）。不是把回收站同步上云。 */
+export function notifyLibraryFsChanged(_absPath?: string): void {
+  pendingCuratedContentChange = true
+  scheduleReconcile(watchWindow)
+}
+
 export function startLibraryTreeWatcher(window: BrowserWindow | null): void {
+  watchWindow = window
   if (watcher) return
   const rootDir = store.databaseDir
   if (!rootDir) return
@@ -153,6 +165,7 @@ export function startLibraryTreeWatcher(window: BrowserWindow | null): void {
 export function stopLibraryTreeWatcher(): void {
   clearDebounceTimer()
   pendingCuratedContentChange = false
+  watchWindow = null
   if (!watcher) return
   try {
     watcher.close()

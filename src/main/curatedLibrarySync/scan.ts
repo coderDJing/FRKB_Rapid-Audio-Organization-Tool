@@ -5,6 +5,7 @@ import { collectFilesWithExtensions } from '../nodeTaskUtils'
 import { findLibraryNodeByPath, findSongListRootByPath, loadLibraryNodes } from '../libraryTreeDb'
 import { normalizeOrder } from '../libraryTreeDbHelpers'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { getRecycleBinRecordByFileId } from '../recycleBinDb'
 import { normalizePlaylistTrackNumber } from '../services/playlistTrackNumbers'
 import { normalizeAddedAtMs } from '../../shared/songAddedAt'
 import { hashFileSha256 } from './hashFile'
@@ -16,6 +17,7 @@ import {
 } from './identityDb'
 import {
   absToCuratedRelative,
+  curatedRelativeToAbs,
   findCuratedLibraryNode,
   getCuratedLibraryAbsRoot,
   getLibraryAbsRoot,
@@ -163,6 +165,19 @@ export const scanCuratedLibraryForSync = async (): Promise<{
     }
     upsertCuratedSyncFile(row)
     files.push({ ...row, absPath })
+  }
+
+  for (const row of existingById.values()) {
+    if (usedIds.has(row.fileId) || row.location !== 'curated') continue
+    const abs = row.relativePath ? curatedRelativeToAbs(row.relativePath) : null
+    if (abs && (await fs.pathExists(abs))) continue
+    const recycle = getRecycleBinRecordByFileId(row.fileId)
+    upsertCuratedSyncFile({
+      ...row,
+      location: recycle?.filePath ? 'recycle' : 'missing',
+      locationPath: recycle?.filePath || row.locationPath,
+      updatedAtMs: now
+    })
   }
 
   const nodes: CuratedLocalNode[] = []

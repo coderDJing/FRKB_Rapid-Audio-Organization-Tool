@@ -22,6 +22,8 @@ import {
   findCuratedSyncFileByAbsPath,
   notifyCuratedFilePathChanged
 } from './curatedLibrarySync/identityDb'
+import { getCuratedLibraryAbsRoot, isPathInside } from './curatedLibrarySync/paths'
+import { notifyLibraryFsChanged } from './libraryTreeWatcher'
 import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
@@ -434,6 +436,7 @@ export async function moveFileToRecycleBin(
     return { status: 'failed', srcPath, error: 'recycle bin root unavailable' }
   }
   const sourceListRoot = await findSongListRoot(path.dirname(srcPath))
+  const fromCurated = isPathInside(srcPath, getCuratedLibraryAbsRoot())
   try {
     if (!(await fs.pathExists(srcPath))) {
       return { status: 'skipped', srcPath }
@@ -486,6 +489,11 @@ export async function moveFileToRecycleBin(
     try {
       notifyCuratedFilePathChanged(srcPath, destPath)
     } catch {}
+    if (fromCurated) {
+      try {
+        notifyLibraryFsChanged(destPath)
+      } catch {}
+    }
     return { status: 'moved', srcPath, destPath, destRelativePath: rel }
   } catch (error) {
     log.error('[recycleBin] move failed', { srcPath, error })
@@ -540,6 +548,11 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
     try {
       notifyCuratedFilePathChanged(srcPath, destPath)
     } catch {}
+    if (isPathInside(destPath, getCuratedLibraryAbsRoot())) {
+      try {
+        notifyLibraryFsChanged(destPath)
+      } catch {}
+    }
     return { status: 'restored', srcPath, destPath, playlistPath: playlistRel }
   } catch (error) {
     log.error('[recycleBin] restore failed', { srcPath, error })
