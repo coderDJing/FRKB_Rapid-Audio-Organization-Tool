@@ -61,10 +61,12 @@ export function useCuratedLibrarySyncEvents() {
     if (joinPromptOpen || !isJoinPromptResult(payload)) return
     joinPromptOpen = true
     try {
-      await window.electron.ipcRenderer.invoke('curatedLibrarySync/clearPendingJoin')
       await continueCuratedLibrarySyncUi(payload, { quietTerminal: true })
     } finally {
       joinPromptOpen = false
+      try {
+        await window.electron.ipcRenderer.invoke('curatedLibrarySync/clearPendingJoin')
+      } catch {}
     }
   }
 

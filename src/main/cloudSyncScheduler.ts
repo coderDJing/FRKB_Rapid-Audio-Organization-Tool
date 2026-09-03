@@ -8,7 +8,10 @@ import { is } from '@electron-toolkit/utils'
 import { resolveDevCloudSyncUserKey } from '../shared/cloudSyncDevUserKey'
 import { isCuratedLibrarySyncEnabled } from './librarySettingsDb'
 import { enqueueCuratedLibrarySync } from './curatedLibrarySync/queue'
-import { offerCuratedLibraryJoinPrompt } from './curatedLibrarySync/joinPrompt'
+import {
+  hasPendingCuratedLibraryJoinPrompt,
+  offerCuratedLibraryJoinPrompt
+} from './curatedLibrarySync/joinPrompt'
 import type { CloudSyncTrigger } from '../types/cloudSync'
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
@@ -44,6 +47,7 @@ export function stopCloudSyncScheduler(): void {
 
 export async function runCuratedLibrarySyncTick(): Promise<void> {
   if (!canRunCuratedLibrarySyncNow()) return
+  if (hasPendingCuratedLibraryJoinPrompt()) return
   const result = await enqueueCuratedLibrarySync({ trigger: 'scheduled' })
   offerCuratedLibraryJoinPrompt(result)
 }

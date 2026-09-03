@@ -1,6 +1,10 @@
 import { ipcMain } from 'electron'
 import store from '../store'
-import { cancelCuratedLibrarySync, isCuratedLibrarySyncRunning } from './engine'
+import {
+  cancelCuratedLibrarySync,
+  isCuratedLibrarySyncRunning,
+  runCuratedLibrarySync
+} from './engine'
 import { enqueueCloudWork, enqueueCuratedLibrarySync } from './queue'
 import { fetchCuratedLibraryStatus, resetCloudCuratedLibrary } from './apiClient'
 import { isCuratedLibraryLiveConnected, syncCuratedLibraryLiveSync } from './liveSync'
@@ -10,6 +14,7 @@ import {
 } from './joinPrompt'
 import {
   forgetCuratedLibrarySyncJoinState,
+  isCuratedLibrarySyncEnabled,
   readCuratedLibrarySyncConflicts,
   readCuratedLibrarySyncFailures,
   readCuratedLibrarySyncQuotaCache,
@@ -142,6 +147,9 @@ export const registerCuratedLibrarySyncIpc = (): void => {
         await resetCloudCuratedLibrary()
         forgetCuratedLibrarySyncJoinState()
         syncCuratedLibraryLiveSync()
+        if (isCuratedLibrarySyncEnabled()) {
+          await runCuratedLibrarySync({ trigger: 'manual', joinMode: 'cloud-wins' })
+        }
         return { success: true }
       } catch (error) {
         const payload =

@@ -495,7 +495,6 @@ export const applyRemoteSnapshot = async (
     for (const file of snapshot.files) {
       assertNotCancelled(ctx.signal)
       index += 1
-      reportApplyProgress(false)
       const localFile = localById.get(file.fileId)
       let matched = localFile
       if (!matched && options.adoptIds) {
@@ -537,6 +536,7 @@ export const applyRemoteSnapshot = async (
           continue
         }
         if (path.normalize(matched.absPath) !== path.normalize(destPath)) {
+          reportApplyProgress(false)
           const moved = await relocateLibraryAudioFile({
             sourceAbs: matched.absPath,
             destAbs: destPath,
@@ -560,8 +560,15 @@ export const applyRemoteSnapshot = async (
     }
 
     if (options.extras === 'delete') {
-      for (const localFile of local.files) {
-        if (cloudFileIds.has(localFile.fileId)) continue
+      const extraFiles = local.files.filter((localFile) => !cloudFileIds.has(localFile.fileId))
+      let extraIndex = 0
+      for (const localFile of extraFiles) {
+        extraIndex += 1
+        ctx.onProgress?.(
+          'cloudSync.curatedLibrary.progressApplying',
+          extraIndex,
+          Math.max(extraFiles.length, 1)
+        )
         assertNotCancelled(ctx.signal)
         if (isBusyPath(localFile.absPath, ctx)) {
           deferred.push({ type: 'deleteFile', fileId: localFile.fileId })

@@ -24,6 +24,7 @@ import {
   setCuratedLibrarySyncLastAppliedRevision,
   forgetCuratedLibrarySyncJoinState
 } from '../librarySettingsDb'
+import { getPendingCuratedLibraryJoinPrompt } from './joinPrompt'
 import {
   CURATED_LIBRARY_SYNC_CANCEL_CHANNEL,
   CURATED_LIBRARY_SYNC_PROGRESS_ID,
@@ -135,6 +136,8 @@ const persistSessionReports = (keepPrevious: boolean) => {
   if (sessionFailures.length > 0) writeCuratedLibrarySyncFailures(sessionFailures)
 }
 
+let progressEmitted = false
+
 const sendProgress = (
   titleKey: string,
   now: number,
@@ -143,6 +146,7 @@ const sendProgress = (
 ) => {
   const win = mainWindow.instance
   if (!win || win.isDestroyed()) return
+  progressEmitted = true
   win.webContents.send('progressSet', {
     id: CURATED_LIBRARY_SYNC_PROGRESS_ID,
     titleKey,
@@ -155,6 +159,8 @@ const sendProgress = (
 }
 
 const dismissProgress = () => {
+  if (!progressEmitted) return
+  progressEmitted = false
   const win = mainWindow.instance
   if (!win || win.isDestroyed()) return
   win.webContents.send('progressSet', {
@@ -502,7 +508,6 @@ const incrementalApplyOptions = () => {
 
 const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
   sessionCompletedWork = true
-  sendProgress('cloudSync.curatedLibrary.progressScanning', 0, 1, { noProgress: true })
   const local = await scanCuratedLibraryForSync()
   const snapshot = await pullMergedSnapshot(getCuratedLibrarySyncLastAppliedRevision())
   const release = beginLibraryTreeWatcherBulkOperation()
@@ -618,6 +623,10 @@ export const runCuratedLibrarySync = async (
   if (isLibraryMergeActive() || isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) {
     return { status: 'busy_library' }
   }
+  const pendingJoin = getPendingCuratedLibraryJoinPrompt()
+  if (!payload.joinMode && trigger !== 'realtime' && pendingJoin) {
+    return pendingJoin
+  }
   bindPowerMonitor()
   running = true
   cancelRequested = false
@@ -626,28 +635,63 @@ export const runCuratedLibrarySync = async (
   sessionConflicts = []
   sessionAttemptedTransfers = false
   sessionCompletedWork = false
-  sendProgress('cloudSync.curatedLibrary.progressStarting', 0, 1, {
-    noProgress: true,
-    isInitial: true
-  })
+  progressEmitted = false
+  const beginVisibleProgress = () => {
+    sendProgress('cloudSync.curatedLibrary.progressStarting', 0, 1, {
+      noProgress: true,
+      isInitial: true
+    })
+  }
   try {
     throwIfCancelled()
     let status = await fetchCuratedLibraryStatus()
     cacheQuotaFromStatus(status)
     let lastRevision = getCuratedLibrarySyncLastAppliedRevision()
-    if (lastRevision !== null && (!status.snapshotReady || status.revision < lastRevision)) {
+    let rewound = false
+    if (
+      lastRevision !== null &&
+      lastRevision > 0 &&
+      (!status.snapshotReady || status.revision < lastRevision)
+    ) {
       forgetCuratedLibrarySyncJoinState()
       cacheQuotaFromStatus(status)
       lastRevision = null
+      rewound = true
     }
-    if (trigger === 'realtime') {
+    if (trigger === 'realtime' && !rewound) {
       if (!status.snapshotReady || lastRevision === null) return { status: 'success' }
+      beginVisibleProgress()
       return await runIncremental()
     }
     if (!status.snapshotReady && status.firstSnapshotLocked) {
+      beginVisibleProgress()
       status = await waitForFirstSnapshotUnlock()
     }
     if (!status.snapshotReady) {
+      if (payload.joinMode === 'cloud-wins') {
+        beginVisibleProgress()
+        return await runJoin('cloud-wins')
+      }
+      if (rewound && !payload.joinMode) {
+        const local = await scanCuratedLibraryForSync()
+        return {
+          status: 'needs_join_choice',
+          localFileCount: local.files.length,
+          cloudFileCount: status.fileCount,
+          cloudRevision: status.revision
+        }
+      }
+      if (
+        (rewound || lastRevision !== null) &&
+        (payload.joinMode === 'local-wins' || payload.joinMode === 'merge')
+      ) {
+        beginVisibleProgress()
+        return await runFirstSnapshotUpload()
+      }
+      if (lastRevision !== null) {
+        return { status: 'success' }
+      }
+      beginVisibleProgress()
       try {
         return await runFirstSnapshotUpload()
       } catch (error) {
@@ -670,7 +714,7 @@ export const runCuratedLibrarySync = async (
       }
       if (payload.joinMode === 'local-wins' && !payload.confirmOverwriteCloud) {
         const localCount = (await scanCuratedLibraryForSync()).files.length
-        if (localCount === 0 || localCount * 2 < status.fileCount) {
+        if (status.fileCount > 0 && (localCount === 0 || localCount * 2 < status.fileCount)) {
           return {
             status: 'needs_overwrite_cloud_confirm',
             localFileCount: localCount,
@@ -679,8 +723,10 @@ export const runCuratedLibrarySync = async (
           }
         }
       }
+      beginVisibleProgress()
       return await runJoin(payload.joinMode)
     }
+    if (trigger !== 'scheduled') beginVisibleProgress()
     return await runIncremental()
   } catch (error) {
     if (cancelRequested || (error as { name?: string })?.name === 'AbortError') {

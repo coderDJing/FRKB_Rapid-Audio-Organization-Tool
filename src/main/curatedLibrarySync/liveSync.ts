@@ -7,6 +7,7 @@ import {
 } from '../librarySettingsDb'
 import { openCuratedLibraryEventStream } from './apiClient'
 import { enqueueCuratedLibrarySync } from './queue'
+import { offerCuratedLibraryJoinPrompt } from './joinPrompt'
 
 let abortController: AbortController | null = null
 let loopRunning = false
@@ -32,13 +33,25 @@ const delay = (ms: number, signal: AbortSignal) =>
     signal.addEventListener('abort', onAbort, { once: true })
   })
 
-const scheduleRealtimeSync = (revision: number) => {
-  const last = getCuratedLibrarySyncLastAppliedRevision()
-  if (last === null || revision <= last) return
+const enqueueJoinAlignment = () => {
+  void (async () => {
+    const result = await enqueueCuratedLibrarySync({ trigger: 'scheduled' })
+    offerCuratedLibraryJoinPrompt(result)
+  })()
+}
+
+const scheduleCloudChange = (revision: number, snapshotReady: boolean) => {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     debounceTimer = null
     if (!isCuratedLibrarySyncEnabled()) return
+    const lastNow = getCuratedLibrarySyncLastAppliedRevision()
+    if (lastNow === null) return
+    if (!snapshotReady || revision < lastNow) {
+      enqueueJoinAlignment()
+      return
+    }
+    if (revision === lastNow) return
     void enqueueCuratedLibrarySync({ trigger: 'realtime' })
   }, 2000)
 }
@@ -62,8 +75,7 @@ const runLoop = async (token: number) => {
           backoffMs = 2000
           const revision = Number(data.revision) || 0
           const snapshotReady = data.snapshotReady === true
-          if (!snapshotReady) return
-          scheduleRealtimeSync(revision)
+          scheduleCloudChange(revision, snapshotReady)
         }
       })
       connected = false

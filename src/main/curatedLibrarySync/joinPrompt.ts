@@ -16,6 +16,8 @@ const isJoinPromptResult = (
 export const getPendingCuratedLibraryJoinPrompt = (): CuratedLibraryJoinPromptResult | null =>
   pendingJoinPrompt
 
+export const hasPendingCuratedLibraryJoinPrompt = (): boolean => pendingJoinPrompt != null
+
 export const clearPendingCuratedLibraryJoinPrompt = (): void => {
   pendingJoinPrompt = null
 }

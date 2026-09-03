@@ -30,8 +30,6 @@ const curatedSettingsRef = useTemplateRef<{ refreshOverview: () => Promise<void>
 )
 
 const userKey = ref('')
-const connectivity = ref<null | { success: boolean; message?: string }>(null)
-const limitInfo = ref<null | { success: boolean; limit?: number; message?: string }>(null)
 const testing = ref(false)
 const saving = ref(false)
 const resettingCloudLibrary = ref(false)
@@ -87,6 +85,32 @@ const cloudSyncAutoIntervalOptions = computed(() => [
   { label: t('cloudSync.autoInterval24h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours24 }
 ])
 
+const notifyConnectivity = async (res: {
+  success?: boolean
+  message?: string
+  limit?: unknown
+}) => {
+  const success = res?.success === true
+  const content = [
+    t(
+      String(
+        res?.message || (success ? 'cloudSync.connectivityOk' : 'cloudSync.connectivityFailed')
+      )
+    )
+  ]
+  const limitNum = Number(res?.limit)
+  if (success && Number.isFinite(limitNum)) {
+    content.push(`${t('cloudSync.limit')}: ${limitNum}`)
+  }
+  await confirm({
+    title: success ? t('common.success') : t('common.error'),
+    content,
+    confirmShow: false,
+    innerHeight: 0,
+    innerWidth: 360
+  })
+}
+
 const clickTest = async () => {
   if (testing.value) return
   testing.value = true
@@ -94,8 +118,9 @@ const clickTest = async () => {
     const res = await window.electron.ipcRenderer.invoke('cloudSync/testConnectivity', {
       userKey: userKey.value
     })
-    connectivity.value = res
-    limitInfo.value = res?.success ? { success: true, limit: Number(res?.limit) } : null
+    await notifyConnectivity(res)
+  } catch {
+    await notifyConnectivity({ success: false, message: 'cloudSync.errors.cannotConnect' })
   } finally {
     testing.value = false
   }
@@ -110,12 +135,12 @@ const clickSave = async () => {
     })
     if (res?.success) {
       cancel()
-    } else {
-      connectivity.value = {
-        success: false,
-        message: res?.message || 'cloudSync.connectivityFailed'
-      }
+      return
     }
+    await notifyConnectivity({
+      success: false,
+      message: res?.message || 'cloudSync.connectivityFailed'
+    })
   } finally {
     saving.value = false
   }
@@ -236,21 +261,6 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
                 :max-width="320"
               />
             </div>
-
-            <div class="setting-block">{{ t('cloudSync.connectivity') }}</div>
-            <div class="setting-control value">
-              <span v-if="connectivity === null">{{ t('cloudSync.notTested') }}</span>
-              <span v-else-if="connectivity.success" class="success">
-                {{ t('cloudSync.connectivityOk') }}
-                <template v-if="limitInfo && typeof limitInfo.limit === 'number'">
-                  <span class="sep">|</span>
-                  <span class="muted">{{ t('cloudSync.limit') }}: {{ limitInfo.limit }}</span>
-                </template>
-              </span>
-              <span v-else class="error">{{
-                t(connectivity.message || 'cloudSync.connectivityFailed')
-              }}</span>
-            </div>
           </section>
 
           <section class="settings-section">
@@ -304,7 +314,11 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
         </div>
       </OverlayScrollbarsComponent>
       <div class="dialog-footer">
-        <div class="button footer-button" @click="clickTest">
+        <div
+          class="button footer-button"
+          :class="{ disabled: testing }"
+          @click="testing ? undefined : void clickTest()"
+        >
           {{ t('cloudSync.testConnectivity') }} (T)
         </div>
         <div class="button footer-button" @click="clickSave">{{ t('common.save') }} (E)</div>
@@ -430,14 +444,6 @@ label.setting-block {
   box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
 }
 
-.value {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text);
-  flex-wrap: wrap;
-}
-
 .email-row {
   position: relative;
 }
@@ -455,26 +461,9 @@ label.setting-block {
   height: 14px;
 }
 
-.value .sep {
-  margin: 0 6px;
-  color: var(--text-weak);
-}
-
-.value .muted {
-  color: var(--text-weak);
-}
-
 .link {
   color: var(--accent);
   cursor: pointer;
-}
-
-.error {
-  color: #e81123;
-}
-
-.success {
-  color: #107c10;
 }
 
 .action-row {
@@ -511,5 +500,10 @@ label.setting-block {
   text-align: center;
   height: 25px;
   line-height: 25px;
+}
+
+.footer-button.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 </style>
