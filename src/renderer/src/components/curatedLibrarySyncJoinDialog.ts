@@ -7,10 +7,19 @@ export type CuratedLibrarySyncJoinChoice = CuratedLibrarySyncJoinMode | 'cancel'
 
 export default (options: {
   title: string
-  lines: string[]
+  intro: string
+  localCountLabel: string
+  cloudCountLabel: string
+  localCount: number
+  cloudCount: number
+  countUnit: string
   mergeLabel: string
+  mergeHint: string
+  mergeBadge: string
   cloudWinsLabel: string
+  cloudWinsHint: string
   localWinsLabel: string
+  localWinsHint: string
   cancelLabel: string
 }): Promise<CuratedLibrarySyncJoinChoice> => {
   return new Promise((resolve) => {

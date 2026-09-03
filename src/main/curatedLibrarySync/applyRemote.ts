@@ -483,10 +483,19 @@ export const applyRemoteSnapshot = async (
     }
 
     let index = 0
+    const reportApplyProgress = (downloading: boolean) => {
+      ctx.onProgress?.(
+        downloading
+          ? 'cloudSync.curatedLibrary.progressDownloading'
+          : 'cloudSync.curatedLibrary.progressApplying',
+        index,
+        snapshot.files.length
+      )
+    }
     for (const file of snapshot.files) {
       assertNotCancelled(ctx.signal)
-      ctx.onProgress?.('cloudSync.curatedLibrary.progressDownloading', index, snapshot.files.length)
       index += 1
+      reportApplyProgress(false)
       const localFile = localById.get(file.fileId)
       let matched = localFile
       if (!matched && options.adoptIds) {
@@ -512,6 +521,7 @@ export const applyRemoteSnapshot = async (
           continue
         }
         if (matched.contentSha256 !== file.sha256) {
+          reportApplyProgress(true)
           const imported = await tryImportCloudFile(file, ctx)
           if (imported) {
             await moveFileToRecycleBin(matched.absPath)
@@ -539,6 +549,7 @@ export const applyRemoteSnapshot = async (
         continue
       }
       if (shouldSkipRestoringCloudFile(file, options)) continue
+      reportApplyProgress(true)
       const imported = await tryImportCloudFile(file, ctx)
       if (imported) persistImportedIdentity(file, imported, absToRel(curatedRoot, imported))
     }

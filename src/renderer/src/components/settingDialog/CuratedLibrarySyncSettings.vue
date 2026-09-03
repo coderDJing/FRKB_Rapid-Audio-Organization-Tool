@@ -109,19 +109,19 @@ const startCuratedLibrarySync = async (
     if (result.status === 'needs_join_choice') {
       const choice = await curatedLibrarySyncJoinDialog({
         title: t('cloudSync.curatedLibrary.joinTitle'),
-        lines: [
-          t('cloudSync.curatedLibrary.joinIntro'),
-          t('cloudSync.curatedLibrary.joinCounts', {
-            local: result.localFileCount,
-            cloud: result.cloudFileCount
-          }),
-          t('cloudSync.curatedLibrary.joinMergeHint'),
-          t('cloudSync.curatedLibrary.joinCloudHint'),
-          t('cloudSync.curatedLibrary.joinLocalHint')
-        ],
+        intro: t('cloudSync.curatedLibrary.joinIntro'),
+        localCountLabel: t('cloudSync.curatedLibrary.joinSideLocal'),
+        cloudCountLabel: t('cloudSync.curatedLibrary.joinSideCloud'),
+        localCount: result.localFileCount,
+        cloudCount: result.cloudFileCount,
+        countUnit: t('cloudSync.curatedLibrary.joinCountUnit'),
         mergeLabel: t('cloudSync.curatedLibrary.joinMerge'),
+        mergeHint: t('cloudSync.curatedLibrary.joinMergeHint'),
+        mergeBadge: t('cloudSync.curatedLibrary.joinRecommended'),
         cloudWinsLabel: t('cloudSync.curatedLibrary.joinCloud'),
+        cloudWinsHint: t('cloudSync.curatedLibrary.joinCloudHint'),
         localWinsLabel: t('cloudSync.curatedLibrary.joinLocal'),
+        localWinsHint: t('cloudSync.curatedLibrary.joinLocalHint'),
         cancelLabel: t('common.cancel')
       })
       if (choice === 'cancel') return
