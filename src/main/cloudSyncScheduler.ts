@@ -71,6 +71,10 @@ function scheduleCuratedLibrarySyncAfterTreeChange(): void {
   }, TREE_SYNC_DEBOUNCE_MS)
 }
 
+export function scheduleCuratedLibrarySyncAfterLocalChange(): void {
+  scheduleCuratedLibrarySyncAfterTreeChange()
+}
+
 function ensureLibraryTreeSyncTrigger(): void {
   if (treeListenerBound) return
   treeListenerBound = true

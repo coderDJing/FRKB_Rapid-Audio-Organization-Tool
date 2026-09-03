@@ -28,6 +28,7 @@ import { stampPlaylistSongsAddedAt } from '../../services/playlistAddedAt'
 import { updateSetItemFilePathReferences } from '../../setListDb'
 import { isLibraryMergeMutationLocked } from '../../services/libraryMerge/runtime'
 import { beginImportSongsActivity } from '../../services/libraryMerge/operationActivity'
+import { scheduleCuratedLibrarySyncAfterLocalChange } from '../../cloudSyncScheduler'
 
 type ImportItem = md5 | string
 
@@ -261,6 +262,9 @@ export function registerImportHandlers(
         progressId
       )
       if (isCuratedTarget) {
+        if (importedPaths.length > 0) {
+          scheduleCuratedLibrarySyncAfterLocalChange()
+        }
         const targetPaths = importedPaths
         // 导入完成提示和列表刷新优先，精选表演者记录异步补上即可。
         void rememberCuratedArtistsForAddedTracks({ targetPaths }).catch((error) => {

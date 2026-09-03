@@ -13,11 +13,27 @@ let reconciling = false
 let bulkOperationDepth = 0
 let pendingBulkReconcileWindow: BrowserWindow | null = null
 let mutationListener: (() => void) | null = null
+let pendingCuratedContentChange = false
 
 const WATCH_DEBOUNCE_MS = 400
 
 export function bindLibraryTreeMutationListener(listener: (() => void) | null): void {
   mutationListener = listener
+}
+
+const isCuratedLibraryWatchPath = (filename: string | Buffer | null | undefined): boolean => {
+  const raw = String(filename || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+  if (!raw) return true
+  const curatedName = getCoreFsDirName('CuratedLibrary')
+  const first = raw.split('/')[0] || ''
+  const equals = (left: string, right: string) =>
+    process.platform === 'win32'
+      ? left.toLocaleLowerCase() === right.toLocaleLowerCase()
+      : left === right
+  if (equals(first, curatedName) || equals(first, '精选库')) return true
+  return !raw.includes('/')
 }
 
 /**
@@ -59,6 +75,8 @@ async function reconcileLibraryTree(window: BrowserWindow | null, fromBulk = fal
   const rootDir = store.databaseDir
   if (!rootDir) return
   reconciling = true
+  const curatedContentChanged = pendingCuratedContentChange
+  pendingCuratedContentChange = false
   try {
     await ensureEnglishCoreLibraries(rootDir)
     const result = await syncLibraryTreeFromDisk(rootDir, {
@@ -72,11 +90,14 @@ async function reconcileLibraryTree(window: BrowserWindow | null, fromBulk = fal
       },
       audioExtensions: store.settingConfig?.audioExt
     })
-    if (result.added + result.removed + result.updated > 0) {
+    const treeChanged = result.added + result.removed + result.updated > 0
+    if (treeChanged) {
       await pruneOrphanedSongListCaches(rootDir)
       const tree = await getLibrary({ skipSync: true })
       window?.webContents.send('library-tree-updated', tree)
-      if (!fromBulk) mutationListener?.()
+    }
+    if (!fromBulk && (treeChanged || curatedContentChanged)) {
+      mutationListener?.()
     }
   } catch (error) {
     log.error('[watcher] library reconcile failed', error)
@@ -117,7 +138,8 @@ export function startLibraryTreeWatcher(window: BrowserWindow | null): void {
   const libraryRoot = path.join(rootDir, 'library')
   if (!fs.pathExistsSync(libraryRoot)) return
   try {
-    watcher = fs.watch(libraryRoot, { recursive: true }, () => {
+    watcher = fs.watch(libraryRoot, { recursive: true }, (_event, filename) => {
+      if (isCuratedLibraryWatchPath(filename)) pendingCuratedContentChange = true
       scheduleReconcile(window)
     })
     watcher.on('error', (error) => {
@@ -130,6 +152,7 @@ export function startLibraryTreeWatcher(window: BrowserWindow | null): void {
 
 export function stopLibraryTreeWatcher(): void {
   clearDebounceTimer()
+  pendingCuratedContentChange = false
   if (!watcher) return
   try {
     watcher.close()
