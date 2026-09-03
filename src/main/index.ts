@@ -53,6 +53,7 @@ import {
   queueExternalAudioFiles
 } from './services/externalOpenQueue'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
+import { registerCuratedLibrarySyncIpc } from './curatedLibrarySync/ipc'
 import { registerLibraryMaintenanceHandlers } from './ipc/libraryMaintenanceHandlers'
 import { registerPlaylistHandlers } from './ipc/playlistHandlers'
 import { registerMediaMetadataHandlers } from './ipc/mediaMetadataHandlers'
@@ -331,6 +332,7 @@ registerSettingsHandlers({
     return Array.isArray(list) ? list : []
   }
 })
+registerCuratedLibrarySyncIpc()
 registerLibraryMaintenanceHandlers()
 registerPlaylistHandlers()
 registerMediaMetadataHandlers()
@@ -360,6 +362,12 @@ const cleanupAppRuntimeResources = () => {
   if (appRuntimeCleanupDone) return
   appRuntimeCleanupDone = true
   stopCloudSyncScheduler()
+  void import('./curatedLibrarySync/liveSync').then(({ stopCuratedLibraryLiveSync }) => {
+    stopCuratedLibraryLiveSync()
+  })
+  void import('./curatedLibrarySync/engine').then(({ cancelCuratedLibrarySync }) => {
+    void cancelCuratedLibrarySync()
+  })
   terminateRegisteredChildProcesses()
   closeLibraryDb()
 }

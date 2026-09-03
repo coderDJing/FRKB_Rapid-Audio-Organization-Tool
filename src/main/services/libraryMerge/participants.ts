@@ -39,6 +39,46 @@ export class LibraryMergeParticipantContractError extends Error {
   }
 }
 
+function mergeCuratedSyncFileRows(sourceDb: SqliteDatabase, targetDb: SqliteDatabase): number {
+  if (!hasTable(sourceDb, 'curated_sync_files') || !hasTable(targetDb, 'curated_sync_files')) {
+    return 0
+  }
+  const rows = sourceDb
+    .prepare(
+      `SELECT file_id, relative_path, parent_uuid, file_name, content_sha256, content_size,
+              mtime_ms, track_number, added_at_ms, updated_at_ms, location, location_path
+       FROM curated_sync_files`
+    )
+    .all() as Array<Record<string, unknown>>
+  const insert = targetDb.prepare(
+    `INSERT OR IGNORE INTO curated_sync_files (
+       file_id, relative_path, parent_uuid, file_name, content_sha256, content_size,
+       mtime_ms, track_number, added_at_ms, updated_at_ms, location, location_path
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  let merged = 0
+  for (const row of rows) {
+    const fileId = typeof row.file_id === 'string' ? row.file_id.trim() : ''
+    if (!fileId) continue
+    const result = insert.run(
+      fileId,
+      typeof row.relative_path === 'string' ? row.relative_path : '',
+      typeof row.parent_uuid === 'string' ? row.parent_uuid : '',
+      typeof row.file_name === 'string' ? row.file_name : '',
+      typeof row.content_sha256 === 'string' ? row.content_sha256 : '',
+      Number(row.content_size) || 0,
+      row.mtime_ms == null ? null : Number(row.mtime_ms),
+      row.track_number == null ? null : Number(row.track_number),
+      row.added_at_ms == null ? null : Number(row.added_at_ms),
+      Number(row.updated_at_ms) || 0,
+      typeof row.location === 'string' ? row.location : 'curated',
+      typeof row.location_path === 'string' ? row.location_path : null
+    )
+    merged += Number(result.changes || 0)
+  }
+  return merged
+}
+
 function mergeFingerprintRows(sourceDb: SqliteDatabase, targetDb: SqliteDatabase): number {
   if (!hasTable(sourceDb, 'fingerprints') || !hasTable(targetDb, 'fingerprints')) return 0
   const rows = sourceDb.prepare('SELECT mode, hash FROM fingerprints').all() as Array<
@@ -68,6 +108,7 @@ export const LIBRARY_MERGE_TABLE_PARTICIPANTS: readonly LibraryMergeTablePartici
     }))
   },
   { table: 'fingerprints', strategy: 'union', unionRows: mergeFingerprintRows },
+  { table: 'curated_sync_files', strategy: 'union', unionRows: mergeCuratedSyncFileRows },
   { table: 'library_nodes', strategy: 'node-tree' },
   // Despite its historic name, song_cache carries the persistent song metadata and completed
   // analysis results that FRKB must retain after a merge.

@@ -20,6 +20,10 @@ import { log } from '../log'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { notifyPlaybackStateChange, notifyTransportActivity } from '../services/keyAnalysisQueue'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
+import {
+  clearHorizontalBrowseLoadedPaths,
+  rememberHorizontalBrowseLoadedPath
+} from '../curatedLibrarySync/busyPaths'
 
 const SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS = 500
 
@@ -130,6 +134,7 @@ export function registerHorizontalBrowseTransportHandlers() {
 
   ipcMain.handle('horizontal-browse-transport:reset', async () => {
     await horizontalBrowseTransportBridge.reset()
+    clearHorizontalBrowseLoadedPaths()
     const snapshot = horizontalBrowseTransportBridge.snapshot()
     notifyPlaybackStateChange(false)
     broadcastHorizontalBrowseTransportSnapshot(snapshot)
@@ -147,6 +152,7 @@ export function registerHorizontalBrowseTransportHandlers() {
       const before = horizontalBrowseTransportBridge.snapshot()
       const startedAt = performance.now()
       const snapshot = horizontalBrowseTransportBridge.setDeckState(deck, nowMs, payload)
+      rememberHorizontalBrowseLoadedPath(deck, payload.filePath)
       const elapsedMs = performance.now() - startedAt
       logSlowTransportOperation('set-deck-state', elapsedMs, {
         deck,
@@ -170,6 +176,8 @@ export function registerHorizontalBrowseTransportHandlers() {
       const before = horizontalBrowseTransportBridge.snapshot()
       const startedAt = performance.now()
       const snapshot = horizontalBrowseTransportBridge.setState(payload)
+      rememberHorizontalBrowseLoadedPath('top', payload.top?.filePath)
+      rememberHorizontalBrowseLoadedPath('bottom', payload.bottom?.filePath)
       const elapsedMs = performance.now() - startedAt
       logSlowTransportOperation('set-state', elapsedMs, {
         input: {

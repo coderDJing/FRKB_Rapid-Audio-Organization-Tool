@@ -26,6 +26,7 @@ import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintena
 import { replaceMixtapeFilePath } from '../mixtapeDb'
 import { removeSetItemsByIds, updateSetItemFilePathReferences } from '../setListDb'
 import { rememberCuratedArtistsForAddedTracks } from '../curatedArtistLibrary'
+import { notifyCuratedFilePathChanged } from '../curatedLibrarySync/identityDb'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { remapKeyAnalysisTrackedPath } from '../services/keyAnalysisQueue'
 import { protectSetReferencedFilesForDeletion } from './setListHandlers'
@@ -503,6 +504,13 @@ export function registerExportHandlers() {
       return [{ sourcePath, targetPath: item }]
     })
     const movedPaths = movedEntries.map((item) => item.targetPath)
+    if (isMove) {
+      for (const entry of movedEntries) {
+        try {
+          notifyCuratedFilePathChanged(entry.sourcePath, entry.targetPath)
+        } catch {}
+      }
+    }
     if (movedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetListRoot)) {
       await appendSongListTrackNumbers({
         listRoot: targetListRoot,

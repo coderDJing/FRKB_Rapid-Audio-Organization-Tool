@@ -6,6 +6,7 @@ import { log } from '../log'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 import store from '../store'
 import { getCoreFsDirName } from '../coreLibraries'
+import { notifyCuratedFilePathChanged } from '../curatedLibrarySync/identityDb'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import { scanSongList } from '../services/scanSongs'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
@@ -516,6 +517,9 @@ async function moveFilesToSetCustody(filePaths: string[]): Promise<SetCustodyRes
       }
       await fs.move(filePath, destPath, { overwrite: false })
       movedMap.set(filePath, destPath)
+      try {
+        notifyCuratedFilePathChanged(filePath, destPath)
+      } catch {}
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       log.error('[setList] move to custody failed', { filePath, error })

@@ -38,6 +38,7 @@ import {
   normalizeCloudSyncAutoEnabled,
   normalizeCloudSyncAutoIntervalMs
 } from '@shared/cloudSyncAuto'
+import CuratedLibrarySyncSettings from '@renderer/components/settingDialog/CuratedLibrarySyncSettings.vue'
 
 const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
@@ -924,6 +925,8 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 @change="setSetting"
               />
             </div>
+
+            <CuratedLibrarySyncSettings />
           </div>
 
           <div class="settings-section">
@@ -1227,6 +1230,11 @@ label.setting-block {
   width: fit-content;
   min-width: 110px;
   text-align: center;
+}
+
+.settings-inline-button.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .acoustid-row {

@@ -54,6 +54,7 @@ import { useMainWindowPlaybackHandoff } from '@renderer/composables/useMainWindo
 import { useMainWindowBrowseModeState } from '@renderer/composables/useMainWindowBrowseModeState'
 import { useDevSongListTrace } from '@renderer/composables/useDevSongListTrace'
 import { useCloudSyncEvents } from '@renderer/composables/useCloudSyncEvents'
+import { useCuratedLibrarySyncEvents } from '@renderer/composables/useCuratedLibrarySyncEvents'
 import { useUserGuide } from '@renderer/composables/useUserGuide'
 import UserGuideIdentityOverlay from '@renderer/components/userGuide/UserGuideIdentityOverlay.vue'
 import UserGuideCard from '@renderer/components/userGuide/UserGuideCard.vue'
@@ -391,6 +392,21 @@ const requestMainWindowClose = async () => {
     runtime.setCloudSyncMinimized(false)
     runtime.setCloudSyncProgress('idle', 0, {})
   }
+
+  try {
+    const curatedRunning = await window.electron.ipcRenderer.invoke('curatedLibrarySync/isRunning')
+    if (curatedRunning) {
+      const result = await confirm({
+        title: t('common.exit'),
+        content: [t('cloudSync.exitWhileSyncing'), t('cloudSync.exitWhileSyncingDetail')],
+        confirmText: t('cloudSync.exitAndCancelSync'),
+        cancelText: t('common.cancel'),
+        innerHeight: 240
+      })
+      if (result !== 'confirm') return
+      await window.electron.ipcRenderer.invoke('curatedLibrarySync/cancel')
+    }
+  } catch {}
 
   window.electron.ipcRenderer.send('toggle-close')
 }
@@ -734,6 +750,8 @@ const {
   handleCloudSyncNotice,
   handleCloudSyncError
 } = useCloudSyncEvents({ runtime, activeDialog })
+const { handleCuratedLibrarySyncNotice } = useCuratedLibrarySyncEvents()
+
 const handleMainWindowBlur = async () => {
   runtime.activeMenuUUID = ''
   closeMainWindowBrowseModeMenu()
@@ -833,6 +851,7 @@ onMounted(() => {
   window.electron.ipcRenderer.on('cloudSync/summary', handleCloudSyncSummary)
   window.electron.ipcRenderer.on('cloudSync/notice', handleCloudSyncNotice)
   window.electron.ipcRenderer.on('cloudSync/error', handleCloudSyncError)
+  window.electron.ipcRenderer.on('curatedLibrarySync/notice', handleCuratedLibrarySyncNotice)
   window.electron.ipcRenderer.on('mainWindowBlur', handleMainWindowBlur)
   void (async () => {
     if (runtime.librarySetupActive) return
@@ -881,6 +900,10 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener('cloudSync/summary', handleCloudSyncSummary)
   window.electron.ipcRenderer.removeListener('cloudSync/notice', handleCloudSyncNotice)
   window.electron.ipcRenderer.removeListener('cloudSync/error', handleCloudSyncError)
+  window.electron.ipcRenderer.removeListener(
+    'curatedLibrarySync/notice',
+    handleCuratedLibrarySyncNotice
+  )
   window.electron.ipcRenderer.removeListener('mainWindowBlur', handleMainWindowBlur)
   window.electron.ipcRenderer.removeListener('layoutConfigReaded', handleLayoutConfigReaded)
   window.electron.ipcRenderer.removeListener('mixtape-items-removed', handleMixtapeItemsRemoved)

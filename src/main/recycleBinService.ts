@@ -18,6 +18,10 @@ import {
 } from './services/cacheMaintenance'
 import { findSongListRootByPath } from './libraryTreeDb'
 import { stampPlaylistSongsAddedAt } from './services/playlistAddedAt'
+import {
+  findCuratedSyncFileByAbsPath,
+  notifyCuratedFilePathChanged
+} from './curatedLibrarySync/identityDb'
 import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
@@ -31,6 +35,9 @@ type RecycleBinMoveOptions = {
   sourceType?: RecycleBinSourceType | string | null
   deletedAtMs?: number
   originalFileName?: string | null
+  fileId?: string | null
+  contentSha256?: string | null
+  contentSize?: number | null
 }
 
 export type RecycleBinMoveResult = {
@@ -464,14 +471,21 @@ export async function moveFileToRecycleBin(
     const originalPlaylistPath = hasOriginalPlaylistPath
       ? (options.originalPlaylistPath ?? null)
       : await resolveOriginalPlaylistPathForFile(srcPath)
+    const identity = findCuratedSyncFileByAbsPath(srcPath)
     upsertRecycleBinRecord({
       filePath: rel,
       deletedAtMs: options.deletedAtMs ?? Date.now(),
       originalPlaylistPath: originalPlaylistPath ?? null,
       originalFileName: originalFileName ?? null,
-      sourceType: options.sourceType ?? null
+      sourceType: options.sourceType ?? null,
+      fileId: options.fileId || identity?.fileId || null,
+      contentSha256: options.contentSha256 || identity?.contentSha256 || null,
+      contentSize: options.contentSize ?? identity?.contentSize ?? null
     })
     syncMixtapeFilePathReference(srcPath, destPath)
+    try {
+      notifyCuratedFilePathChanged(srcPath, destPath)
+    } catch {}
     return { status: 'moved', srcPath, destPath, destRelativePath: rel }
   } catch (error) {
     log.error('[recycleBin] move failed', { srcPath, error })
@@ -523,6 +537,9 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
     syncMixtapeFilePathReference(srcPath, destPath)
     syncSetFilePathReference(srcPath, destPath)
     if (recordKey) deleteRecycleBinRecord(recordKey)
+    try {
+      notifyCuratedFilePathChanged(srcPath, destPath)
+    } catch {}
     return { status: 'restored', srcPath, destPath, playlistPath: playlistRel }
   } catch (error) {
     log.error('[recycleBin] restore failed', { srcPath, error })

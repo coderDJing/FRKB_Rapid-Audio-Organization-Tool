@@ -13,13 +13,12 @@ import {
 } from './curatedArtistCloudSync'
 import { resolveBaseUrl } from './serverDiscovery'
 import type { CloudSyncTrigger } from '../types/cloudSync'
+import { resolveDevCloudSyncUserKey } from '../shared/cloudSyncDevUserKey'
 
 const CLOUD_SYNC = {
   PREFIX: '/frkbapi/v1/fingerprint-sync',
   API_SECRET_KEY: process.env.CLOUD_SYNC_API_SECRET_KEY || ''
 }
-
-const DEV_DEFAULT_USER_KEY = '5de44d53-6236-4df6-84ab-382ac0717bc0'
 
 type CloudSyncConfig = { userKey?: string }
 let cloudSyncConfig: CloudSyncConfig = {}
@@ -149,16 +148,23 @@ async function validateUserKeyRequest(userKeyRaw: string, baseUrl: string) {
   return json
 }
 
+const persistDevUserKeyIfNeeded = (userKey: string) => {
+  if (!is.dev) return
+  if (String(store.settingConfig?.cloudSyncUserKey || '').trim() === userKey) return
+  store.settingConfig.cloudSyncUserKey = userKey
+  void persistSettingConfig()
+  void import('./librarySettingsDb').then(({ saveLibrarySettingsFromConfig }) => {
+    void saveLibrarySettingsFromConfig()
+  })
+}
+
 ipcMain.handle('cloudSync/config/get', () => {
-  let storedUserKey = cloudSyncConfig.userKey || store.settingConfig?.cloudSyncUserKey || ''
-  if (!storedUserKey && is.dev) {
-    storedUserKey = DEV_DEFAULT_USER_KEY
-    cloudSyncConfig.userKey = storedUserKey
-    store.settingConfig.cloudSyncUserKey = storedUserKey
-    void persistSettingConfig()
-  } else {
-    cloudSyncConfig.userKey = storedUserKey
-  }
+  const storedUserKey = resolveDevCloudSyncUserKey(
+    String(store.settingConfig?.cloudSyncUserKey || '').trim(),
+    is.dev
+  )
+  persistDevUserKeyIfNeeded(storedUserKey)
+  cloudSyncConfig.userKey = storedUserKey
   // 同步当前指纹模式给渲染层
   const mode = getFingerprintMode()
   return { userKey: storedUserKey, mode }
@@ -200,14 +206,23 @@ ipcMain.handle('cloudSync/resetUserData', async (_e, payload: { notes?: string }
 ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string }) => {
   const userKey = (payload?.userKey || '').trim()
   try {
+    const { isCuratedLibrarySyncEnabled } = await import('./librarySettingsDb')
+    const currentKey = String(store.settingConfig?.cloudSyncUserKey || '').trim()
+    if (isCuratedLibrarySyncEnabled() && currentKey && currentKey !== userKey) {
+      return { success: false, message: 'cloudSync.curatedLibrary.errors.cannotChangeUserKey' }
+    }
     const baseUrl = await resolveBaseUrl()
     const json = await validateUserKeyRequest(userKey, baseUrl)
     if (json?.success === true && json?.data?.isActive === true) {
       cloudSyncConfig.userKey = json?.data?.userKey || userKey
       store.settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
       await persistSettingConfig()
+      const { saveLibrarySettingsFromConfig } = await import('./librarySettingsDb')
+      await saveLibrarySettingsFromConfig()
       const { restartCloudSyncScheduler } = await import('./cloudSyncScheduler')
       restartCloudSyncScheduler({ immediate: true })
+      const { syncCuratedLibraryLiveSync } = await import('./curatedLibrarySync/liveSync')
+      syncCuratedLibraryLiveSync()
       return { success: true }
     }
     const error = String(json?.error || '').toUpperCase()
@@ -321,14 +336,13 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
   markSyncStarted()
   const baseUrl = await resolveBaseUrl()
   if (!cloudSyncConfig.userKey) {
-    cloudSyncConfig.userKey = String(store.settingConfig?.cloudSyncUserKey || '').trim()
+    cloudSyncConfig.userKey = resolveDevCloudSyncUserKey(
+      String(store.settingConfig?.cloudSyncUserKey || '').trim(),
+      is.dev
+    )
   }
   if (!cloudSyncConfig.userKey) {
-    if (is.dev) {
-      cloudSyncConfig.userKey = DEV_DEFAULT_USER_KEY
-    } else {
-      return 'not_configured'
-    }
+    return 'not_configured'
   }
 
   let cancelRequested = false
@@ -925,13 +939,16 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
 }
 
 export async function runCloudSync(trigger: CloudSyncTrigger = 'manual'): Promise<string> {
-  if (cloudSyncRunning) return 'already_running'
-  cloudSyncRunning = true
-  try {
-    return await startCloudSync(trigger)
-  } finally {
-    cloudSyncRunning = false
-  }
+  const { enqueueCloudWork } = await import('./curatedLibrarySync/ipc')
+  return enqueueCloudWork(async () => {
+    if (cloudSyncRunning) return 'already_running'
+    cloudSyncRunning = true
+    try {
+      return await startCloudSync(trigger)
+    } finally {
+      cloudSyncRunning = false
+    }
+  })
 }
 
 ipcMain.handle('cloudSync/start', async (_e, payload?: { trigger?: CloudSyncTrigger }) => {

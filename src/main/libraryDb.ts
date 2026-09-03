@@ -10,11 +10,12 @@ import {
   assertLibraryMergeParticipantCoverage,
   LibraryMergeParticipantContractError
 } from './services/libraryMerge/participants'
+import { applyCuratedLibrarySyncSchema } from './curatedLibrarySync/schema'
 import { runTracedSync } from './services/mainProcessActivityTraceState'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
 const SCHEMA_VERSION = 38
-export const MAX_SUPPORTED_DATABASE_SCHEMA_VERSION = 39
+export const MAX_SUPPORTED_DATABASE_SCHEMA_VERSION = 40
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -970,6 +971,7 @@ function createDatabase(dbPath: string): SqliteDatabase {
     CREATE INDEX IF NOT EXISTS idx_waveform_surface_cache_root
       ON waveform_surface_cache(list_root);
   `)
+  applyCuratedLibrarySyncSchema(instance)
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)
   }

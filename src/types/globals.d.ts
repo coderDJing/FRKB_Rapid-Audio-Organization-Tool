@@ -711,12 +711,14 @@ interface ISettingConfig {
   migratedAudioExtAiffAif?: boolean
   // 指纹模式：pcm（解码后内容哈希）或 file（整文件哈希）
   fingerprintMode?: 'pcm' | 'file'
-  // 云同步用户 Key（由设置页配置）
+  // 云同步用户 Key（跟资料库走，设置页配置）
   cloudSyncUserKey?: string
-  // 是否启用云同步定时循环（默认关闭）
+  // 是否启用云同步定时循环（默认关闭，跟资料库走）
   cloudSyncAutoEnabled?: boolean
-  // 云同步定时间隔（毫秒）；勾选启用后默认 1 小时
+  // 云同步定时间隔（毫秒）；勾选启用后默认 1 小时（跟资料库走）
   cloudSyncAutoIntervalMs?: number
+  // 是否同步精选库（默认关闭，跟资料库走）
+  curatedLibrarySyncEnabled?: boolean
   // 音频转换默认项（记住用户上次选择）
   convertDefaults?: {
     targetFormat:

@@ -13,6 +13,10 @@ const DEFAULT_BASE_URL = is.dev
  * 内容格式：{"baseUrl":"http://xxx"}
  */
 export async function resolveBaseUrl(): Promise<string> {
+  // 开发态不走线上 server.json，避免自测打到生产
+  if (is.dev) {
+    return DEFAULT_BASE_URL
+  }
   // 没有配置发现地址，直接用默认
   if (!DISCOVERY_URL) {
     return DEFAULT_BASE_URL

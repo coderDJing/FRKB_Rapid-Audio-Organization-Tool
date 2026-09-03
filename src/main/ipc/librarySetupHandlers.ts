@@ -51,6 +51,12 @@ export const registerLibrarySetupHandlers = (): void => {
 
   ipcMain.handle('reSelectLibrary', async () => {
     if (isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) return
+    try {
+      const { stopCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
+      stopCuratedLibraryLiveSync()
+      const { cancelCuratedLibrarySync } = await import('../curatedLibrarySync/engine')
+      await cancelCuratedLibrarySync()
+    } catch {}
     await persistMainWindowLayout()
     beginLibrarySetup({ mode: 'reselect' })
     sendLibrarySetupState(mainWindow.instance)

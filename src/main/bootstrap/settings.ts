@@ -32,6 +32,10 @@ import {
   normalizeCloudSyncAutoEnabled,
   normalizeCloudSyncAutoIntervalMs
 } from '../../shared/cloudSyncAuto'
+import {
+  DEV_DEFAULT_CLOUD_SYNC_USER_KEY,
+  resolveDevCloudSyncUserKey
+} from '../../shared/cloudSyncDevUserKey'
 import fs = require('fs-extra')
 
 const platform = process.platform
@@ -134,9 +138,10 @@ const defaultSettings = {
   errorReportUsageMsSinceLastSuccess: 0,
   errorReportRetryMsSinceLastFailure: -1,
   fingerprintMode: 'pcm' as 'pcm',
-  cloudSyncUserKey: '',
+  cloudSyncUserKey: is.dev ? DEV_DEFAULT_CLOUD_SYNC_USER_KEY : '',
   cloudSyncAutoEnabled: DEFAULT_CLOUD_SYNC_AUTO_ENABLED,
   cloudSyncAutoIntervalMs: DEFAULT_CLOUD_SYNC_AUTO_INTERVAL_MS,
+  curatedLibrarySyncEnabled: false,
   convertDefaults: defaultConvertDefaults,
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: '',
@@ -238,6 +243,13 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   finalSettings.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
     finalSettings.cloudSyncAutoIntervalMs
   )
+  finalSettings.curatedLibrarySyncEnabled = finalSettings.curatedLibrarySyncEnabled === true
+  if (is.dev) {
+    finalSettings.cloudSyncUserKey = resolveDevCloudSyncUserKey(
+      String(finalSettings.cloudSyncUserKey || '').trim(),
+      true
+    )
+  }
 
   try {
     const migrated = loadedSettings.migratedAudioExtAll === true

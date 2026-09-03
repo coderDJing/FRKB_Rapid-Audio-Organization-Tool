@@ -17,6 +17,8 @@ import {
 } from '../libraryDb'
 import { migrateLibrarySchemaV35ToV36 } from '../librarySchemaV36Migration'
 import { migrateLibrarySchemaToV38 } from '../librarySchemaV37Migration'
+import { migrateLibrarySchemaV38ToV39 } from '../librarySchemaV38Migration'
+import { migrateLibrarySchemaV39ToV40 } from '../librarySchemaV40Migration'
 import { ensureLegacyMigration } from '../libraryMigration'
 import { persistSettingConfig } from '../settingsPersistence'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../libraryTreeWatcher'
@@ -70,6 +72,11 @@ const completeLibrarySetup = (): void => {
       restartCloudSyncScheduler({ immediate: true })
     })
     .catch(() => {})
+  void import('../curatedLibrarySync/liveSync')
+    .then(({ syncCuratedLibraryLiveSync }) => {
+      syncCuratedLibraryLiveSync()
+    })
+    .catch(() => {})
 }
 
 export const initializeLibraryAtPath = async (
@@ -107,6 +114,14 @@ export const initializeLibraryAtPath = async (
         await migrateLibrarySchemaToV38(databasePath, {
           onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
         })
+        databaseVersion = assertExistingDatabaseSchemaSupported(databasePath)
+      }
+      if (databaseVersion === 38) {
+        await migrateLibrarySchemaV38ToV39(databasePath)
+        databaseVersion = assertExistingDatabaseSchemaSupported(databasePath)
+      }
+      if (databaseVersion === 39) {
+        await migrateLibrarySchemaV39ToV40(databasePath)
       }
     } catch {
       return { status: 'schema-migration-failed' }
@@ -121,6 +136,12 @@ export const initializeLibraryAtPath = async (
   } catch {}
 
   if (options?.reset === true) {
+    try {
+      const { stopCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
+      stopCuratedLibraryLiveSync()
+      const { cancelCuratedLibrarySync } = await import('../curatedLibrarySync/engine')
+      await cancelCuratedLibrarySync()
+    } catch {}
     stopLibraryTreeWatcher()
     closeLibraryDb()
     try {
@@ -136,6 +157,12 @@ export const initializeLibraryAtPath = async (
       await fs.remove(getLibraryDbPath(dirPath))
     } catch {}
   } else if (store.databaseDir && store.databaseDir !== dirPath) {
+    try {
+      const { stopCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
+      stopCuratedLibraryLiveSync()
+      const { cancelCuratedLibrarySync } = await import('../curatedLibrarySync/engine')
+      await cancelCuratedLibrarySync()
+    } catch {}
     stopLibraryTreeWatcher()
     closeLibraryDb()
   }

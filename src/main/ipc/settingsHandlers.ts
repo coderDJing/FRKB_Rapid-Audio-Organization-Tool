@@ -53,6 +53,8 @@ export function registerSettingsHandlers(deps: Dependencies) {
         )
         const prevContextMenu = !!store.settingConfig?.enableExplorerContextMenu
         const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+        const prevCuratedLibrarySyncEnabled =
+          store.settingConfig?.curatedLibrarySyncEnabled === true
         const normalizedSetting = {
           ...setting,
           analysisBpmRange: normalizeAnalysisBpmRangeId(setting?.analysisBpmRange),
@@ -65,7 +67,8 @@ export function registerSettingsHandlers(deps: Dependencies) {
           cloudSyncAutoEnabled: normalizeCloudSyncAutoEnabled(setting?.cloudSyncAutoEnabled),
           cloudSyncAutoIntervalMs: normalizeCloudSyncAutoIntervalMs(
             setting?.cloudSyncAutoIntervalMs
-          )
+          ),
+          curatedLibrarySyncEnabled: setting?.curatedLibrarySyncEnabled === true
         }
         store.settingConfig = normalizedSetting
         await persistSettingConfig(normalizedSetting)
@@ -118,6 +121,11 @@ export function registerSettingsHandlers(deps: Dependencies) {
           restartCloudSyncScheduler({
             immediate: nextAutoEnabled && !prevAutoEnabled
           })
+        }
+
+        if (normalizedSetting.curatedLibrarySyncEnabled !== prevCuratedLibrarySyncEnabled) {
+          const { syncCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
+          syncCuratedLibraryLiveSync()
         }
       })
     setSettingQueue = task.catch(() => undefined)

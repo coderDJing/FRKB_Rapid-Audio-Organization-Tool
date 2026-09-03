@@ -105,6 +105,7 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   runtime.setting.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
     runtime.setting.cloudSyncAutoIntervalMs
   )
+  runtime.setting.curatedLibrarySyncEnabled = runtime.setting.curatedLibrarySyncEnabled === true
   if (runtime.setting.waveformMode === undefined) {
     runtime.setting.waveformMode = 'half'
   }

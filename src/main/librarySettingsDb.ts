@@ -4,16 +4,41 @@ import { getLibraryDb, initLibraryDb, getMetaValue, setMetaValue } from './libra
 import { log } from './log'
 import { persistSettingConfig } from './settingsPersistence'
 import type { SqliteDatabase } from './libraryDb'
+import {
+  DEFAULT_CLOUD_SYNC_AUTO_ENABLED,
+  DEFAULT_CLOUD_SYNC_AUTO_INTERVAL_MS,
+  normalizeCloudSyncAutoEnabled,
+  normalizeCloudSyncAutoIntervalMs
+} from '../shared/cloudSyncAuto'
+import { resolveDevCloudSyncUserKey } from '../shared/cloudSyncDevUserKey'
+import { is } from '@electron-toolkit/utils'
 
 type LibrarySettingValues = Pick<
   ISettingConfig,
-  'fingerprintMode' | 'audioExt' | 'persistSongFilters'
+  | 'fingerprintMode'
+  | 'audioExt'
+  | 'persistSongFilters'
+  | 'cloudSyncUserKey'
+  | 'cloudSyncAutoEnabled'
+  | 'cloudSyncAutoIntervalMs'
+  | 'curatedLibrarySyncEnabled'
 >
 
-const META_KEYS = {
+export const LIBRARY_SETTING_META_KEYS = {
   fingerprintMode: 'library_setting_fingerprint_mode',
   audioExt: 'library_setting_audio_ext',
-  persistSongFilters: 'library_setting_persist_song_filters'
+  persistSongFilters: 'library_setting_persist_song_filters',
+  cloudSyncUserKey: 'library_setting_cloud_sync_user_key',
+  cloudSyncAutoEnabled: 'library_setting_cloud_sync_auto_enabled',
+  cloudSyncAutoIntervalMs: 'library_setting_cloud_sync_auto_interval_ms',
+  curatedLibrarySyncEnabled: 'library_setting_curated_library_sync_enabled',
+  lastAppliedRevision: 'curated_library_sync_last_applied_revision',
+  deferredOps: 'curated_library_sync_deferred_ops_v1',
+  lastCloudIds: 'curated_library_sync_last_cloud_ids_v1',
+  lastSnapshot: 'curated_library_sync_last_snapshot_v1',
+  lastConflicts: 'curated_library_sync_last_conflicts_v1',
+  lastFailures: 'curated_library_sync_last_failures_v1',
+  lastQuota: 'curated_library_sync_last_quota_v1'
 } as const
 
 function parseStoredValue(raw: string): unknown {
@@ -41,6 +66,19 @@ function normalizePersistSongFilters(value: unknown): boolean | null {
   return null
 }
 
+function normalizeUserKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed : ''
+}
+
+function normalizeBooleanFlag(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (value === '1' || value === 'true') return true
+  if (value === '0' || value === 'false') return false
+  return null
+}
+
 function isArrayEqual(a: string[] | null, b: string[] | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
@@ -54,7 +92,7 @@ function isArrayEqual(a: string[] | null, b: string[] | null): boolean {
 function readLibrarySettings(db: SqliteDatabase): Partial<LibrarySettingValues> {
   const result: Partial<LibrarySettingValues> = {}
   try {
-    const modeRaw = getMetaValue(db, META_KEYS.fingerprintMode)
+    const modeRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.fingerprintMode)
     if (modeRaw) {
       const parsed = parseStoredValue(modeRaw)
       const mode = normalizeFingerprintMode(parsed)
@@ -63,7 +101,7 @@ function readLibrarySettings(db: SqliteDatabase): Partial<LibrarySettingValues> 
   } catch {}
 
   try {
-    const audioRaw = getMetaValue(db, META_KEYS.audioExt)
+    const audioRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.audioExt)
     if (audioRaw) {
       const parsed = parseStoredValue(audioRaw)
       const list = normalizeAudioExt(parsed)
@@ -72,11 +110,46 @@ function readLibrarySettings(db: SqliteDatabase): Partial<LibrarySettingValues> 
   } catch {}
 
   try {
-    const persistRaw = getMetaValue(db, META_KEYS.persistSongFilters)
+    const persistRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.persistSongFilters)
     if (persistRaw) {
       const parsed = parseStoredValue(persistRaw)
       const flag = normalizePersistSongFilters(parsed)
       if (flag !== null) result.persistSongFilters = flag
+    }
+  } catch {}
+
+  try {
+    const userKeyRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.cloudSyncUserKey)
+    if (userKeyRaw !== null) {
+      const parsed = parseStoredValue(userKeyRaw)
+      const userKey = normalizeUserKey(parsed)
+      if (userKey !== null) result.cloudSyncUserKey = userKey
+    }
+  } catch {}
+
+  try {
+    const autoRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.cloudSyncAutoEnabled)
+    if (autoRaw !== null) {
+      const parsed = parseStoredValue(autoRaw)
+      const flag = normalizeBooleanFlag(parsed)
+      if (flag !== null) result.cloudSyncAutoEnabled = flag
+    }
+  } catch {}
+
+  try {
+    const intervalRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.cloudSyncAutoIntervalMs)
+    if (intervalRaw !== null) {
+      const parsed = parseStoredValue(intervalRaw)
+      result.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(parsed)
+    }
+  } catch {}
+
+  try {
+    const curatedRaw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.curatedLibrarySyncEnabled)
+    if (curatedRaw !== null) {
+      const parsed = parseStoredValue(curatedRaw)
+      const flag = normalizeBooleanFlag(parsed)
+      if (flag !== null) result.curatedLibrarySyncEnabled = flag
     }
   } catch {}
 
@@ -86,13 +159,49 @@ function readLibrarySettings(db: SqliteDatabase): Partial<LibrarySettingValues> 
 function writeLibrarySettings(db: SqliteDatabase, values: Partial<LibrarySettingValues>): void {
   try {
     if (values.fingerprintMode) {
-      setMetaValue(db, META_KEYS.fingerprintMode, JSON.stringify(values.fingerprintMode))
+      setMetaValue(
+        db,
+        LIBRARY_SETTING_META_KEYS.fingerprintMode,
+        JSON.stringify(values.fingerprintMode)
+      )
     }
     if (Array.isArray(values.audioExt)) {
-      setMetaValue(db, META_KEYS.audioExt, JSON.stringify(values.audioExt))
+      setMetaValue(db, LIBRARY_SETTING_META_KEYS.audioExt, JSON.stringify(values.audioExt))
     }
     if (typeof values.persistSongFilters === 'boolean') {
-      setMetaValue(db, META_KEYS.persistSongFilters, JSON.stringify(values.persistSongFilters))
+      setMetaValue(
+        db,
+        LIBRARY_SETTING_META_KEYS.persistSongFilters,
+        JSON.stringify(values.persistSongFilters)
+      )
+    }
+    if (typeof values.cloudSyncUserKey === 'string') {
+      setMetaValue(
+        db,
+        LIBRARY_SETTING_META_KEYS.cloudSyncUserKey,
+        JSON.stringify(values.cloudSyncUserKey)
+      )
+    }
+    if (typeof values.cloudSyncAutoEnabled === 'boolean') {
+      setMetaValue(
+        db,
+        LIBRARY_SETTING_META_KEYS.cloudSyncAutoEnabled,
+        JSON.stringify(values.cloudSyncAutoEnabled)
+      )
+    }
+    if (typeof values.cloudSyncAutoIntervalMs === 'number') {
+      setMetaValue(
+        db,
+        LIBRARY_SETTING_META_KEYS.cloudSyncAutoIntervalMs,
+        JSON.stringify(normalizeCloudSyncAutoIntervalMs(values.cloudSyncAutoIntervalMs))
+      )
+    }
+    if (typeof values.curatedLibrarySyncEnabled === 'boolean') {
+      setMetaValue(
+        db,
+        LIBRARY_SETTING_META_KEYS.curatedLibrarySyncEnabled,
+        JSON.stringify(values.curatedLibrarySyncEnabled)
+      )
     }
   } catch {}
 }
@@ -102,6 +211,144 @@ function getDbForCurrentLibrary(): SqliteDatabase | null {
   if (!root) return null
   if (store.settingConfig?.databaseUrl && store.settingConfig.databaseUrl !== root) return null
   return initLibraryDb(root)
+}
+
+export function isCuratedLibrarySyncEnabled(): boolean {
+  return store.settingConfig?.curatedLibrarySyncEnabled === true
+}
+
+export function getCuratedLibrarySyncLastAppliedRevision(): number | null {
+  const db = getLibraryDb()
+  if (!db) return null
+  const raw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.lastAppliedRevision)
+  if (raw === null || raw === '') return null
+  const parsed = Number(parseStoredValue(raw))
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return Math.floor(parsed)
+}
+
+export function setCuratedLibrarySyncLastAppliedRevision(revision: number | null): void {
+  const db = getLibraryDb()
+  if (!db) return
+  if (revision === null) {
+    setMetaValue(db, LIBRARY_SETTING_META_KEYS.lastAppliedRevision, JSON.stringify(null))
+    return
+  }
+  setMetaValue(
+    db,
+    LIBRARY_SETTING_META_KEYS.lastAppliedRevision,
+    JSON.stringify(Math.max(0, Math.floor(revision)))
+  )
+}
+
+export function readCuratedLibrarySyncDeferredOps(): unknown {
+  const db = getLibraryDb()
+  if (!db) return []
+  const raw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.deferredOps)
+  if (!raw) return []
+  return parseStoredValue(raw)
+}
+
+export function writeCuratedLibrarySyncDeferredOps(value: unknown): void {
+  const db = getLibraryDb()
+  if (!db) return
+  setMetaValue(db, LIBRARY_SETTING_META_KEYS.deferredOps, JSON.stringify(value ?? []))
+}
+
+export type CuratedLibrarySyncLastCloudIds = {
+  files: string[]
+  nodes: string[]
+}
+
+export function readCuratedLibrarySyncLastCloudIds(): CuratedLibrarySyncLastCloudIds | null {
+  const db = getLibraryDb()
+  if (!db) return null
+  const raw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.lastCloudIds)
+  if (!raw) return null
+  const parsed = parseStoredValue(raw)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  const files = (parsed as { files?: unknown }).files
+  const nodes = (parsed as { nodes?: unknown }).nodes
+  if (!Array.isArray(files) || !Array.isArray(nodes)) return null
+  return {
+    files: files.map((item) => String(item || '').trim()).filter(Boolean),
+    nodes: nodes.map((item) => String(item || '').trim()).filter(Boolean)
+  }
+}
+
+export function writeCuratedLibrarySyncLastCloudIds(
+  value: CuratedLibrarySyncLastCloudIds | null
+): void {
+  const db = getLibraryDb()
+  if (!db) return
+  if (!value) {
+    setMetaValue(db, LIBRARY_SETTING_META_KEYS.lastCloudIds, JSON.stringify(null))
+    return
+  }
+  setMetaValue(
+    db,
+    LIBRARY_SETTING_META_KEYS.lastCloudIds,
+    JSON.stringify({
+      files: value.files.map((item) => String(item || '').trim()).filter(Boolean),
+      nodes: value.nodes.map((item) => String(item || '').trim()).filter(Boolean)
+    })
+  )
+}
+
+export function readCuratedLibrarySyncLastSnapshot(): unknown {
+  const db = getLibraryDb()
+  if (!db) return null
+  const raw = getMetaValue(db, LIBRARY_SETTING_META_KEYS.lastSnapshot)
+  if (!raw) return null
+  return parseStoredValue(raw)
+}
+
+export function writeCuratedLibrarySyncLastSnapshot(value: unknown): void {
+  const db = getLibraryDb()
+  if (!db) return
+  if (value == null) {
+    setMetaValue(db, LIBRARY_SETTING_META_KEYS.lastSnapshot, JSON.stringify(null))
+    return
+  }
+  setMetaValue(db, LIBRARY_SETTING_META_KEYS.lastSnapshot, JSON.stringify(value))
+}
+
+const readJsonMeta = (key: string): unknown => {
+  const db = getLibraryDb()
+  if (!db) return null
+  const raw = getMetaValue(db, key)
+  if (!raw) return null
+  return parseStoredValue(raw)
+}
+
+const writeJsonMeta = (key: string, value: unknown): void => {
+  const db = getLibraryDb()
+  if (!db) return
+  setMetaValue(db, key, JSON.stringify(value ?? null))
+}
+
+export function readCuratedLibrarySyncConflicts(): unknown {
+  return readJsonMeta(LIBRARY_SETTING_META_KEYS.lastConflicts)
+}
+
+export function writeCuratedLibrarySyncConflicts(value: unknown): void {
+  writeJsonMeta(LIBRARY_SETTING_META_KEYS.lastConflicts, value)
+}
+
+export function readCuratedLibrarySyncFailures(): unknown {
+  return readJsonMeta(LIBRARY_SETTING_META_KEYS.lastFailures)
+}
+
+export function writeCuratedLibrarySyncFailures(value: unknown): void {
+  writeJsonMeta(LIBRARY_SETTING_META_KEYS.lastFailures, value)
+}
+
+export function readCuratedLibrarySyncQuotaCache(): unknown {
+  return readJsonMeta(LIBRARY_SETTING_META_KEYS.lastQuota)
+}
+
+export function writeCuratedLibrarySyncQuotaCache(value: unknown): void {
+  writeJsonMeta(LIBRARY_SETTING_META_KEYS.lastQuota, value)
 }
 
 export async function syncLibrarySettingsFromDb(dirPath?: string): Promise<void> {
@@ -142,6 +389,65 @@ export async function syncLibrarySettingsFromDb(dirPath?: string): Promise<void>
     toWrite.persistSongFilters = currentPersist
   }
 
+  const currentUserKey = String(current.cloudSyncUserKey || '').trim()
+  if (dbValues.cloudSyncUserKey !== undefined) {
+    if (currentUserKey !== dbValues.cloudSyncUserKey) {
+      current.cloudSyncUserKey = dbValues.cloudSyncUserKey
+      changed = true
+    }
+  } else {
+    toWrite.cloudSyncUserKey = currentUserKey
+  }
+  if (is.dev) {
+    const nextUserKey = resolveDevCloudSyncUserKey(
+      String(current.cloudSyncUserKey || '').trim(),
+      true
+    )
+    if (nextUserKey !== String(current.cloudSyncUserKey || '').trim()) {
+      current.cloudSyncUserKey = nextUserKey
+      toWrite.cloudSyncUserKey = nextUserKey
+      changed = true
+    }
+  }
+
+  const currentAutoEnabled = normalizeCloudSyncAutoEnabled(current.cloudSyncAutoEnabled)
+  if (dbValues.cloudSyncAutoEnabled !== undefined) {
+    if (currentAutoEnabled !== dbValues.cloudSyncAutoEnabled) {
+      current.cloudSyncAutoEnabled = dbValues.cloudSyncAutoEnabled
+      changed = true
+    }
+  } else {
+    toWrite.cloudSyncAutoEnabled =
+      typeof current.cloudSyncAutoEnabled === 'boolean'
+        ? currentAutoEnabled
+        : DEFAULT_CLOUD_SYNC_AUTO_ENABLED
+  }
+
+  const currentInterval = normalizeCloudSyncAutoIntervalMs(current.cloudSyncAutoIntervalMs)
+  if (dbValues.cloudSyncAutoIntervalMs !== undefined) {
+    if (currentInterval !== dbValues.cloudSyncAutoIntervalMs) {
+      current.cloudSyncAutoIntervalMs = dbValues.cloudSyncAutoIntervalMs
+      changed = true
+    }
+  } else {
+    toWrite.cloudSyncAutoIntervalMs = current.cloudSyncAutoIntervalMs
+      ? currentInterval
+      : DEFAULT_CLOUD_SYNC_AUTO_INTERVAL_MS
+  }
+
+  if (dbValues.curatedLibrarySyncEnabled !== undefined) {
+    if (current.curatedLibrarySyncEnabled !== dbValues.curatedLibrarySyncEnabled) {
+      current.curatedLibrarySyncEnabled = dbValues.curatedLibrarySyncEnabled
+      changed = true
+    }
+  } else {
+    toWrite.curatedLibrarySyncEnabled = current.curatedLibrarySyncEnabled === true
+    if (current.curatedLibrarySyncEnabled !== false) {
+      current.curatedLibrarySyncEnabled = false
+      changed = true
+    }
+  }
+
   if (Object.keys(toWrite).length > 0) {
     writeLibrarySettings(db, toWrite)
   }
@@ -166,6 +472,10 @@ export async function saveLibrarySettingsFromConfig(): Promise<void> {
   writeLibrarySettings(db, {
     fingerprintMode: mode || undefined,
     audioExt: audio !== null ? audio : undefined,
-    persistSongFilters: persist !== null ? persist : undefined
+    persistSongFilters: persist !== null ? persist : undefined,
+    cloudSyncUserKey: String(current.cloudSyncUserKey || '').trim(),
+    cloudSyncAutoEnabled: normalizeCloudSyncAutoEnabled(current.cloudSyncAutoEnabled),
+    cloudSyncAutoIntervalMs: normalizeCloudSyncAutoIntervalMs(current.cloudSyncAutoIntervalMs),
+    curatedLibrarySyncEnabled: current.curatedLibrarySyncEnabled === true
   })
 }

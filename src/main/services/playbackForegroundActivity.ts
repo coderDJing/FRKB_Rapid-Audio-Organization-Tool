@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import path from 'node:path'
 
 type PlaybackForegroundState = 'start' | 'end'
 
@@ -12,6 +13,7 @@ type PlaybackForegroundPayload = {
 
 type PlaybackForegroundEntry = {
   expiresAtMs: number
+  filePath: string
 }
 
 const PLAYBACK_FOREGROUND_ACTIVITY_CHANNEL = 'player:foreground-activity'
@@ -50,6 +52,24 @@ const isPlaybackForegroundBusy = (nowMs = Date.now()): boolean => {
   return foregroundEntries.size > 0 || foregroundGraceUntilMs > nowMs
 }
 
+export { isPlaybackForegroundBusy }
+
+export const isAbsPathInPlaybackForeground = (absPath: string): boolean => {
+  pruneExpiredEntries()
+  const target = normalizeText(absPath)
+  if (!target) return false
+  const targetKey =
+    process.platform === 'win32' ? path.resolve(target).toLowerCase() : path.resolve(target)
+  for (const entry of foregroundEntries.values()) {
+    const candidate = normalizeText(entry.filePath)
+    if (!candidate) continue
+    const candidateKey =
+      process.platform === 'win32' ? path.resolve(candidate).toLowerCase() : path.resolve(candidate)
+    if (candidateKey === targetKey) return true
+  }
+  return false
+}
+
 const acquireBackgroundFileIoSlot = async (): Promise<() => void> => {
   if (backgroundFileIoInFlight < BACKGROUND_FILE_IO_MAX_CONCURRENCY) {
     backgroundFileIoInFlight += 1
@@ -79,7 +99,8 @@ function markPlaybackForegroundActivity(payload: PlaybackForegroundPayload) {
   const key = buildActivityKey(payload)
   if (state === 'start') {
     foregroundEntries.set(key, {
-      expiresAtMs: nowMs + PLAYBACK_FOREGROUND_STALE_MS
+      expiresAtMs: nowMs + PLAYBACK_FOREGROUND_STALE_MS,
+      filePath: normalizeText(payload.filePath)
     })
     return
   }
