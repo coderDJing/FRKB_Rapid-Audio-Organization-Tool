@@ -53,12 +53,15 @@ import { parseCuratedLibrarySnapshot, mergeCuratedLibrarySnapshot } from './snap
 import {
   applyRemoteSnapshot,
   buildCloudEntitiesFromLocal,
+  collectUnappliedCloudIds,
   diffLocalAgainstSnapshot,
   retryDeferredRemoteOps,
   type ApplyRemoteContext,
+  type ApplyRemoteOptions,
   type DeferredRemoteOp
 } from './applyRemote'
 import { scanCuratedLibraryForSync, type CuratedLocalFile } from './scan'
+import { findCuratedLibraryNode, sameCloudParentUuid } from './paths'
 
 let running = false
 let cancelRequested = false
@@ -298,17 +301,24 @@ const asOptionalPositiveInt = (value: unknown): number | null => {
 
 const buildPushOps = (
   local: Awaited<ReturnType<typeof scanCuratedLibraryForSync>>,
-  snapshot: Awaited<ReturnType<typeof pullCuratedSnapshot>>
+  snapshot: Awaited<ReturnType<typeof pullCuratedSnapshot>>,
+  retainCloudIds?: { files: Set<string>; nodes: Set<string> }
 ): CuratedLibrarySyncOp[] => {
   const diff = diffLocalAgainstSnapshot(local, snapshot)
   const ops: CuratedLibrarySyncOp[] = []
   const now = Date.now()
+  const curated = findCuratedLibraryNode()
+  const snapshotNodeIds = new Set(snapshot.nodes.map((node) => node.uuid))
+  const parentChanged = (cloudParent: string, localParent: string): boolean => {
+    if (!curated) return cloudParent !== localParent
+    return !sameCloudParentUuid(cloudParent, localParent, curated.uuid, snapshotNodeIds)
+  }
   for (const node of local.nodes) {
     const cloud = diff.cloudNodes.get(node.uuid)
     if (
       !cloud ||
       cloud.name !== node.name ||
-      cloud.parentUuid !== node.parentUuid ||
+      parentChanged(cloud.parentUuid, node.parentUuid) ||
       sameSortOrder(cloud.sortOrder, node.sortOrder) === false ||
       cloud.nodeType !== node.nodeType
     ) {
@@ -329,7 +339,7 @@ const buildPushOps = (
     const cloud = diff.cloudFiles.get(file.fileId)
     if (
       !cloud ||
-      cloud.parentUuid !== file.parentUuid ||
+      parentChanged(cloud.parentUuid, file.parentUuid) ||
       cloud.fileName !== file.fileName ||
       cloud.sha256 !== file.contentSha256 ||
       asOptionalPositiveInt(cloud.trackNumber) !== asOptionalPositiveInt(file.trackNumber) ||
@@ -351,12 +361,12 @@ const buildPushOps = (
     }
   }
   for (const [fileId] of diff.cloudFiles) {
-    if (!diff.localFileIds.has(fileId)) {
+    if (!diff.localFileIds.has(fileId) && !retainCloudIds?.files.has(fileId)) {
       ops.push({ type: 'deleteFile', fileId, updatedAtMs: now })
     }
   }
   for (const [uuid] of diff.cloudNodes) {
-    if (!diff.localNodeIds.has(uuid)) {
+    if (!diff.localNodeIds.has(uuid) && !retainCloudIds?.nodes.has(uuid)) {
       ops.push({ type: 'deleteNode', uuid, updatedAtMs: now })
     }
   }
@@ -381,11 +391,17 @@ const buildPushOps = (
   return ops
 }
 
-const persistAppliedSnapshot = (snapshot: CuratedLibrarySyncSnapshot) => {
+const persistAppliedSnapshot = (
+  snapshot: CuratedLibrarySyncSnapshot,
+  local?: { files: Array<{ fileId: string }>; nodes: Array<{ uuid: string }> }
+) => {
   setCuratedLibrarySyncLastAppliedRevision(snapshot.revision)
   writeCuratedLibrarySyncLastCloudIds({
-    files: snapshot.files.map((file) => file.fileId),
-    nodes: snapshot.nodes.map((node) => node.uuid)
+    files: local
+      ? local.files.map((file) => file.fileId)
+      : snapshot.files.map((file) => file.fileId),
+    nodes: local ? local.nodes.map((node) => node.uuid) : snapshot.nodes.map((node) => node.uuid),
+    materialized: true
   })
   writeCuratedLibrarySyncLastSnapshot({
     protocolVersion: snapshot.protocolVersion,
@@ -459,7 +475,10 @@ const runJoin = async (
       files: local.files.filter((file) => !failedSha.has(file.contentSha256))
     })
     const next = await replaceCuratedSnapshot(entities)
-    persistAppliedSnapshot(next)
+    persistAppliedSnapshot(next, {
+      files: local.files.filter((file) => !failedSha.has(file.contentSha256)),
+      nodes: local.nodes
+    })
     writeCuratedLibrarySyncDeferredOps([])
     return { status: 'success' }
   }
@@ -483,7 +502,14 @@ const runJoin = async (
     const after = await scanCuratedLibraryForSync()
     if (mode === 'merge') {
       const failedSha = await uploadMissingBlobs(after.files)
-      const ops = omitFailedBlobOps(buildPushOps(after, snapshot), failedSha)
+      const retain = collectUnappliedCloudIds(snapshot, after, {
+        extras: 'keep',
+        adoptIds: true,
+        applyTombstones: false,
+        knownFileIds: null,
+        knownNodeIds: null
+      })
+      const ops = omitFailedBlobOps(buildPushOps(after, snapshot, retain), failedSha)
       if (ops.length > 0) {
         const pushed = await pushCuratedOps({ baseRevision: snapshot.revision, ops })
         if (!pushed.ok) {
@@ -501,13 +527,16 @@ const runJoin = async (
             applyCtx(true)
           )
           writeCuratedLibrarySyncDeferredOps([...applied.deferred, ...conflictApplied.deferred])
+          const afterConflict = await scanCuratedLibraryForSync()
+          persistAppliedSnapshot(pushed.snapshot, afterConflict)
+        } else {
+          persistAppliedSnapshot(pushed.snapshot, after)
         }
-        persistAppliedSnapshot(pushed.snapshot)
       } else {
-        persistAppliedSnapshot(snapshot)
+        persistAppliedSnapshot(snapshot, after)
       }
     } else {
-      persistAppliedSnapshot(snapshot)
+      persistAppliedSnapshot(snapshot, after)
     }
   } finally {
     release()
@@ -516,14 +545,15 @@ const runJoin = async (
   return { status: 'success' }
 }
 
-const incrementalApplyOptions = () => {
+const incrementalApplyOptions = (): ApplyRemoteOptions => {
   const lastIds = readCuratedLibrarySyncLastCloudIds()
+  const trustMaterialized = lastIds?.materialized === true
   return {
     extras: 'keep' as const,
     adoptIds: false,
     applyTombstones: true,
-    knownFileIds: lastIds ? new Set(lastIds.files) : null,
-    knownNodeIds: lastIds ? new Set(lastIds.nodes) : null
+    knownFileIds: trustMaterialized && lastIds ? new Set(lastIds.files) : null,
+    knownNodeIds: trustMaterialized && lastIds ? new Set(lastIds.nodes) : null
   }
 }
 
@@ -534,21 +564,18 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
   const release = beginLibraryTreeWatcherBulkOperation()
   try {
     const deferred = toDeferred(readCuratedLibrarySyncDeferredOps())
+    const applyOptions = incrementalApplyOptions()
     const remainingDeferred = await retryDeferredRemoteOps(deferred, snapshot, applyCtx())
-    const applied = await applyRemoteSnapshot(
-      snapshot,
-      local,
-      incrementalApplyOptions(),
-      applyCtx(true)
-    )
+    const applied = await applyRemoteSnapshot(snapshot, local, applyOptions, applyCtx(true))
     if (applied.diskFull) return { status: 'disk_full' }
     remainingDeferred.push(...applied.deferred)
     writeCuratedLibrarySyncDeferredOps(remainingDeferred)
     const after = await scanCuratedLibraryForSync()
     const failedSha = await uploadMissingBlobs(after.files)
-    const ops = omitFailedBlobOps(buildPushOps(after, snapshot), failedSha)
+    const retain = collectUnappliedCloudIds(snapshot, after, applyOptions)
+    const ops = omitFailedBlobOps(buildPushOps(after, snapshot, retain), failedSha)
     if (ops.length === 0) {
-      persistAppliedSnapshot(snapshot)
+      persistAppliedSnapshot(snapshot, after)
       writeCuratedLibrarySyncDeferredOps(remainingDeferred)
       return { status: 'success' }
     }
@@ -558,14 +585,15 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
       const conflictApplied = await applyRemoteSnapshot(
         pushed.snapshot,
         after,
-        incrementalApplyOptions(),
+        applyOptions,
         applyCtx(true)
       )
       writeCuratedLibrarySyncDeferredOps([...remainingDeferred, ...conflictApplied.deferred])
-      persistAppliedSnapshot(pushed.snapshot)
+      const afterConflict = await scanCuratedLibraryForSync()
+      persistAppliedSnapshot(pushed.snapshot, afterConflict)
       return { status: 'success' }
     }
-    persistAppliedSnapshot(pushed.snapshot)
+    persistAppliedSnapshot(pushed.snapshot, after)
     writeCuratedLibrarySyncDeferredOps(remainingDeferred)
     return { status: 'success' }
   } finally {
@@ -612,7 +640,10 @@ const runFirstSnapshotUpload = async (): Promise<CuratedLibrarySyncStartResult> 
     sessionId: session.sessionId,
     ...entities
   })
-  persistAppliedSnapshot(committed)
+  persistAppliedSnapshot(committed, {
+    files: local.files.filter((file) => !failedSha.has(file.contentSha256)),
+    nodes: local.nodes
+  })
   writeCuratedLibrarySyncDeferredOps([])
   return { status: 'success' }
 }

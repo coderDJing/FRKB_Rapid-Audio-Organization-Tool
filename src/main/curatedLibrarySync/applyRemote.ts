@@ -32,12 +32,15 @@ import {
   type CuratedSyncFileRow
 } from './identityDb'
 import {
+  canonicalizeCloudParentUuid,
   curatedRelativeToAbs,
   findCuratedLibraryNode,
   getCuratedLibraryAbsRoot,
   getLibraryAbsRoot,
   getNodeAbsPath,
-  libraryRelativeToAbs
+  libraryRelativeToAbs,
+  resolveCloudParentAbs,
+  resolveCloudParentToLocalUuid
 } from './paths'
 import type {
   CuratedLibrarySyncCloudFile,
@@ -100,6 +103,20 @@ const absToRel = (root: string, absPath: string): string =>
 const isBusyPath = (absPath: string, ctx: ApplyRemoteContext): boolean =>
   isPathBusyForRemoteMutation(absPath) || !!ctx.isBusy?.(absPath)
 
+type CloudParentScope = {
+  curatedUuid: string
+  snapshotNodeIds: Set<string>
+}
+
+const localParentUuidOf = (cloudParentUuid: string, scope: CloudParentScope): string =>
+  resolveCloudParentToLocalUuid(cloudParentUuid, scope.curatedUuid, scope.snapshotNodeIds)
+
+const localParentAbsOf = (cloudParentUuid: string, scope: CloudParentScope): string | null =>
+  resolveCloudParentAbs(cloudParentUuid, scope.curatedUuid, scope.snapshotNodeIds)
+
+const canonicalParentUuidOf = (cloudParentUuid: string, scope: CloudParentScope): string =>
+  canonicalizeCloudParentUuid(cloudParentUuid, scope.curatedUuid, scope.snapshotNodeIds)
+
 const adoptNodeUuid = (localUuid: string, cloudUuid: string): void => {
   if (!localUuid || !cloudUuid || localUuid === cloudUuid) return
   const nodes = loadLibraryNodes() || []
@@ -124,11 +141,11 @@ const adoptNodeUuid = (localUuid: string, cloudUuid: string): void => {
 
 const ensureCloudNodeLocal = async (
   node: CuratedLibrarySyncCloudNode,
-  curatedUuid: string
+  scope: CloudParentScope
 ): Promise<string | null> => {
   const existing = (loadLibraryNodes() || []).find((item) => item.uuid === node.uuid)
-  const parentAbs =
-    node.parentUuid === curatedUuid ? getCuratedLibraryAbsRoot() : getNodeAbsPath(node.parentUuid)
+  const parentUuid = localParentUuidOf(node.parentUuid, scope)
+  const parentAbs = localParentAbsOf(node.parentUuid, scope)
   if (!parentAbs) return null
   const destAbs = path.join(parentAbs, node.name)
   if (existing) {
@@ -138,7 +155,7 @@ const ensureCloudNodeLocal = async (
       if (await fs.pathExists(currentAbs)) {
         await relocateLibraryDirectoryFiles(currentAbs, destAbs)
       }
-      moveLibraryNode(node.uuid, node.parentUuid, node.name)
+      moveLibraryNode(node.uuid, parentUuid, node.name)
     } else if (existing.dirName !== node.name) {
       updateLibraryNodeName(node.uuid, node.name)
     }
@@ -157,7 +174,7 @@ const ensureCloudNodeLocal = async (
   await fs.ensureDir(destAbs)
   insertLibraryNode({
     uuid: node.uuid,
-    parentUuid: node.parentUuid,
+    parentUuid,
     dirName: node.name,
     nodeType: node.nodeType,
     order: node.sortOrder
@@ -198,10 +215,11 @@ const findCustodyFile = async (file: CuratedLibrarySyncCloudFile): Promise<strin
 
 const importCloudFile = async (
   file: CuratedLibrarySyncCloudFile,
-  ctx: ApplyRemoteContext
+  ctx: ApplyRemoteContext,
+  scope: CloudParentScope
 ): Promise<string | null> => {
   assertNotCancelled(ctx.signal)
-  const destDir = getNodeAbsPath(file.parentUuid)
+  const destDir = localParentAbsOf(file.parentUuid, scope)
   if (!destDir) return null
   await fs.ensureDir(destDir)
   const destPath = path.join(destDir, file.fileName)
@@ -251,10 +269,11 @@ const importCloudFile = async (
 
 const tryImportCloudFile = async (
   file: CuratedLibrarySyncCloudFile,
-  ctx: ApplyRemoteContext
+  ctx: ApplyRemoteContext,
+  scope: CloudParentScope
 ): Promise<string | null> => {
   try {
-    return await importCloudFile(file, ctx)
+    return await importCloudFile(file, ctx, scope)
   } catch (error) {
     if (isEnospc(error)) throw error
     if ((error as { name?: string })?.name === 'AbortError') throw error
@@ -272,13 +291,14 @@ const tryImportCloudFile = async (
 const persistImportedIdentity = (
   file: CuratedLibrarySyncCloudFile,
   absPath: string,
-  relativePath: string
+  relativePath: string,
+  scope: CloudParentScope
 ) => {
   const existing = getCuratedSyncFileById(file.fileId)
   const row: CuratedSyncFileRow = {
     fileId: file.fileId,
     relativePath,
-    parentUuid: file.parentUuid,
+    parentUuid: canonicalParentUuidOf(file.parentUuid, scope),
     fileName: path.basename(absPath),
     contentSha256: file.sha256,
     contentSize: file.size,
@@ -318,7 +338,7 @@ const resolveLocalAbsForFileId = (
   return null
 }
 
-const shouldSkipRestoringCloudFile = (
+export const shouldSkipRestoringCloudFile = (
   file: CuratedLibrarySyncCloudFile,
   options: ApplyRemoteOptions
 ): boolean => {
@@ -331,10 +351,39 @@ const shouldSkipRestoringCloudFile = (
   return !identity && !!options.knownFileIds?.has(file.fileId)
 }
 
-const shouldSkipRecreatingCloudNode = (nodeUuid: string, options: ApplyRemoteOptions): boolean => {
+export const shouldSkipRecreatingCloudNode = (
+  nodeUuid: string,
+  options: ApplyRemoteOptions
+): boolean => {
   if (options.extras === 'delete' || options.adoptIds) return false
   if (options.knownNodeIds == null) return false
   return options.knownNodeIds.has(nodeUuid)
+}
+
+export const collectUnappliedCloudIds = (
+  snapshot: CuratedLibrarySyncSnapshot,
+  local: { files: CuratedLocalFile[]; nodes: CuratedLocalNode[] },
+  options: ApplyRemoteOptions
+): { files: Set<string>; nodes: Set<string> } => {
+  const localFileIds = new Set(local.files.map((file) => file.fileId))
+  const localNodeIds = new Set(local.nodes.map((node) => node.uuid))
+  return {
+    files: new Set(
+      snapshot.files
+        .filter(
+          (file) => !localFileIds.has(file.fileId) && !shouldSkipRestoringCloudFile(file, options)
+        )
+        .map((file) => file.fileId)
+    ),
+    nodes: new Set(
+      snapshot.nodes
+        .filter(
+          (node) =>
+            !localNodeIds.has(node.uuid) && !shouldSkipRecreatingCloudNode(node.uuid, options)
+        )
+        .map((node) => node.uuid)
+    )
+  }
 }
 
 const sortNodesParentsFirst = (nodes: CuratedLibrarySyncCloudNode[]) => {
@@ -355,15 +404,17 @@ const sortNodesParentsFirst = (nodes: CuratedLibrarySyncCloudNode[]) => {
   return ordered
 }
 
-const applyTrackNumbers = async (files: CuratedLibrarySyncCloudFile[]) => {
+const applyTrackNumbers = async (files: CuratedLibrarySyncCloudFile[], scope: CloudParentScope) => {
   const grouped = new Map<string, CuratedLibrarySyncCloudFile[]>()
   for (const file of files) {
-    const list = grouped.get(file.parentUuid) || []
+    const parentUuid = localParentUuidOf(file.parentUuid, scope)
+    const list = grouped.get(parentUuid) || []
     list.push(file)
-    grouped.set(file.parentUuid, list)
+    grouped.set(parentUuid, list)
   }
   for (const [parentUuid, group] of grouped) {
-    const listRoot = getNodeAbsPath(parentUuid)
+    const listRoot =
+      parentUuid === scope.curatedUuid ? getCuratedLibraryAbsRoot() : getNodeAbsPath(parentUuid)
     if (!listRoot) continue
     const ordered = [...group].sort((left, right) => {
       const leftNum = Number(left.trackNumber) || Number.MAX_SAFE_INTEGER
@@ -461,6 +512,10 @@ export const applyRemoteSnapshot = async (
   const curatedRoot = getCuratedLibraryAbsRoot()
   const libraryRoot = getLibraryAbsRoot()
   if (!curated || !curatedRoot || !libraryRoot) return { deferred, diskFull: false }
+  const scope: CloudParentScope = {
+    curatedUuid: curated.uuid,
+    snapshotNodeIds: new Set(snapshot.nodes.map((node) => node.uuid))
+  }
 
   try {
     const orderedNodes = sortNodesParentsFirst(
@@ -470,7 +525,7 @@ export const applyRemoteSnapshot = async (
       assertNotCancelled(ctx.signal)
       const existing = (loadLibraryNodes() || []).find((item) => item.uuid === node.uuid)
       if (!existing && shouldSkipRecreatingCloudNode(node.uuid, options)) continue
-      await ensureCloudNodeLocal(node, curated.uuid)
+      await ensureCloudNodeLocal(node, scope)
     }
 
     const cloudFileIds = new Set(snapshot.files.map((file) => file.fileId))
@@ -505,7 +560,7 @@ export const applyRemoteSnapshot = async (
           matched = { ...matched, fileId: file.fileId }
         }
       }
-      const destDir = getNodeAbsPath(file.parentUuid)
+      const destDir = localParentAbsOf(file.parentUuid, scope)
       if (!destDir) continue
       if (matched) {
         const destPath = path.join(destDir, file.fileName)
@@ -521,7 +576,7 @@ export const applyRemoteSnapshot = async (
         }
         if (matched.contentSha256 !== file.sha256) {
           reportApplyProgress(true)
-          const imported = await tryImportCloudFile(file, ctx)
+          const imported = await tryImportCloudFile(file, ctx, scope)
           if (imported) {
             await moveFileToRecycleBin(matched.absPath)
             persistImportedIdentity(
@@ -530,7 +585,8 @@ export const applyRemoteSnapshot = async (
               path.posix.join(
                 path.relative(curatedRoot, destDir).replace(/\\/g, '/'),
                 path.basename(imported)
-              )
+              ),
+              scope
             )
           }
           continue
@@ -542,16 +598,21 @@ export const applyRemoteSnapshot = async (
             destAbs: destPath,
             mode: 'move'
           })
-          persistImportedIdentity(file, moved, absToRel(curatedRoot, moved))
+          persistImportedIdentity(file, moved, absToRel(curatedRoot, moved), scope)
         } else {
-          persistImportedIdentity(file, matched.absPath, absToRel(curatedRoot, matched.absPath))
+          persistImportedIdentity(
+            file,
+            matched.absPath,
+            absToRel(curatedRoot, matched.absPath),
+            scope
+          )
         }
         continue
       }
       if (shouldSkipRestoringCloudFile(file, options)) continue
       reportApplyProgress(true)
-      const imported = await tryImportCloudFile(file, ctx)
-      if (imported) persistImportedIdentity(file, imported, absToRel(curatedRoot, imported))
+      const imported = await tryImportCloudFile(file, ctx, scope)
+      if (imported) persistImportedIdentity(file, imported, absToRel(curatedRoot, imported), scope)
     }
 
     if (options.applyTombstones !== false) {
@@ -591,7 +652,7 @@ export const applyRemoteSnapshot = async (
       }
     }
 
-    await applyTrackNumbers(snapshot.files)
+    await applyTrackNumbers(snapshot.files, scope)
     return { deferred, diskFull: false }
   } catch (error) {
     if (isEnospc(error)) return { deferred, diskFull: true }
@@ -615,6 +676,13 @@ export const retryDeferredRemoteOps = async (
   )
   const localById = new Map<string, CuratedLocalFile>()
   const curatedRoot = getCuratedLibraryAbsRoot()
+  const curated = findCuratedLibraryNode()
+  const scope: CloudParentScope | null = curated
+    ? {
+        curatedUuid: curated.uuid,
+        snapshotNodeIds: new Set(snapshot.nodes.map((node) => node.uuid))
+      }
+    : null
   for (const op of ops) {
     assertNotCancelled(ctx.signal)
     if (op.type === 'deleteFile') {
@@ -656,7 +724,9 @@ export const retryDeferredRemoteOps = async (
       remaining.push(op)
       continue
     }
-    const destDir = getNodeAbsPath(cloud.parentUuid)
+    const destDir = scope
+      ? localParentAbsOf(cloud.parentUuid, scope)
+      : getNodeAbsPath(cloud.parentUuid)
     if (!destDir) continue
     const destPath = path.join(destDir, cloud.fileName)
     await relocateLibraryAudioFile({

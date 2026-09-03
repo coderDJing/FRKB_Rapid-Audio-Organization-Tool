@@ -126,6 +126,7 @@ export function registerSettingsHandlers(deps: Dependencies) {
 
         if (normalizedSetting.curatedLibrarySyncEnabled !== prevCuratedLibrarySyncEnabled) {
           syncCuratedLibraryLiveSync()
+          restartCloudSyncScheduler({ immediate: false })
           if (normalizedSetting.curatedLibrarySyncEnabled) {
             void runCuratedLibrarySyncTick()
           }

@@ -1,10 +1,24 @@
 import confirm from '@renderer/components/confirmDialog'
 import curatedLibrarySyncJoinDialog from '@renderer/components/curatedLibrarySyncJoinDialog'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 import type {
   CuratedLibrarySyncStartPayload,
   CuratedLibrarySyncStartResult
 } from '../../../shared/curatedLibrarySync'
+
+const persistCuratedLibrarySyncEnabled = async (enabled: boolean) => {
+  const runtime = useRuntimeStore()
+  runtime.setting.curatedLibrarySyncEnabled = enabled
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
+
+const disableCuratedLibrarySyncAfterJoinCancel = async () => {
+  await persistCuratedLibrarySyncEnabled(false)
+}
 
 const startCuratedLibrarySyncIpc = async (payload?: CuratedLibrarySyncStartPayload) =>
   (await window.electron.ipcRenderer.invoke(
@@ -68,8 +82,15 @@ export const continueCuratedLibrarySyncUi = async (
 ): Promise<void> => {
   if (result.status === 'needs_join_choice') {
     const choice = await promptJoinChoice(result)
-    if (choice === 'cancel') return
-    await runCuratedLibrarySyncUi({ trigger: 'manual', joinMode: choice })
+    if (choice === 'cancel') {
+      await disableCuratedLibrarySyncAfterJoinCancel()
+      return
+    }
+    await runCuratedLibrarySyncUi({
+      trigger: 'manual',
+      joinMode: choice,
+      confirmOverwriteCloud: choice === 'local-wins'
+    })
     return
   }
   if (result.status === 'needs_overwrite_cloud_confirm') {
@@ -86,7 +107,10 @@ export const continueCuratedLibrarySyncUi = async (
       cancelText: t('common.cancel'),
       innerHeight: 260
     })
-    if (confirmed !== 'confirm') return
+    if (confirmed !== 'confirm') {
+      await disableCuratedLibrarySyncAfterJoinCancel()
+      return
+    }
     await runCuratedLibrarySyncUi({
       trigger: 'manual',
       joinMode: 'local-wins',

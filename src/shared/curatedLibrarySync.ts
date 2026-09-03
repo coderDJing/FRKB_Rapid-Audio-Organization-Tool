@@ -6,6 +6,9 @@ export const CURATED_LIBRARY_SYNC_CANCEL_CHANNEL = 'curatedLibrarySync/cancel'
 
 export const CURATED_LIBRARY_SYNC_BLOB_CHUNK_SIZE = 8 * 1024 * 1024
 
+/** 云端快照里代表「精选库根」的父节点。各机精选库 library 节点 UUID 不同，不能直接当 parentUuid。 */
+export const CURATED_LIBRARY_SYNC_ROOT_PARENT_UUID = '00000000-0000-4000-8000-000000000000'
+
 export type CuratedLibrarySyncJoinMode = 'merge' | 'cloud-wins' | 'local-wins'
 
 export type CuratedLibrarySyncTrigger = 'manual' | 'scheduled' | 'realtime'

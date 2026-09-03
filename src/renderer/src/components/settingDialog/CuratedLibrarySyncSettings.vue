@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
@@ -88,12 +88,18 @@ const refreshOverview = async () => {
 
 const handleEnabledChange = async () => {
   await persistSetting()
-  window.setTimeout(() => {
-    void refreshOverview()
-  }, 400)
 }
 
-const startCuratedLibrarySync = async () => {
+watch(
+  () => runtime.setting.curatedLibrarySyncEnabled,
+  () => {
+    window.setTimeout(() => {
+      void refreshOverview()
+    }, 400)
+  }
+)
+
+const retryFailures = async () => {
   if (syncing.value || !enabledModel.value) return
   syncing.value = true
   try {
@@ -135,10 +141,6 @@ const clearConflicts = async () => {
 const clearFailures = async () => {
   await window.electron.ipcRenderer.invoke('curatedLibrarySync/clearFailures')
   await refreshOverview()
-}
-
-const retryFailures = async () => {
-  await startCuratedLibrarySync()
 }
 
 const failureText = (item: CuratedLibrarySyncFailureItem) => {
@@ -197,21 +199,6 @@ onBeforeUnmount(() => {
       />
       <div class="setting-hint">{{ t('cloudSync.curatedLibrary.enabledHint') }}</div>
       <div class="setting-hint">{{ t('cloudSync.curatedLibrary.scopeHint') }}</div>
-      <div class="buttonRow">
-        <bubbleBoxTrigger
-          tag="div"
-          class="button-anchor"
-          :title="enabledModel ? '' : t('cloudSync.curatedLibrary.errors.notEnabled')"
-        >
-          <div
-            class="button settings-inline-button"
-            :class="{ disabled: !enabledModel || syncing }"
-            @click="enabledModel ? void startCuratedLibrarySync() : undefined"
-          >
-            {{ t('cloudSync.curatedLibrary.syncNow') }}
-          </div>
-        </bubbleBoxTrigger>
-      </div>
     </div>
 
     <div class="setting-block">{{ t('cloudSync.curatedLibrary.liveStatus') }}</div>

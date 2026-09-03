@@ -10,7 +10,6 @@ import { normalizeAddedAtMs } from '../../shared/songAddedAt'
 import { hashFileSha256 } from './hashFile'
 import {
   createCuratedSyncFileId,
-  getCuratedSyncFileByRelativePath,
   listCuratedSyncFiles,
   upsertCuratedSyncFile,
   type CuratedSyncFileRow
@@ -19,7 +18,8 @@ import {
   absToCuratedRelative,
   findCuratedLibraryNode,
   getCuratedLibraryAbsRoot,
-  getLibraryAbsRoot
+  getLibraryAbsRoot,
+  toCloudParentUuid
 } from './paths'
 
 export type CuratedLocalFile = CuratedSyncFileRow & {
@@ -112,7 +112,10 @@ export const scanCuratedLibraryForSync = async (): Promise<{
       continue
     }
     const cache = await readCacheFields(absPath)
-    const parentUuid = await resolveParentUuid(absPath, curatedNode.uuid)
+    const parentUuid = toCloudParentUuid(
+      await resolveParentUuid(absPath, curatedNode.uuid),
+      curatedNode.uuid
+    )
     const fileName = path.basename(absPath)
     const previous = existingByPath.get(relativePath)
     let contentSha256 = previous?.contentSha256 || ''
@@ -178,7 +181,7 @@ export const scanCuratedLibraryForSync = async (): Promise<{
     if (node.nodeType === 'dir' || node.nodeType === 'songList') {
       nodes.push({
         uuid: node.uuid,
-        parentUuid: node.parentUuid || curatedNode.uuid,
+        parentUuid: toCloudParentUuid(node.parentUuid || curatedNode.uuid, curatedNode.uuid),
         name: node.dirName,
         nodeType: node.nodeType,
         sortOrder: normalizeOrder(node.order),

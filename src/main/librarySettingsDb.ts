@@ -258,6 +258,7 @@ export function writeCuratedLibrarySyncDeferredOps(value: unknown): void {
 export type CuratedLibrarySyncLastCloudIds = {
   files: string[]
   nodes: string[]
+  materialized?: boolean
 }
 
 export function readCuratedLibrarySyncLastCloudIds(): CuratedLibrarySyncLastCloudIds | null {
@@ -272,7 +273,8 @@ export function readCuratedLibrarySyncLastCloudIds(): CuratedLibrarySyncLastClou
   if (!Array.isArray(files) || !Array.isArray(nodes)) return null
   return {
     files: files.map((item) => String(item || '').trim()).filter(Boolean),
-    nodes: nodes.map((item) => String(item || '').trim()).filter(Boolean)
+    nodes: nodes.map((item) => String(item || '').trim()).filter(Boolean),
+    materialized: (parsed as { materialized?: unknown }).materialized === true
   }
 }
 
@@ -290,7 +292,8 @@ export function writeCuratedLibrarySyncLastCloudIds(
     LIBRARY_SETTING_META_KEYS.lastCloudIds,
     JSON.stringify({
       files: value.files.map((item) => String(item || '').trim()).filter(Boolean),
-      nodes: value.nodes.map((item) => String(item || '').trim()).filter(Boolean)
+      nodes: value.nodes.map((item) => String(item || '').trim()).filter(Boolean),
+      materialized: value.materialized === true
     })
   )
 }

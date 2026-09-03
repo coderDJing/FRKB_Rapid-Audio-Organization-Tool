@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import { t } from '@renderer/utils/translate'
 import type { CuratedLibrarySyncJoinMode } from '../../../shared/curatedLibrarySync'
 
 const uuid = uuidV4()
@@ -30,10 +31,7 @@ const props = defineProps<{
 }>()
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
-const choose = (mode: CuratedLibrarySyncJoinMode) => {
-  closeWithAnimation(() => emits('choose', mode))
-}
-const cancel = () => closeWithAnimation(() => emits('cancel'))
+const pendingMode = ref<CuratedLibrarySyncJoinMode | null>(null)
 
 const options: Array<{
   mode: CuratedLibrarySyncJoinMode
@@ -61,6 +59,63 @@ const options: Array<{
   }
 ]
 
+const pendingOption = computed(
+  () => options.find((item) => item.mode === pendingMode.value) || null
+)
+
+const pendingDangerous = computed(
+  () => pendingMode.value === 'cloud-wins' || pendingMode.value === 'local-wins'
+)
+
+const confirmLines = computed(() => {
+  const mode = pendingMode.value
+  if (!mode) return []
+  const local = props.localCount
+  const cloud = props.cloudCount
+  const lines = [
+    t('cloudSync.curatedLibrary.joinConfirmSelected', {
+      action: pendingOption.value?.label() || ''
+    })
+  ]
+  if (mode === 'merge') {
+    lines.push(t('cloudSync.curatedLibrary.joinConfirmMergeBody', { local, cloud }))
+  } else if (mode === 'cloud-wins') {
+    lines.push(t('cloudSync.curatedLibrary.joinConfirmCloudBody', { local, cloud }))
+    if (cloud === 0 && local > 0) {
+      lines.push(t('cloudSync.curatedLibrary.joinConfirmCloudEmpty'))
+    }
+  } else {
+    lines.push(t('cloudSync.curatedLibrary.joinConfirmLocalBody', { local, cloud }))
+    if (cloud > 0 && (local === 0 || local * 2 < cloud)) {
+      lines.push(t('cloudSync.curatedLibrary.joinConfirmLocalFewer'))
+    }
+  }
+  lines.push(t('cloudSync.curatedLibrary.joinConfirmIrreversible'))
+  return lines
+})
+
+const requestChoose = (mode: CuratedLibrarySyncJoinMode) => {
+  pendingMode.value = mode
+}
+
+const backToChoose = () => {
+  pendingMode.value = null
+}
+
+const confirmPending = () => {
+  const mode = pendingMode.value
+  if (!mode) return
+  closeWithAnimation(() => emits('choose', mode))
+}
+
+const cancel = () => {
+  if (pendingMode.value) {
+    pendingMode.value = null
+    return
+  }
+  closeWithAnimation(() => emits('cancel'))
+}
+
 onMounted(() => {
   hotkeys('Esc', uuid, () => {
     cancel()
@@ -80,42 +135,72 @@ onUnmounted(() => {
   >
     <div v-dialog-drag="'.dialog-title'" class="inner join-dialog">
       <div class="dialog-title dialog-header">
-        <span>{{ props.title }}</span>
+        <span>{{
+          pendingMode ? t('cloudSync.curatedLibrary.joinConfirmTitle') : props.title
+        }}</span>
       </div>
       <div class="join-dialog__body">
-        <p class="join-dialog__intro">{{ props.intro }}</p>
-        <div class="join-dialog__counts">
-          <div class="join-dialog__count">
-            <span class="join-dialog__count-label">{{ props.localCountLabel }}</span>
-            <span class="join-dialog__count-value">
-              {{ props.localCount }} {{ props.countUnit }}
-            </span>
-          </div>
-          <div class="join-dialog__count">
-            <span class="join-dialog__count-label">{{ props.cloudCountLabel }}</span>
-            <span class="join-dialog__count-value">
-              {{ props.cloudCount }} {{ props.countUnit }}
-            </span>
-          </div>
-        </div>
-        <div class="join-dialog__options">
-          <div
-            v-for="item in options"
-            :key="item.mode"
-            class="join-dialog__option"
-            :class="{ 'join-dialog__option--recommended': item.recommended }"
-            @click="choose(item.mode)"
-          >
-            <div class="join-dialog__option-head">
-              <span class="join-dialog__option-title">{{ item.label() }}</span>
-              <span v-if="item.recommended" class="join-dialog__badge">{{ props.mergeBadge }}</span>
+        <template v-if="!pendingMode">
+          <p class="join-dialog__intro">{{ props.intro }}</p>
+          <div class="join-dialog__counts">
+            <div class="join-dialog__count">
+              <span class="join-dialog__count-label">{{ props.localCountLabel }}</span>
+              <span class="join-dialog__count-value">
+                {{ props.localCount }} {{ props.countUnit }}
+              </span>
             </div>
-            <span class="join-dialog__option-hint">{{ item.hint() }}</span>
+            <div class="join-dialog__count">
+              <span class="join-dialog__count-label">{{ props.cloudCountLabel }}</span>
+              <span class="join-dialog__count-value">
+                {{ props.cloudCount }} {{ props.countUnit }}
+              </span>
+            </div>
           </div>
+          <div class="join-dialog__options">
+            <div
+              v-for="item in options"
+              :key="item.mode"
+              class="join-dialog__option"
+              :class="{ 'join-dialog__option--recommended': item.recommended }"
+              @click="requestChoose(item.mode)"
+            >
+              <div class="join-dialog__option-head">
+                <span class="join-dialog__option-title">{{ item.label() }}</span>
+                <span v-if="item.recommended" class="join-dialog__badge">{{
+                  props.mergeBadge
+                }}</span>
+              </div>
+              <span class="join-dialog__option-hint">{{ item.hint() }}</span>
+            </div>
+          </div>
+        </template>
+        <div
+          v-else
+          class="join-dialog__confirm"
+          :class="{ 'join-dialog__confirm--danger': pendingDangerous }"
+        >
+          <p class="join-dialog__confirm-warn">
+            {{ t('cloudSync.curatedLibrary.joinConfirmWarn') }}
+          </p>
+          <p v-for="(line, index) in confirmLines" :key="index" class="join-dialog__confirm-line">
+            {{ line }}
+          </p>
         </div>
       </div>
       <div class="dialog-footer join-dialog__footer">
-        <div class="button join-dialog__cancel" @click="cancel()">
+        <template v-if="pendingMode">
+          <div class="button join-dialog__cancel" @click="backToChoose()">
+            {{ t('cloudSync.curatedLibrary.joinConfirmBack') }} (Esc)
+          </div>
+          <div
+            class="button join-dialog__submit"
+            :class="{ 'join-dialog__submit--danger': pendingDangerous }"
+            @click="confirmPending()"
+          >
+            {{ t('cloudSync.curatedLibrary.joinConfirmSubmit') }}
+          </div>
+        </template>
+        <div v-else class="button join-dialog__cancel" @click="cancel()">
           {{ props.cancelLabel }} (Esc)
         </div>
       </div>
@@ -243,12 +328,56 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-.join-dialog__footer {
-  justify-content: center;
+.join-dialog__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-elev);
+  text-align: left;
 }
 
-.join-dialog__cancel {
+.join-dialog__confirm--danger {
+  border-color: color-mix(in srgb, var(--error, #f56c6c) 48%, var(--border));
+  background: color-mix(in srgb, var(--error, #f56c6c) 9%, var(--bg));
+}
+
+.join-dialog__confirm-warn {
+  margin: 0;
+  color: var(--error, #f56c6c);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.join-dialog__confirm-line {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.join-dialog__footer {
+  justify-content: center;
+  gap: 10px;
+}
+
+.join-dialog__cancel,
+.join-dialog__submit {
   min-width: 110px;
+  width: fit-content;
   text-align: center;
+}
+
+.join-dialog__submit--danger {
+  border: 1px solid color-mix(in srgb, var(--error, #f56c6c) 55%, var(--border));
+  color: var(--error, #f56c6c);
+}
+
+.join-dialog__submit--danger:hover {
+  color: #ffffff;
+  background-color: var(--error, #f56c6c);
 }
 </style>

@@ -4,6 +4,14 @@ import { getCoreFsDirName } from '../coreLibraries'
 import { getLibraryDb } from '../libraryDb'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import type { CuratedLibrarySyncLocation } from '../../shared/curatedLibrarySync'
+import { resolveCloudParentToLocalUuid } from './parentUuid'
+
+export {
+  canonicalizeCloudParentUuid,
+  resolveCloudParentToLocalUuid,
+  sameCloudParentUuid,
+  toCloudParentUuid
+} from './parentUuid'
 
 const normalizeCompare = (value: string): string => {
   const resolved = path.resolve(String(value || ''))
@@ -137,6 +145,16 @@ export const getNodeAbsPath = (uuid: string): string | null => {
   }
   if (parts.length === 0) return null
   return path.join(dbRoot, ...parts)
+}
+
+export const resolveCloudParentAbs = (
+  cloudParentUuid: string,
+  curatedUuid: string,
+  snapshotNodeIds: Set<string>
+): string | null => {
+  const localParent = resolveCloudParentToLocalUuid(cloudParentUuid, curatedUuid, snapshotNodeIds)
+  if (localParent === curatedUuid) return getCuratedLibraryAbsRoot()
+  return getNodeAbsPath(localParent)
 }
 
 export const getNodeRelativeFromCurated = (uuid: string): string | null => {

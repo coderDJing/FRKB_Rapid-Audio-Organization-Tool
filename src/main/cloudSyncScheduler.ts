@@ -13,9 +13,14 @@ import {
   offerCuratedLibraryJoinPrompt
 } from './curatedLibrarySync/joinPrompt'
 import type { CloudSyncTrigger } from '../types/cloudSync'
+import { bindLibraryTreeMutationListener } from './libraryTreeWatcher'
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null
+let treeSyncTimer: ReturnType<typeof setTimeout> | null = null
+let treeListenerBound = false
 let runFingerprintSync: ((trigger: CloudSyncTrigger) => Promise<string>) | null = null
+
+const TREE_SYNC_DEBOUNCE_MS = 2000
 
 export function bindCloudSyncScheduler(run: (trigger: CloudSyncTrigger) => Promise<string>): void {
   runFingerprintSync = run
@@ -40,9 +45,14 @@ function canRunCuratedLibrarySyncNow(): boolean {
 }
 
 export function stopCloudSyncScheduler(): void {
-  if (!intervalHandle) return
-  clearInterval(intervalHandle)
-  intervalHandle = null
+  if (intervalHandle) {
+    clearInterval(intervalHandle)
+    intervalHandle = null
+  }
+  if (treeSyncTimer) {
+    clearTimeout(treeSyncTimer)
+    treeSyncTimer = null
+  }
 }
 
 export async function runCuratedLibrarySyncTick(): Promise<void> {
@@ -50,6 +60,23 @@ export async function runCuratedLibrarySyncTick(): Promise<void> {
   if (hasPendingCuratedLibraryJoinPrompt()) return
   const result = await enqueueCuratedLibrarySync({ trigger: 'scheduled' })
   offerCuratedLibraryJoinPrompt(result)
+}
+
+function scheduleCuratedLibrarySyncAfterTreeChange(): void {
+  if (!canRunCuratedLibrarySyncNow()) return
+  if (treeSyncTimer) clearTimeout(treeSyncTimer)
+  treeSyncTimer = setTimeout(() => {
+    treeSyncTimer = null
+    void runCuratedLibrarySyncTick()
+  }, TREE_SYNC_DEBOUNCE_MS)
+}
+
+function ensureLibraryTreeSyncTrigger(): void {
+  if (treeListenerBound) return
+  treeListenerBound = true
+  bindLibraryTreeMutationListener(() => {
+    scheduleCuratedLibrarySyncAfterTreeChange()
+  })
 }
 
 async function runScheduledTick(): Promise<void> {
@@ -61,6 +88,7 @@ async function runScheduledTick(): Promise<void> {
 
 export function restartCloudSyncScheduler(options?: { immediate?: boolean }): void {
   stopCloudSyncScheduler()
+  ensureLibraryTreeSyncTrigger()
   const autoRunnable = isCloudSyncAutoRunnable()
   const curatedRunnable = canRunCuratedLibrarySyncNow()
   if (!autoRunnable && !curatedRunnable) return

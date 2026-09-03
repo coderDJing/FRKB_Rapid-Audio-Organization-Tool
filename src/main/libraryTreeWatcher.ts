@@ -12,8 +12,13 @@ let debounceTimer: NodeJS.Timeout | null = null
 let reconciling = false
 let bulkOperationDepth = 0
 let pendingBulkReconcileWindow: BrowserWindow | null = null
+let mutationListener: (() => void) | null = null
 
 const WATCH_DEBOUNCE_MS = 400
+
+export function bindLibraryTreeMutationListener(listener: (() => void) | null): void {
+  mutationListener = listener
+}
 
 /**
  * True only while a real tree write is in flight (reconcile) or a bulk
@@ -49,7 +54,7 @@ export async function waitForLibraryTreeWatcherIdle(timeoutMs = 30000): Promise<
   return true
 }
 
-async function reconcileLibraryTree(window: BrowserWindow | null) {
+async function reconcileLibraryTree(window: BrowserWindow | null, fromBulk = false) {
   if (reconciling) return
   const rootDir = store.databaseDir
   if (!rootDir) return
@@ -71,6 +76,7 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
       await pruneOrphanedSongListCaches(rootDir)
       const tree = await getLibrary({ skipSync: true })
       window?.webContents.send('library-tree-updated', tree)
+      if (!fromBulk) mutationListener?.()
     }
   } catch (error) {
     log.error('[watcher] library reconcile failed', error)
@@ -79,14 +85,14 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
   }
 }
 
-function scheduleReconcile(window: BrowserWindow | null) {
+function scheduleReconcile(window: BrowserWindow | null, fromBulk = false) {
   clearDebounceTimer()
   if (bulkOperationDepth > 0) {
     pendingBulkReconcileWindow = window
     return
   }
   debounceTimer = setTimeout(() => {
-    void reconcileLibraryTree(window)
+    void reconcileLibraryTree(window, fromBulk)
   }, WATCH_DEBOUNCE_MS)
 }
 
@@ -100,7 +106,7 @@ export function beginLibraryTreeWatcherBulkOperation(): () => void {
     if (bulkOperationDepth > 0 || !pendingBulkReconcileWindow) return
     const window = pendingBulkReconcileWindow
     pendingBulkReconcileWindow = null
-    scheduleReconcile(window)
+    scheduleReconcile(window, true)
   }
 }
 
