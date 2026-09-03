@@ -275,6 +275,27 @@ const rememberPushConflicts = (
   if (dropped.length > 0) sessionConflicts = dropped
 }
 
+const asOptionalNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null
+  const num = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+const sameSortOrder = (left: unknown, right: unknown): boolean => {
+  const a = asOptionalNumber(left)
+  const b = asOptionalNumber(right)
+  if (a === b) return true
+  // 旧服务端曾把 null 写成 0（Number(null) === 0）
+  return (a === null && b === 0) || (a === 0 && b === null)
+}
+
+const asOptionalPositiveInt = (value: unknown): number | null => {
+  const num = asOptionalNumber(value)
+  if (num === null) return null
+  const rounded = Math.floor(num)
+  return rounded > 0 ? rounded : null
+}
+
 const buildPushOps = (
   local: Awaited<ReturnType<typeof scanCuratedLibraryForSync>>,
   snapshot: Awaited<ReturnType<typeof pullCuratedSnapshot>>
@@ -288,7 +309,7 @@ const buildPushOps = (
       !cloud ||
       cloud.name !== node.name ||
       cloud.parentUuid !== node.parentUuid ||
-      cloud.sortOrder !== node.sortOrder ||
+      sameSortOrder(cloud.sortOrder, node.sortOrder) === false ||
       cloud.nodeType !== node.nodeType
     ) {
       ops.push({
@@ -298,7 +319,7 @@ const buildPushOps = (
           parentUuid: node.parentUuid,
           name: node.name,
           nodeType: node.nodeType,
-          sortOrder: node.sortOrder,
+          sortOrder: asOptionalNumber(node.sortOrder),
           updatedAtMs: now
         }
       })
@@ -311,8 +332,8 @@ const buildPushOps = (
       cloud.parentUuid !== file.parentUuid ||
       cloud.fileName !== file.fileName ||
       cloud.sha256 !== file.contentSha256 ||
-      cloud.trackNumber !== file.trackNumber ||
-      cloud.addedAtMs !== file.addedAtMs
+      asOptionalPositiveInt(cloud.trackNumber) !== asOptionalPositiveInt(file.trackNumber) ||
+      asOptionalPositiveInt(cloud.addedAtMs) !== asOptionalPositiveInt(file.addedAtMs)
     ) {
       ops.push({
         type: 'upsertFile',
@@ -322,8 +343,8 @@ const buildPushOps = (
           fileName: file.fileName,
           sha256: file.contentSha256,
           size: file.contentSize,
-          trackNumber: file.trackNumber,
-          addedAtMs: file.addedAtMs,
+          trackNumber: asOptionalPositiveInt(file.trackNumber),
+          addedAtMs: asOptionalPositiveInt(file.addedAtMs),
           updatedAtMs: now
         }
       })
@@ -351,8 +372,8 @@ const buildPushOps = (
         fileName: file.fileName,
         sha256: file.contentSha256,
         size: file.contentSize,
-        trackNumber: file.trackNumber,
-        addedAtMs: file.addedAtMs,
+        trackNumber: asOptionalPositiveInt(file.trackNumber),
+        addedAtMs: asOptionalPositiveInt(file.addedAtMs),
         updatedAtMs: now
       }
     })
@@ -660,7 +681,6 @@ export const runCuratedLibrarySync = async (
     }
     if (trigger === 'realtime' && !rewound) {
       if (!status.snapshotReady || lastRevision === null) return { status: 'success' }
-      beginVisibleProgress()
       return await runIncremental()
     }
     if (!status.snapshotReady && status.firstSnapshotLocked) {

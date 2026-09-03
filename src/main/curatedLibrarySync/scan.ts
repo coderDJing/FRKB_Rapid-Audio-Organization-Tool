@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import store from '../store'
 import { collectFilesWithExtensions } from '../nodeTaskUtils'
 import { findLibraryNodeByPath, findSongListRootByPath, loadLibraryNodes } from '../libraryTreeDb'
+import { normalizeOrder } from '../libraryTreeDbHelpers'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizePlaylistTrackNumber } from '../services/playlistTrackNumbers'
 import { normalizeAddedAtMs } from '../../shared/songAddedAt'
@@ -180,7 +181,7 @@ export const scanCuratedLibraryForSync = async (): Promise<{
         parentUuid: node.parentUuid || curatedNode.uuid,
         name: node.dirName,
         nodeType: node.nodeType,
-        sortOrder: node.order,
+        sortOrder: normalizeOrder(node.order),
         updatedAtMs: now
       })
     }
