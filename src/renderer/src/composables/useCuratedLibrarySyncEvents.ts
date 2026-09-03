@@ -1,6 +1,10 @@
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
-import type { CuratedLibrarySyncNotice } from '../../../shared/curatedLibrarySync'
+import { continueCuratedLibrarySyncUi } from '@renderer/composables/runCuratedLibrarySyncUi'
+import type {
+  CuratedLibrarySyncNotice,
+  CuratedLibrarySyncStartResult
+} from '../../../shared/curatedLibrarySync'
 
 const isCuratedLibrarySyncNotice = (value: unknown): value is CuratedLibrarySyncNotice => {
   if (!value || typeof value !== 'object') return false
@@ -12,8 +16,20 @@ const isCuratedLibrarySyncNotice = (value: unknown): value is CuratedLibrarySync
   )
 }
 
+const isJoinPromptResult = (
+  value: unknown
+): value is Extract<
+  CuratedLibrarySyncStartResult,
+  { status: 'needs_join_choice' | 'needs_overwrite_cloud_confirm' }
+> => {
+  if (!value || typeof value !== 'object' || !('status' in value)) return false
+  const status = (value as { status?: unknown }).status
+  return status === 'needs_join_choice' || status === 'needs_overwrite_cloud_confirm'
+}
+
 export function useCuratedLibrarySyncEvents() {
   let noticeOpen = false
+  let joinPromptOpen = false
 
   const handleCuratedLibrarySyncNotice = async (_e: unknown, payload: unknown) => {
     if (noticeOpen || !isCuratedLibrarySyncNotice(payload)) return
@@ -41,5 +57,31 @@ export function useCuratedLibrarySyncEvents() {
     }
   }
 
-  return { handleCuratedLibrarySyncNotice }
+  const handleCuratedLibraryJoinPrompt = async (payload: unknown) => {
+    if (joinPromptOpen || !isJoinPromptResult(payload)) return
+    joinPromptOpen = true
+    try {
+      await window.electron.ipcRenderer.invoke('curatedLibrarySync/clearPendingJoin')
+      await continueCuratedLibrarySyncUi(payload, { quietTerminal: true })
+    } finally {
+      joinPromptOpen = false
+    }
+  }
+
+  const handleCuratedLibrarySyncNeedsJoin = (_e: unknown, payload: unknown) => {
+    void handleCuratedLibraryJoinPrompt(payload)
+  }
+
+  const consumePendingCuratedLibraryJoin = async () => {
+    try {
+      const pending = await window.electron.ipcRenderer.invoke('curatedLibrarySync/getPendingJoin')
+      await handleCuratedLibraryJoinPrompt(pending)
+    } catch {}
+  }
+
+  return {
+    handleCuratedLibrarySyncNotice,
+    handleCuratedLibrarySyncNeedsJoin,
+    consumePendingCuratedLibraryJoin
+  }
 }

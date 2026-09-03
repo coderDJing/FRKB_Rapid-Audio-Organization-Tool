@@ -19,6 +19,10 @@
     "limit": "配额上限",
     "connectivityFailed": "连通失败",
     "startSync": "开始同步",
+    "sectionAccount": "账号",
+    "sectionSchedule": "定时同步",
+    "sectionLibrary": "精选库",
+    "sectionDanger": "危险操作",
     "autoEnabled": "定时云同步",
     "autoEnabledHint": "开启后，启动应用会先静默同步一次，之后按间隔循环。手动同步入口仍然可用。",
     "autoNeedUserKeyHint": "未配置同步密钥时不会实际运行。",
@@ -32,7 +36,7 @@
     "curatedLibrary": {
       "enabled": "同步精选库",
       "enabledHint": "勾选后允许把当前资料库的精选库目录树、歌单和音频同步到云端。不会同步分析结果、Cue、筛选库、SET、混音库或回收站本体。",
-      "scopeHint": "真正开始上传/下载要等你点「立即同步精选库」，或等到下一次定时云同步。指纹同步与精选库同步会排队，不会并行。",
+      "scopeHint": "勾选后打开软件会先同步一次。之后只要开了定时云同步，会按间隔再跑。云端有新修订时也会自动拉。这台电脑还没接上这份云精选库时，会先弹出第一次对齐。指纹同步与精选库同步会排队，不会并行。",
       "syncNow": "立即同步精选库",
       "progressStarting": "正在准备精选库同步",
       "progressScanning": "正在扫描精选库",
@@ -101,6 +105,15 @@
         "fileOrderLost": "序号未生效",
         "nodeChangeLost": "文件夹/歌单改动未生效",
         "nodeDeleteLost": "文件夹/歌单删除未生效"
+      },
+      "reset": {
+        "sectionTitle": "清空云端精选库",
+        "title": "危险操作：清空云端精选库",
+        "description": "该操作会删除当前 userKey 在云端的精选库快照、目录树、歌单和音频文件，并释放占用配额。不会删除本机精选库，也不会清除云端指纹或精选表演者。此操作不可撤销。清空后，任意一台仍开启同步的设备在下次同步时，可能把本机精选库作为首次快照重新上传。请输入 DELETE 以继续。",
+        "short": "清空云端精选库",
+        "hint": "只清空云端精选库。本机文件、云端指纹和精选表演者都不受影响。",
+        "needUserKey": "请先填写并保存同步密钥，再执行该操作。",
+        "success": "云端精选库已清空"
       }
     },
     "minimize": "最小化",

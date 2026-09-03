@@ -750,7 +750,11 @@ const {
   handleCloudSyncNotice,
   handleCloudSyncError
 } = useCloudSyncEvents({ runtime, activeDialog })
-const { handleCuratedLibrarySyncNotice } = useCuratedLibrarySyncEvents()
+const {
+  handleCuratedLibrarySyncNotice,
+  handleCuratedLibrarySyncNeedsJoin,
+  consumePendingCuratedLibraryJoin
+} = useCuratedLibrarySyncEvents()
 
 const handleMainWindowBlur = async () => {
   runtime.activeMenuUUID = ''
@@ -852,6 +856,8 @@ onMounted(() => {
   window.electron.ipcRenderer.on('cloudSync/notice', handleCloudSyncNotice)
   window.electron.ipcRenderer.on('cloudSync/error', handleCloudSyncError)
   window.electron.ipcRenderer.on('curatedLibrarySync/notice', handleCuratedLibrarySyncNotice)
+  window.electron.ipcRenderer.on('curatedLibrarySync/needsJoin', handleCuratedLibrarySyncNeedsJoin)
+  void consumePendingCuratedLibraryJoin()
   window.electron.ipcRenderer.on('mainWindowBlur', handleMainWindowBlur)
   void (async () => {
     if (runtime.librarySetupActive) return
@@ -903,6 +909,10 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener(
     'curatedLibrarySync/notice',
     handleCuratedLibrarySyncNotice
+  )
+  window.electron.ipcRenderer.removeListener(
+    'curatedLibrarySync/needsJoin',
+    handleCuratedLibrarySyncNeedsJoin
   )
   window.electron.ipcRenderer.removeListener('mainWindowBlur', handleMainWindowBlur)
   window.electron.ipcRenderer.removeListener('layoutConfigReaded', handleLayoutConfigReaded)

@@ -14,6 +14,8 @@ import {
 } from '../librarySetupState'
 import { isLibraryRelocateActive, hasLibraryRelocateJournalSync } from '../services/libraryRelocate'
 import { persistLayoutConfig, mergeLayoutConfig } from '../layoutConfig'
+import { stopCuratedLibraryLiveSync } from '../curatedLibrarySync/liveSync'
+import { cancelCuratedLibrarySync } from '../curatedLibrarySync/engine'
 
 const persistMainWindowLayout = async () => {
   const win = mainWindow.instance
@@ -52,9 +54,7 @@ export const registerLibrarySetupHandlers = (): void => {
   ipcMain.handle('reSelectLibrary', async () => {
     if (isLibraryRelocateActive() || hasLibraryRelocateJournalSync()) return
     try {
-      const { stopCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
       stopCuratedLibraryLiveSync()
-      const { cancelCuratedLibrarySync } = await import('../curatedLibrarySync/engine')
       await cancelCuratedLibrarySync()
     } catch {}
     await persistMainWindowLayout()

@@ -14,6 +14,10 @@ import {
 import { resolveBaseUrl } from './serverDiscovery'
 import type { CloudSyncTrigger } from '../types/cloudSync'
 import { resolveDevCloudSyncUserKey } from '../shared/cloudSyncDevUserKey'
+import { isCuratedLibrarySyncEnabled, saveLibrarySettingsFromConfig } from './librarySettingsDb'
+import { bindCloudSyncScheduler, restartCloudSyncScheduler } from './cloudSyncScheduler'
+import { syncCuratedLibraryLiveSync } from './curatedLibrarySync/liveSync'
+import { enqueueCloudWork } from './curatedLibrarySync/queue'
 
 const CLOUD_SYNC = {
   PREFIX: '/frkbapi/v1/fingerprint-sync',
@@ -153,9 +157,7 @@ const persistDevUserKeyIfNeeded = (userKey: string) => {
   if (String(store.settingConfig?.cloudSyncUserKey || '').trim() === userKey) return
   store.settingConfig.cloudSyncUserKey = userKey
   void persistSettingConfig()
-  void import('./librarySettingsDb').then(({ saveLibrarySettingsFromConfig }) => {
-    void saveLibrarySettingsFromConfig()
-  })
+  void saveLibrarySettingsFromConfig()
 }
 
 ipcMain.handle('cloudSync/config/get', () => {
@@ -206,7 +208,6 @@ ipcMain.handle('cloudSync/resetUserData', async (_e, payload: { notes?: string }
 ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string }) => {
   const userKey = (payload?.userKey || '').trim()
   try {
-    const { isCuratedLibrarySyncEnabled } = await import('./librarySettingsDb')
     const currentKey = String(store.settingConfig?.cloudSyncUserKey || '').trim()
     if (isCuratedLibrarySyncEnabled() && currentKey && currentKey !== userKey) {
       return { success: false, message: 'cloudSync.curatedLibrary.errors.cannotChangeUserKey' }
@@ -217,11 +218,8 @@ ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string })
       cloudSyncConfig.userKey = json?.data?.userKey || userKey
       store.settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
       await persistSettingConfig()
-      const { saveLibrarySettingsFromConfig } = await import('./librarySettingsDb')
       await saveLibrarySettingsFromConfig()
-      const { restartCloudSyncScheduler } = await import('./cloudSyncScheduler')
       restartCloudSyncScheduler({ immediate: true })
-      const { syncCuratedLibraryLiveSync } = await import('./curatedLibrarySync/liveSync')
       syncCuratedLibraryLiveSync()
       return { success: true }
     }
@@ -939,7 +937,6 @@ async function startCloudSync(trigger: CloudSyncTrigger = 'manual') {
 }
 
 export async function runCloudSync(trigger: CloudSyncTrigger = 'manual'): Promise<string> {
-  const { enqueueCloudWork } = await import('./curatedLibrarySync/ipc')
   return enqueueCloudWork(async () => {
     if (cloudSyncRunning) return 'already_running'
     cloudSyncRunning = true
@@ -950,6 +947,8 @@ export async function runCloudSync(trigger: CloudSyncTrigger = 'manual'): Promis
     }
   })
 }
+
+bindCloudSyncScheduler(runCloudSync)
 
 ipcMain.handle('cloudSync/start', async (_e, payload?: { trigger?: CloudSyncTrigger }) => {
   const trigger = payload?.trigger === 'scheduled' ? 'scheduled' : 'manual'

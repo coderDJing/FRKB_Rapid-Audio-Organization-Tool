@@ -21,7 +21,8 @@ import {
   writeCuratedLibrarySyncConflicts,
   writeCuratedLibrarySyncFailures,
   writeCuratedLibrarySyncQuotaCache,
-  setCuratedLibrarySyncLastAppliedRevision
+  setCuratedLibrarySyncLastAppliedRevision,
+  forgetCuratedLibrarySyncJoinState
 } from '../librarySettingsDb'
 import {
   CURATED_LIBRARY_SYNC_CANCEL_CHANNEL,
@@ -633,7 +634,12 @@ export const runCuratedLibrarySync = async (
     throwIfCancelled()
     let status = await fetchCuratedLibraryStatus()
     cacheQuotaFromStatus(status)
-    const lastRevision = getCuratedLibrarySyncLastAppliedRevision()
+    let lastRevision = getCuratedLibrarySyncLastAppliedRevision()
+    if (lastRevision !== null && (!status.snapshotReady || status.revision < lastRevision)) {
+      forgetCuratedLibrarySyncJoinState()
+      cacheQuotaFromStatus(status)
+      lastRevision = null
+    }
     if (trigger === 'realtime') {
       if (!status.snapshotReady || lastRevision === null) return { status: 'success' }
       return await runIncremental()

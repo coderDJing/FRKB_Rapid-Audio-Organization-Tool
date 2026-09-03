@@ -33,12 +33,6 @@ import {
   type BrowserPlayerRightTrackInfoField
 } from '@shared/browserPlayerRightTrackInfo'
 import { formatSeekPercentModifierSettingValue } from '@shared/playerGlobalShortcuts'
-import {
-  CLOUD_SYNC_AUTO_INTERVAL_MS,
-  normalizeCloudSyncAutoEnabled,
-  normalizeCloudSyncAutoIntervalMs
-} from '@shared/cloudSyncAuto'
-import CuratedLibrarySyncSettings from '@renderer/components/settingDialog/CuratedLibrarySyncSettings.vue'
 
 const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
@@ -89,8 +83,7 @@ const {
   clearAnalysisRuntime,
   ultraModelInfo,
   ultraModelStatusText,
-  removeUltraModel,
-  openCloudSyncSettings
+  removeUltraModel
 } = ctx
 
 const seekPercentModifierDisplay = computed(() => {
@@ -106,34 +99,6 @@ const fingerprintModeModel = computed<'pcm' | 'file'>({
     runtime.setting.fingerprintMode = value
   }
 })
-
-const cloudSyncAutoEnabledModel = computed<boolean>({
-  get: () => normalizeCloudSyncAutoEnabled(runtime.setting.cloudSyncAutoEnabled),
-  set: (value) => {
-    runtime.setting.cloudSyncAutoEnabled = value
-    if (value) {
-      runtime.setting.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
-        runtime.setting.cloudSyncAutoIntervalMs
-      )
-    }
-  }
-})
-
-const cloudSyncAutoIntervalModel = computed<number>({
-  get: () => normalizeCloudSyncAutoIntervalMs(runtime.setting.cloudSyncAutoIntervalMs),
-  set: (value) => {
-    runtime.setting.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(value)
-  }
-})
-
-const cloudSyncAutoIntervalOptions = computed(() => [
-  { label: t('cloudSync.autoInterval15m'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.minutes15 },
-  { label: t('cloudSync.autoInterval30m'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.minutes30 },
-  { label: t('cloudSync.autoInterval1h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours1 },
-  { label: t('cloudSync.autoInterval6h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours6 },
-  { label: t('cloudSync.autoInterval12h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours12 },
-  { label: t('cloudSync.autoInterval24h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours24 }
-])
 
 const showIdleAnalysisStatusModel = computed<boolean>({
   get: () => runtime.setting.showIdleAnalysisStatus === true,
@@ -896,37 +861,6 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 </template>
               </div>
             </div>
-
-            <label class="setting-block" for="setting-checkbox-cloudSyncAuto"
-              >{{ t('cloudSync.autoEnabled') }}：</label
-            >
-            <div class="setting-control">
-              <singleCheckbox
-                id="setting-checkbox-cloudSyncAuto"
-                v-model="cloudSyncAutoEnabledModel"
-                @change="setSetting()"
-              />
-              <div class="setting-hint">{{ t('cloudSync.autoEnabledHint') }}</div>
-              <div class="setting-hint">
-                {{ t('cloudSync.autoNeedUserKeyHint') }}
-                <span class="settings-inline-link" @click="openCloudSyncSettings">{{
-                  t('settings.layout.openCloudSync')
-                }}</span>
-              </div>
-            </div>
-
-            <div class="setting-block">{{ t('cloudSync.autoInterval') }}：</div>
-            <div class="setting-control">
-              <BaseSelect
-                v-model="cloudSyncAutoIntervalModel"
-                :options="cloudSyncAutoIntervalOptions"
-                :width="220"
-                :disabled="!cloudSyncAutoEnabledModel"
-                @change="setSetting"
-              />
-            </div>
-
-            <CuratedLibrarySyncSettings />
           </div>
 
           <div class="settings-section">
@@ -1204,12 +1138,6 @@ label.setting-block {
   color: var(--text-secondary, #8c8c8c);
   margin-top: 8px;
   line-height: 1.5;
-}
-
-.settings-inline-link {
-  margin-left: 6px;
-  color: var(--accent, #3d8bfd);
-  cursor: pointer;
 }
 
 .model-manager-row {

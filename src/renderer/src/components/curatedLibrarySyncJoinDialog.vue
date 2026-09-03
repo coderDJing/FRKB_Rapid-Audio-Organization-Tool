@@ -76,7 +76,7 @@ onUnmounted(() => {
   <div
     class="dialog unselectable"
     :class="{ 'dialog-visible': dialogVisible }"
-    style="font-size: 14px"
+    style="font-size: 14px; z-index: var(--z-dialog-raised)"
   >
     <div v-dialog-drag="'.dialog-title'" class="inner join-dialog">
       <div class="dialog-title dialog-header">

@@ -28,6 +28,8 @@ import { migrateLibrarySchemaV38ToV39 } from '../librarySchemaV38Migration'
 import { migrateLibrarySchemaV39ToV40 } from '../librarySchemaV40Migration'
 import { log } from '../log'
 import { clearLibraryStemSessionCacheOnStartup } from '../services/libraryStemSessionCache'
+import { restartCloudSyncScheduler } from '../cloudSyncScheduler'
+import { syncCuratedLibraryLiveSync } from '../curatedLibrarySync/liveSync'
 
 const isConfiguredDevDatabase = (): boolean => {
   if (app.isPackaged) return false
@@ -166,9 +168,7 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     databaseSchemaMigrationWindow.close()
     mainWindow.createWindow()
     libraryRelocateWindow.closeWindow()
-    const { restartCloudSyncScheduler } = await import('../cloudSyncScheduler')
     restartCloudSyncScheduler({ immediate: true })
-    const { syncCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
     syncCuratedLibraryLiveSync()
   } catch (error) {
     if (databaseSchemaMigrationWindow.hasFailedMigration()) return

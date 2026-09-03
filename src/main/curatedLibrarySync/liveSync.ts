@@ -6,6 +6,7 @@ import {
   getCuratedLibrarySyncLastAppliedRevision
 } from '../librarySettingsDb'
 import { openCuratedLibraryEventStream } from './apiClient'
+import { enqueueCuratedLibrarySync } from './queue'
 
 let abortController: AbortController | null = null
 let loopRunning = false
@@ -38,9 +39,7 @@ const scheduleRealtimeSync = (revision: number) => {
   debounceTimer = setTimeout(() => {
     debounceTimer = null
     if (!isCuratedLibrarySyncEnabled()) return
-    void import('./ipc').then(({ enqueueCuratedLibrarySync }) => {
-      void enqueueCuratedLibrarySync({ trigger: 'realtime' })
-    })
+    void enqueueCuratedLibrarySync({ trigger: 'realtime' })
   }, 2000)
 }
 

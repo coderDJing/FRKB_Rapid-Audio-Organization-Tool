@@ -351,6 +351,23 @@ export function writeCuratedLibrarySyncQuotaCache(value: unknown): void {
   writeJsonMeta(LIBRARY_SETTING_META_KEYS.lastQuota, value)
 }
 
+/** 忘掉本机已接上云精选库的锚点，下次同步会重新走首次对齐。 */
+export function forgetCuratedLibrarySyncJoinState(): void {
+  setCuratedLibrarySyncLastAppliedRevision(null)
+  writeCuratedLibrarySyncLastCloudIds(null)
+  writeCuratedLibrarySyncLastSnapshot(null)
+  writeCuratedLibrarySyncDeferredOps([])
+  writeCuratedLibrarySyncConflicts([])
+  writeCuratedLibrarySyncFailures([])
+  writeCuratedLibrarySyncQuotaCache({
+    quotaUsedBytes: 0,
+    quotaBytes: 0,
+    fileCount: 0,
+    revision: 0,
+    snapshotReady: false
+  })
+}
+
 export async function syncLibrarySettingsFromDb(dirPath?: string): Promise<void> {
   const db = dirPath ? initLibraryDb(dirPath) : getLibraryDb()
   if (!db) return

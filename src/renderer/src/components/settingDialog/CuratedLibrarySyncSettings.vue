@@ -1,29 +1,27 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import confirm from '@renderer/components/confirmDialog'
-import curatedLibrarySyncJoinDialog from '@renderer/components/curatedLibrarySyncJoinDialog'
 import { t } from '@renderer/utils/translate'
 import { formatAnalysisRuntimeBytes } from '@renderer/utils/analysisRuntimeDownloadUi'
-import {
-  settingDialogContextKey,
-  type SettingDialogContext
-} from '@renderer/components/settingDialog/context'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { runCuratedLibrarySyncUi } from '@renderer/composables/runCuratedLibrarySyncUi'
 import type {
   CuratedLibrarySyncConflictItem,
   CuratedLibrarySyncConflictKind,
   CuratedLibrarySyncFailureItem,
-  CuratedLibrarySyncOverview,
-  CuratedLibrarySyncStartResult
+  CuratedLibrarySyncOverview
 } from '../../../../shared/curatedLibrarySync'
 
-const ctx = inject<SettingDialogContext>(settingDialogContextKey)
-if (!ctx) {
-  throw new Error('settingDialogContext is missing')
-}
+const runtime = useRuntimeStore()
 
-const { runtime, setSetting } = ctx
+const persistSetting = async () => {
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
 
 const CONFLICT_KIND_KEYS: Record<CuratedLibrarySyncConflictKind, string> = {
   'file-move-lost': 'cloudSync.curatedLibrary.conflictKinds.fileMoveLost',
@@ -89,90 +87,17 @@ const refreshOverview = async () => {
 }
 
 const handleEnabledChange = async () => {
-  await setSetting()
+  await persistSetting()
   window.setTimeout(() => {
     void refreshOverview()
   }, 400)
 }
 
-const startCuratedLibrarySync = async (
-  extra?: { joinMode?: 'merge' | 'cloud-wins' | 'local-wins'; confirmOverwriteCloud?: boolean },
-  isContinue = false
-) => {
-  if (!isContinue && (syncing.value || !enabledModel.value)) return
-  if (!isContinue) syncing.value = true
+const startCuratedLibrarySync = async () => {
+  if (syncing.value || !enabledModel.value) return
+  syncing.value = true
   try {
-    const result = (await window.electron.ipcRenderer.invoke('curatedLibrarySync/start', {
-      trigger: 'manual',
-      ...extra
-    })) as CuratedLibrarySyncStartResult
-    if (result.status === 'needs_join_choice') {
-      const choice = await curatedLibrarySyncJoinDialog({
-        title: t('cloudSync.curatedLibrary.joinTitle'),
-        intro: t('cloudSync.curatedLibrary.joinIntro'),
-        localCountLabel: t('cloudSync.curatedLibrary.joinSideLocal'),
-        cloudCountLabel: t('cloudSync.curatedLibrary.joinSideCloud'),
-        localCount: result.localFileCount,
-        cloudCount: result.cloudFileCount,
-        countUnit: t('cloudSync.curatedLibrary.joinCountUnit'),
-        mergeLabel: t('cloudSync.curatedLibrary.joinMerge'),
-        mergeHint: t('cloudSync.curatedLibrary.joinMergeHint'),
-        mergeBadge: t('cloudSync.curatedLibrary.joinRecommended'),
-        cloudWinsLabel: t('cloudSync.curatedLibrary.joinCloud'),
-        cloudWinsHint: t('cloudSync.curatedLibrary.joinCloudHint'),
-        localWinsLabel: t('cloudSync.curatedLibrary.joinLocal'),
-        localWinsHint: t('cloudSync.curatedLibrary.joinLocalHint'),
-        cancelLabel: t('common.cancel')
-      })
-      if (choice === 'cancel') return
-      await startCuratedLibrarySync({ joinMode: choice }, true)
-      return
-    }
-    if (result.status === 'needs_overwrite_cloud_confirm') {
-      const confirmed = await confirm({
-        title: t('cloudSync.curatedLibrary.overwriteTitle'),
-        content: [
-          t('cloudSync.curatedLibrary.overwriteWarning', {
-            local: result.localFileCount,
-            cloud: result.cloudFileCount
-          }),
-          t('cloudSync.curatedLibrary.overwriteConfirmHint')
-        ],
-        confirmText: t('cloudSync.curatedLibrary.overwriteConfirm'),
-        cancelText: t('common.cancel'),
-        innerHeight: 260
-      })
-      if (confirmed !== 'confirm') return
-      await startCuratedLibrarySync({ joinMode: 'local-wins', confirmOverwriteCloud: true }, true)
-      return
-    }
-    if (result.status === 'success' || result.status === 'already_running') {
-      await refreshOverview()
-      return
-    }
-    if (result.status === 'cancelled') {
-      await refreshOverview()
-      return
-    }
-    const messageKey =
-      result.status === 'failed'
-        ? result.message
-        : result.status === 'not_enabled'
-          ? 'cloudSync.curatedLibrary.errors.notEnabled'
-          : result.status === 'not_configured'
-            ? 'cloudSync.notConfigured'
-            : result.status === 'busy_library'
-              ? 'cloudSync.curatedLibrary.errors.busyLibrary'
-              : result.status === 'disk_full'
-                ? 'cloudSync.curatedLibrary.errors.diskFull'
-                : result.status === 'paused_offline'
-                  ? 'cloudSync.errors.cannotConnect'
-                  : 'cloudSync.curatedLibrary.errors.failed'
-    await confirm({
-      title: t('common.error'),
-      content: [t(messageKey)],
-      confirmShow: false
-    })
+    await runCuratedLibrarySyncUi({ trigger: 'manual' })
     await refreshOverview()
   } finally {
     syncing.value = false
@@ -224,6 +149,8 @@ const failureText = (item: CuratedLibrarySyncFailureItem) => {
   return `${direction} · ${t(item.errorKey)}`
 }
 
+defineExpose({ refreshOverview })
+
 const handleNotice = () => {
   void refreshOverview()
 }
@@ -258,48 +185,50 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <label class="setting-block" for="setting-checkbox-curatedLibrarySync">
-    {{ t('cloudSync.curatedLibrary.enabled') }}：
-  </label>
-  <div class="setting-control">
-    <singleCheckbox
-      id="setting-checkbox-curatedLibrarySync"
-      v-model="enabledModel"
-      @change="handleEnabledChange()"
-    />
-    <div class="setting-hint">{{ t('cloudSync.curatedLibrary.enabledHint') }}</div>
-    <div class="setting-hint">{{ t('cloudSync.curatedLibrary.scopeHint') }}</div>
-    <div class="buttonRow">
-      <bubbleBoxTrigger
-        tag="div"
-        class="button-anchor"
-        :title="enabledModel ? '' : t('cloudSync.curatedLibrary.errors.notEnabled')"
-      >
-        <div
-          class="button settings-inline-button"
-          :class="{ disabled: !enabledModel || syncing }"
-          @click="enabledModel ? void startCuratedLibrarySync() : undefined"
+  <div class="curated-sync">
+    <label class="setting-block" for="setting-checkbox-curatedLibrarySync">
+      {{ t('cloudSync.curatedLibrary.enabled') }}
+    </label>
+    <div class="setting-control">
+      <singleCheckbox
+        id="setting-checkbox-curatedLibrarySync"
+        v-model="enabledModel"
+        @change="handleEnabledChange()"
+      />
+      <div class="setting-hint">{{ t('cloudSync.curatedLibrary.enabledHint') }}</div>
+      <div class="setting-hint">{{ t('cloudSync.curatedLibrary.scopeHint') }}</div>
+      <div class="buttonRow">
+        <bubbleBoxTrigger
+          tag="div"
+          class="button-anchor"
+          :title="enabledModel ? '' : t('cloudSync.curatedLibrary.errors.notEnabled')"
         >
-          {{ t('cloudSync.curatedLibrary.syncNow') }}
-        </div>
-      </bubbleBoxTrigger>
+          <div
+            class="button settings-inline-button"
+            :class="{ disabled: !enabledModel || syncing }"
+            @click="enabledModel ? void startCuratedLibrarySync() : undefined"
+          >
+            {{ t('cloudSync.curatedLibrary.syncNow') }}
+          </div>
+        </bubbleBoxTrigger>
+      </div>
     </div>
 
-    <div class="status-row">
-      <span class="status-label">{{ t('cloudSync.curatedLibrary.liveStatus') }}</span>
-      <span class="status-value" :class="{ on: overview.liveConnected }">
+    <div class="setting-block">{{ t('cloudSync.curatedLibrary.liveStatus') }}</div>
+    <div class="setting-control">
+      <div class="status-value" :class="{ on: overview.liveConnected }">
         {{
           overview.liveConnected
             ? t('cloudSync.curatedLibrary.liveConnected')
             : t('cloudSync.curatedLibrary.liveDisconnected')
         }}
-      </span>
+      </div>
+      <div class="setting-hint">{{ t('cloudSync.curatedLibrary.liveHint') }}</div>
     </div>
-    <div class="setting-hint">{{ t('cloudSync.curatedLibrary.liveHint') }}</div>
 
-    <div class="status-row">
-      <span class="status-label">{{ t('cloudSync.curatedLibrary.quota') }}</span>
-      <span class="status-value" :class="{ warn: quotaNearFull }">
+    <div class="setting-block">{{ t('cloudSync.curatedLibrary.quota') }}</div>
+    <div class="setting-control">
+      <div class="status-value" :class="{ warn: quotaNearFull }">
         {{
           overview.quotaBytes > 0
             ? t('cloudSync.curatedLibrary.quotaValue', {
@@ -311,75 +240,75 @@ onBeforeUnmount(() => {
                 used: formatAnalysisRuntimeBytes(overview.quotaUsedBytes)
               })
         }}
-      </span>
-    </div>
-    <div v-if="overview.quotaBytes > 0" class="quota-bar" :class="{ warn: quotaNearFull }">
-      <div class="quota-bar-fill" :style="{ width: `${quotaPercent}%` }" />
-    </div>
-    <div v-if="quotaNearFull" class="setting-hint warn-hint">
-      {{ t('cloudSync.curatedLibrary.quotaNearFull') }}
+      </div>
+      <div v-if="overview.quotaBytes > 0" class="quota-bar" :class="{ warn: quotaNearFull }">
+        <div class="quota-bar-fill" :style="{ width: `${quotaPercent}%` }" />
+      </div>
+      <div v-if="quotaNearFull" class="setting-hint warn-hint">
+        {{ t('cloudSync.curatedLibrary.quotaNearFull') }}
+      </div>
     </div>
 
     <template v-if="overview.conflicts.length > 0">
-      <div class="status-row">
-        <span class="status-label">{{ t('cloudSync.curatedLibrary.conflictsTitle') }}</span>
-        <span class="status-value warn">
+      <div class="setting-block">{{ t('cloudSync.curatedLibrary.conflictsTitle') }}</div>
+      <div class="setting-control">
+        <div class="status-value warn">
           {{ t('cloudSync.curatedLibrary.conflictsCount', { count: overview.conflicts.length }) }}
-        </span>
-      </div>
-      <div class="buttonRow">
-        <div class="button settings-inline-button" @click="void showConflicts()">
-          {{ t('cloudSync.curatedLibrary.viewConflicts') }}
         </div>
-        <div class="button settings-inline-button" @click="void clearConflicts()">
-          {{ t('cloudSync.curatedLibrary.clearConflicts') }}
+        <div class="buttonRow">
+          <div class="button settings-inline-button" @click="void showConflicts()">
+            {{ t('cloudSync.curatedLibrary.viewConflicts') }}
+          </div>
+          <div class="button settings-inline-button" @click="void clearConflicts()">
+            {{ t('cloudSync.curatedLibrary.clearConflicts') }}
+          </div>
         </div>
       </div>
     </template>
 
     <template v-if="overview.failures.length > 0">
-      <div class="status-row">
-        <span class="status-label">{{ t('cloudSync.curatedLibrary.failuresTitle') }}</span>
-        <span class="status-value warn">{{ overview.failures.length }}</span>
-      </div>
-      <div class="failure-list">
-        <div
-          v-for="(item, index) in visibleFailures"
-          :key="`${item.atMs}-${item.name}-${index}`"
-          class="failure-row"
-        >
-          <bubbleBoxTrigger tag="div" class="failure-name" :title="item.name" only-when-overflow>
-            {{ item.name }}
-          </bubbleBoxTrigger>
+      <div class="setting-block">{{ t('cloudSync.curatedLibrary.failuresTitle') }}</div>
+      <div class="setting-control">
+        <div class="status-value warn">{{ overview.failures.length }}</div>
+        <div class="failure-list">
+          <div
+            v-for="(item, index) in visibleFailures"
+            :key="`${item.atMs}-${item.name}-${index}`"
+            class="failure-row"
+          >
+            <bubbleBoxTrigger tag="div" class="failure-name" :title="item.name" only-when-overflow>
+              {{ item.name }}
+            </bubbleBoxTrigger>
+            <bubbleBoxTrigger
+              tag="div"
+              class="failure-meta"
+              :title="failureText(item)"
+              only-when-overflow
+            >
+              {{ failureText(item) }}
+            </bubbleBoxTrigger>
+          </div>
+        </div>
+        <div v-if="extraFailureCount > 0" class="setting-hint">
+          {{ t('cloudSync.curatedLibrary.failuresMore', { count: extraFailureCount }) }}
+        </div>
+        <div class="buttonRow">
           <bubbleBoxTrigger
             tag="div"
-            class="failure-meta"
-            :title="failureText(item)"
-            only-when-overflow
+            class="button-anchor"
+            :title="enabledModel ? '' : t('cloudSync.curatedLibrary.errors.notEnabled')"
           >
-            {{ failureText(item) }}
+            <div
+              class="button settings-inline-button"
+              :class="{ disabled: !enabledModel || syncing }"
+              @click="enabledModel ? void retryFailures() : undefined"
+            >
+              {{ t('cloudSync.curatedLibrary.retryAll') }}
+            </div>
           </bubbleBoxTrigger>
-        </div>
-      </div>
-      <div v-if="extraFailureCount > 0" class="setting-hint">
-        {{ t('cloudSync.curatedLibrary.failuresMore', { count: extraFailureCount }) }}
-      </div>
-      <div class="buttonRow">
-        <bubbleBoxTrigger
-          tag="div"
-          class="button-anchor"
-          :title="enabledModel ? '' : t('cloudSync.curatedLibrary.errors.notEnabled')"
-        >
-          <div
-            class="button settings-inline-button"
-            :class="{ disabled: !enabledModel || syncing }"
-            @click="enabledModel ? void retryFailures() : undefined"
-          >
-            {{ t('cloudSync.curatedLibrary.retryAll') }}
+          <div class="button settings-inline-button" @click="void clearFailures()">
+            {{ t('cloudSync.curatedLibrary.clearFailures') }}
           </div>
-        </bubbleBoxTrigger>
-        <div class="button settings-inline-button" @click="void clearFailures()">
-          {{ t('cloudSync.curatedLibrary.clearFailures') }}
         </div>
       </div>
     </template>
@@ -387,8 +316,21 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="scss" scoped>
+.curated-sync {
+  display: flex;
+  flex-direction: column;
+}
+
 .setting-block {
-  margin-top: 20px;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  line-height: 1.4;
+}
+
+.setting-block:first-child {
+  margin-top: 18px;
 }
 
 label.setting-block {
@@ -403,9 +345,10 @@ label.setting-block {
 
 .setting-hint {
   font-size: 12px;
-  color: var(--text-secondary, #8c8c8c);
+  color: var(--text-secondary);
   margin-top: 8px;
   line-height: 1.5;
+  text-align: left;
 }
 
 .buttonRow {
@@ -430,27 +373,19 @@ label.setting-block {
   pointer-events: none;
 }
 
-.status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin-top: 12px;
+.status-value {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text);
 }
 
-.status-label {
-  color: var(--text-secondary, #8c8c8c);
-}
-
 .status-value.on {
-  color: var(--accent, #3d8bfd);
+  color: var(--accent);
 }
 
 .status-value.warn,
 .warn-hint {
-  color: var(--error, #f56c6c);
+  color: #e81123;
 }
 
 .quota-bar {
@@ -465,11 +400,11 @@ label.setting-block {
 
 .quota-bar-fill {
   height: 100%;
-  background: var(--accent, #3d8bfd);
+  background: var(--accent);
 }
 
 .quota-bar.warn .quota-bar-fill {
-  background: var(--error, #f56c6c);
+  background: #e81123;
 }
 
 .failure-list {
@@ -505,6 +440,6 @@ label.setting-block {
 }
 
 .failure-meta {
-  color: var(--text-secondary, #8c8c8c);
+  color: var(--text-secondary);
 }
 </style>

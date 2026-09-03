@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
@@ -7,20 +8,84 @@ import { t } from '@renderer/utils/translate'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import { CONTACT_EMAIL } from '../constants/app'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import singleCheckbox from '@renderer/components/singleCheckbox.vue'
+import BaseSelect from '@renderer/components/BaseSelect.vue'
+import confirm from '@renderer/components/confirmDialog'
+import dangerConfirmWithInput from '@renderer/components/dangerConfirmWithInputDialog'
+import CuratedLibrarySyncSettings from '@renderer/components/settingDialog/CuratedLibrarySyncSettings.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import {
+  CLOUD_SYNC_AUTO_INTERVAL_MS,
+  normalizeCloudSyncAutoEnabled,
+  normalizeCloudSyncAutoIntervalMs
+} from '@shared/cloudSyncAuto'
+
 const hintIcon = hintIconAsset
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
+const runtime = useRuntimeStore()
+const curatedSettingsRef = useTemplateRef<{ refreshOverview: () => Promise<void> }>(
+  'curatedSettingsRef'
+)
 
 const userKey = ref('')
 const connectivity = ref<null | { success: boolean; message?: string }>(null)
 const limitInfo = ref<null | { success: boolean; limit?: number; message?: string }>(null)
 const testing = ref(false)
 const saving = ref(false)
+const resettingCloudLibrary = ref(false)
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const cancel = () => {
   closeWithAnimation(() => emits('cancel'))
 }
+
+const dialogScrollOptions = {
+  scrollbars: {
+    autoHide: 'leave' as const,
+    autoHideDelay: 50,
+    clickScroll: true
+  },
+  overflow: {
+    x: 'hidden' as const,
+    y: 'scroll' as const
+  }
+}
+
+const persistSetting = async () => {
+  await window.electron.ipcRenderer.invoke(
+    'setSetting',
+    JSON.parse(JSON.stringify(runtime.setting))
+  )
+}
+
+const cloudSyncAutoEnabledModel = computed<boolean>({
+  get: () => normalizeCloudSyncAutoEnabled(runtime.setting.cloudSyncAutoEnabled),
+  set: (value) => {
+    runtime.setting.cloudSyncAutoEnabled = value
+    if (value) {
+      runtime.setting.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(
+        runtime.setting.cloudSyncAutoIntervalMs
+      )
+    }
+  }
+})
+
+const cloudSyncAutoIntervalModel = computed<number>({
+  get: () => normalizeCloudSyncAutoIntervalMs(runtime.setting.cloudSyncAutoIntervalMs),
+  set: (value) => {
+    runtime.setting.cloudSyncAutoIntervalMs = normalizeCloudSyncAutoIntervalMs(value)
+  }
+})
+
+const cloudSyncAutoIntervalOptions = computed(() => [
+  { label: t('cloudSync.autoInterval15m'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.minutes15 },
+  { label: t('cloudSync.autoInterval30m'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.minutes30 },
+  { label: t('cloudSync.autoInterval1h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours1 },
+  { label: t('cloudSync.autoInterval6h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours6 },
+  { label: t('cloudSync.autoInterval12h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours12 },
+  { label: t('cloudSync.autoInterval24h'), value: CLOUD_SYNC_AUTO_INTERVAL_MS.hours24 }
+])
 
 const clickTest = async () => {
   if (testing.value) return
@@ -30,7 +95,6 @@ const clickTest = async () => {
       userKey: userKey.value
     })
     connectivity.value = res
-    // 连通成功后直接使用返回的 limit（后端已支持）
     limitInfo.value = res?.success ? { success: true, limit: Number(res?.limit) } : null
   } finally {
     testing.value = false
@@ -47,7 +111,6 @@ const clickSave = async () => {
     if (res?.success) {
       cancel()
     } else {
-      // 显示内联错误
       connectivity.value = {
         success: false,
         message: res?.message || 'cloudSync.connectivityFailed'
@@ -61,7 +124,64 @@ const clickSave = async () => {
 const clickCopyEmail = async () => {
   await navigator.clipboard.writeText(CONTACT_EMAIL)
 }
-// 提示气泡：申请/找回说明（统一到 bubbleBox）
+
+const resetCloudCuratedLibrary = async () => {
+  if (resettingCloudLibrary.value) return
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('common.setting'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
+  const savedUserKey = String(cfg?.userKey || '').trim()
+  if (!savedUserKey) {
+    await confirm({
+      title: t('cloudSync.settings'),
+      content: [t('cloudSync.curatedLibrary.reset.needUserKey')],
+      confirmShow: false
+    })
+    return
+  }
+  const danger = await dangerConfirmWithInput({
+    title: t('cloudSync.curatedLibrary.reset.title'),
+    description: t('cloudSync.curatedLibrary.reset.description'),
+    confirmKeyword: 'DELETE',
+    placeholder: 'DELETE',
+    innerHeight: 340,
+    innerWidth: 480
+  })
+  if (danger === 'cancel') return
+  resettingCloudLibrary.value = true
+  try {
+    const res = await window.electron.ipcRenderer.invoke('curatedLibrarySync/resetCloud')
+    if (res?.success) {
+      await curatedSettingsRef.value?.refreshOverview()
+      await confirm({
+        title: t('common.success'),
+        content: [t('cloudSync.curatedLibrary.reset.success')],
+        confirmShow: false
+      })
+      return
+    }
+    await confirm({
+      title: t('common.error'),
+      content: [t(res?.message || 'common.error')],
+      confirmShow: false
+    })
+  } catch {
+    await confirm({
+      title: t('common.error'),
+      content: [t('cloudSync.errors.cannotConnect')],
+      confirmShow: false
+    })
+  } finally {
+    resettingCloudLibrary.value = false
+  }
+}
+
 const emailHintIconRef = useTemplateRef<HTMLImageElement>('emailHintIconRef')
 
 onMounted(async () => {
@@ -86,26 +206,29 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div v-dialog-drag="'.dialog-title'" class="inner">
       <div class="title dialog-title dialog-header">{{ t('cloudSync.settings') }}</div>
-      <div class="body">
-        <div class="form">
-          <div class="row">
-            <div class="label">{{ t('cloudSync.userKey') }}</div>
-            <input v-model="userKey" class="input" placeholder="uuid-v4" style="max-width: 100%" />
-          </div>
-          <div class="row" style="position: relative">
-            <div class="label">{{ t('cloudSync.applyEmailHint') }}</div>
-            <div
-              class="value"
-              style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"
-            >
+      <OverlayScrollbarsComponent
+        :options="dialogScrollOptions"
+        element="div"
+        class="dialog-scroll"
+        defer
+      >
+        <div class="dialog-content">
+          <section class="settings-section">
+            <div class="section-title">{{ t('cloudSync.sectionAccount') }}</div>
+            <div class="setting-block">{{ t('cloudSync.userKey') }}</div>
+            <div class="setting-control">
+              <input v-model="userKey" class="input" placeholder="uuid-v4" />
+            </div>
+
+            <div class="setting-block email-row">{{ t('cloudSync.applyEmailHint') }}</div>
+            <div class="setting-control email-value">
               <span>{{ CONTACT_EMAIL }}</span>
               <span class="link" @click="clickCopyEmail">{{ t('cloudSync.copyEmail') }}</span>
               <img
                 ref="emailHintIconRef"
                 :src="hintIcon"
-                style="width: 14px; height: 14px; margin-top: 2px"
+                class="hint-icon theme-icon"
                 :draggable="false"
-                class="theme-icon"
               />
               <bubbleBox
                 :dom="emailHintIconRef || undefined"
@@ -113,10 +236,9 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
                 :max-width="320"
               />
             </div>
-          </div>
-          <div class="row">
-            <div class="label">{{ t('cloudSync.connectivity') }}</div>
-            <div class="value">
+
+            <div class="setting-block">{{ t('cloudSync.connectivity') }}</div>
+            <div class="setting-control value">
               <span v-if="connectivity === null">{{ t('cloudSync.notTested') }}</span>
               <span v-else-if="connectivity.success" class="success">
                 {{ t('cloudSync.connectivityOk') }}
@@ -129,31 +251,64 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
                 t(connectivity.message || 'cloudSync.connectivityFailed')
               }}</span>
             </div>
-          </div>
+          </section>
+
+          <section class="settings-section">
+            <div class="section-title">{{ t('cloudSync.sectionSchedule') }}</div>
+            <label class="setting-block" for="cloud-sync-auto-enabled">
+              {{ t('cloudSync.autoEnabled') }}
+            </label>
+            <div class="setting-control">
+              <singleCheckbox
+                id="cloud-sync-auto-enabled"
+                v-model="cloudSyncAutoEnabledModel"
+                @change="persistSetting()"
+              />
+              <div class="hint">{{ t('cloudSync.autoEnabledHint') }}</div>
+              <div class="hint">{{ t('cloudSync.autoNeedUserKeyHint') }}</div>
+            </div>
+
+            <div class="setting-block">{{ t('cloudSync.autoInterval') }}</div>
+            <div class="setting-control">
+              <BaseSelect
+                v-model="cloudSyncAutoIntervalModel"
+                :options="cloudSyncAutoIntervalOptions"
+                :width="220"
+                :disabled="!cloudSyncAutoEnabledModel"
+                @change="persistSetting"
+              />
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <div class="section-title">{{ t('cloudSync.sectionLibrary') }}</div>
+            <CuratedLibrarySyncSettings ref="curatedSettingsRef" />
+          </section>
+
+          <section class="settings-section settings-section--danger">
+            <div class="section-title">{{ t('cloudSync.sectionDanger') }}</div>
+            <div class="setting-block">{{ t('cloudSync.curatedLibrary.reset.sectionTitle') }}</div>
+            <div class="setting-control">
+              <div class="hint">{{ t('cloudSync.curatedLibrary.reset.hint') }}</div>
+              <div class="action-row">
+                <div
+                  class="danger-button"
+                  :class="{ disabled: resettingCloudLibrary }"
+                  @click="resettingCloudLibrary ? undefined : void resetCloudCuratedLibrary()"
+                >
+                  {{ t('cloudSync.curatedLibrary.reset.short') }}
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
-      </div>
+      </OverlayScrollbarsComponent>
       <div class="dialog-footer">
-        <div
-          class="button"
-          style="width: 120px; text-align: center; height: 25px; line-height: 25px"
-          @click="clickTest"
-        >
+        <div class="button footer-button" @click="clickTest">
           {{ t('cloudSync.testConnectivity') }} (T)
         </div>
-        <div
-          class="button"
-          style="width: 120px; text-align: center; height: 25px; line-height: 25px"
-          @click="clickSave"
-        >
-          {{ t('common.save') }} (E)
-        </div>
-        <div
-          class="button"
-          style="width: 120px; text-align: center; height: 25px; line-height: 25px"
-          @click="cancel"
-        >
-          {{ t('common.cancel') }} (Esc)
-        </div>
+        <div class="button footer-button" @click="clickSave">{{ t('common.save') }} (E)</div>
+        <div class="button footer-button" @click="cancel">{{ t('common.cancel') }} (Esc)</div>
       </div>
     </div>
   </div>
@@ -161,55 +316,120 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
 
 <style scoped lang="scss">
 .inner {
-  width: 520px;
+  width: 560px;
+  max-width: calc(100vw - 24px);
+  height: min(80vh, 720px);
+  max-height: 80vh;
   padding: 0;
   display: flex;
   flex-direction: column;
 }
+
 .title {
   color: var(--text);
+  flex-shrink: 0;
 }
-.body {
-  padding: 20px 28px 20px 20px;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+
+.dialog-scroll {
+  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
+  width: 100%;
 }
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+
+.dialog-content {
+  padding: 16px 24px 20px 20px;
 }
-.row {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
+
+.dialog-footer {
+  flex-shrink: 0;
 }
-.label {
-  font-size: 12px;
+
+.settings-section {
+  padding-top: 2px;
+  margin-top: 28px;
+}
+
+.settings-section:first-child {
+  margin-top: 0;
+}
+
+.settings-section--danger {
+  margin-top: 32px;
+}
+
+.section-title {
+  position: relative;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  padding-left: 12px;
+  margin-bottom: 4px;
   text-align: left;
-  color: var(--text-weak);
-  line-height: 1.3;
-  word-break: break-word;
 }
+
+.section-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(0, 120, 212, 0.52);
+  transform: translateY(-50%);
+}
+
+.settings-section--danger .section-title::before {
+  background: rgba(232, 17, 35, 0.5);
+}
+
+.setting-block {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  line-height: 1.4;
+}
+
+label.setting-block {
+  display: block;
+  user-select: none;
+}
+
+.setting-control {
+  margin-top: 10px;
+  max-width: 100%;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  text-align: left;
+  margin-top: 8px;
+}
+
 .input {
   width: 100%;
-  background: var(--bg-elev);
+  box-sizing: border-box;
+  background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   padding: 6px 8px;
   border-radius: 4px;
 }
+
 .input::placeholder {
   color: var(--text-weak);
 }
+
 .input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.25);
 }
+
 .value {
   display: flex;
   align-items: center;
@@ -217,21 +437,79 @@ onUnmounted(() => utils.delHotkeysScope(uuid))
   color: var(--text);
   flex-wrap: wrap;
 }
+
+.email-row {
+  position: relative;
+}
+
+.email-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text);
+}
+
+.hint-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .value .sep {
   margin: 0 6px;
   color: var(--text-weak);
 }
+
 .value .muted {
   color: var(--text-weak);
 }
+
 .link {
   color: var(--accent);
   cursor: pointer;
 }
+
 .error {
   color: #e81123;
 }
+
 .success {
   color: #107c10;
+}
+
+.action-row {
+  margin-top: 10px;
+}
+
+.danger-button {
+  width: fit-content;
+  min-width: 110px;
+  height: 25px;
+  line-height: 25px;
+  padding: 0 10px;
+  border-radius: 5px;
+  text-align: center;
+  background-color: var(--hover);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+
+  &:hover {
+    color: #ffffff;
+    background-color: #e81123;
+  }
+}
+
+.danger-button.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.footer-button {
+  width: 120px;
+  text-align: center;
+  height: 25px;
+  line-height: 25px;
 }
 </style>

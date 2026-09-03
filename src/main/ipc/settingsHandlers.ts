@@ -26,6 +26,8 @@ import {
   normalizeCloudSyncAutoEnabled,
   normalizeCloudSyncAutoIntervalMs
 } from '../../shared/cloudSyncAuto'
+import { restartCloudSyncScheduler, runCuratedLibrarySyncTick } from '../cloudSyncScheduler'
+import { syncCuratedLibraryLiveSync } from '../curatedLibrarySync/liveSync'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -117,15 +119,16 @@ export function registerSettingsHandlers(deps: Dependencies) {
           store.settingConfig?.cloudSyncAutoIntervalMs
         )
         if (nextAutoEnabled !== prevAutoEnabled || nextAutoIntervalMs !== prevAutoIntervalMs) {
-          const { restartCloudSyncScheduler } = await import('../cloudSyncScheduler')
           restartCloudSyncScheduler({
             immediate: nextAutoEnabled && !prevAutoEnabled
           })
         }
 
         if (normalizedSetting.curatedLibrarySyncEnabled !== prevCuratedLibrarySyncEnabled) {
-          const { syncCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
           syncCuratedLibraryLiveSync()
+          if (normalizedSetting.curatedLibrarySyncEnabled) {
+            void runCuratedLibrarySyncTick()
+          }
         }
       })
     setSettingQueue = task.catch(() => undefined)

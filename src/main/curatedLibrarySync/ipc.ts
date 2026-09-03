@@ -1,13 +1,15 @@
 import { ipcMain } from 'electron'
 import store from '../store'
+import { cancelCuratedLibrarySync, isCuratedLibrarySyncRunning } from './engine'
+import { enqueueCloudWork, enqueueCuratedLibrarySync } from './queue'
+import { fetchCuratedLibraryStatus, resetCloudCuratedLibrary } from './apiClient'
+import { isCuratedLibraryLiveConnected, syncCuratedLibraryLiveSync } from './liveSync'
 import {
-  cancelCuratedLibrarySync,
-  isCuratedLibrarySyncRunning,
-  runCuratedLibrarySync
-} from './engine'
-import { fetchCuratedLibraryStatus } from './apiClient'
-import { isCuratedLibraryLiveConnected } from './liveSync'
+  clearPendingCuratedLibraryJoinPrompt,
+  getPendingCuratedLibraryJoinPrompt
+} from './joinPrompt'
 import {
+  forgetCuratedLibrarySyncJoinState,
   readCuratedLibrarySyncConflicts,
   readCuratedLibrarySyncFailures,
   readCuratedLibrarySyncQuotaCache,
@@ -22,22 +24,6 @@ import type {
   CuratedLibrarySyncOverview,
   CuratedLibrarySyncStartPayload
 } from '../../shared/curatedLibrarySync'
-
-let queued: Promise<unknown> = Promise.resolve()
-
-export const enqueueCloudWork = async <T>(task: () => Promise<T>): Promise<T> => {
-  const run = queued.then(task, task)
-  queued = run.then(
-    () => undefined,
-    () => undefined
-  )
-  return run
-}
-
-export const enqueueCuratedLibrarySync = (
-  payload?: CuratedLibrarySyncStartPayload
-): Promise<Awaited<ReturnType<typeof runCuratedLibrarySync>>> =>
-  enqueueCloudWork(() => runCuratedLibrarySync(payload))
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
@@ -136,5 +122,48 @@ export const registerCuratedLibrarySyncIpc = (): void => {
   })
   ipcMain.handle('curatedLibrarySync/retryFailures', async () => {
     return enqueueCuratedLibrarySync({ trigger: 'manual' })
+  })
+  ipcMain.handle('curatedLibrarySync/getPendingJoin', () => getPendingCuratedLibraryJoinPrompt())
+  ipcMain.handle('curatedLibrarySync/clearPendingJoin', () => {
+    clearPendingCuratedLibraryJoinPrompt()
+    return { ok: true }
+  })
+  ipcMain.handle('curatedLibrarySync/resetCloud', async () => {
+    const userKey = resolveDevCloudSyncUserKey(
+      String(store.settingConfig?.cloudSyncUserKey || '').trim(),
+      is.dev
+    )
+    if (!userKey) {
+      return { success: false, message: 'cloudSync.notConfigured' }
+    }
+    await cancelCuratedLibrarySync()
+    return enqueueCloudWork(async () => {
+      try {
+        await resetCloudCuratedLibrary()
+        forgetCuratedLibrarySyncJoinState()
+        syncCuratedLibraryLiveSync()
+        return { success: true }
+      } catch (error) {
+        const payload =
+          error && typeof error === 'object' && 'payload' in error
+            ? (error as { payload?: unknown }).payload
+            : null
+        const body = isRecord(payload) ? payload : null
+        const code = String(body?.error || '').toUpperCase()
+        if (code === 'INVALID_USER_KEY' || code === 'USER_KEY_NOT_FOUND') {
+          return { success: false, message: 'cloudSync.errors.keyInvalid' }
+        }
+        if (code === 'USER_KEY_INACTIVE') {
+          return { success: false, message: 'cloudSync.errors.keyDisabled' }
+        }
+        if (code === 'STRICT_RATE_LIMIT_EXCEEDED') {
+          return { success: false, message: 'cloudSync.errors.sensitiveOperationTooFrequent' }
+        }
+        if (code === 'RATE_LIMIT_EXCEEDED' || code === 'SYNC_RATE_LIMIT_EXCEEDED') {
+          return { success: false, message: 'cloudSync.errors.tooFrequent' }
+        }
+        return { success: false, message: 'cloudSync.errors.cannotConnect' }
+      }
+    })
   })
 }

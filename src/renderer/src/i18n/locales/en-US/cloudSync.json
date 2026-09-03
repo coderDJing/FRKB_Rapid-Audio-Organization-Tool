@@ -19,6 +19,10 @@
     "limit": "Quota limit",
     "connectivityFailed": "Failed",
     "startSync": "Sync",
+    "sectionAccount": "Account",
+    "sectionSchedule": "Scheduled sync",
+    "sectionLibrary": "Curated library",
+    "sectionDanger": "Dangerous actions",
     "autoEnabled": "Scheduled cloud sync",
     "autoEnabledHint": "When enabled, FRKB silently syncs once at startup, then repeats on the chosen interval. Manual sync remains available.",
     "autoNeedUserKeyHint": "Scheduled sync will not run until a userKey is configured.",
@@ -32,7 +36,7 @@
     "curatedLibrary": {
       "enabled": "Sync curated library",
       "enabledHint": "Allow this library's curated folders, playlists, and audio files to sync to the cloud. Analysis, cues, filter/SET/mixtape libraries, and the recycle bin itself are not synced.",
-      "scopeHint": "Uploads and downloads start when you click Sync curated library now, or on the next scheduled cloud sync. Fingerprint sync and curated-library sync queue instead of running in parallel.",
+      "scopeHint": "When enabled, FRKB syncs the curated library once at startup. If scheduled cloud sync is also on, it repeats on that interval. New cloud revisions are pulled automatically. The first-alignment dialog appears until this computer joins the cloud library. Fingerprint sync and curated-library sync queue instead of running in parallel.",
       "syncNow": "Sync curated library now",
       "progressStarting": "Preparing curated library sync",
       "progressScanning": "Scanning curated library",
@@ -101,6 +105,15 @@
         "fileOrderLost": "Track order was not applied",
         "nodeChangeLost": "Folder/playlist change was not applied",
         "nodeDeleteLost": "Folder/playlist delete was not applied"
+      },
+      "reset": {
+        "sectionTitle": "Clear cloud curated library",
+        "title": "Dangerous: Clear cloud curated library",
+        "description": "This deletes the curated-library snapshot, folders, playlists, and audio files stored in the cloud for the current userKey, and frees that quota. Local curated files are not deleted, and cloud fingerprints / curated artists are not cleared. IRREVERSIBLE. After this, any device that still has curated sync enabled may re-upload its local library as the first snapshot on the next sync. Type DELETE to continue.",
+        "short": "Clear cloud curated library",
+        "hint": "Only the cloud curated library is removed. Local files, cloud fingerprints, and curated artists are left untouched.",
+        "needUserKey": "Save a userKey first, then try this action again.",
+        "success": "Cloud curated library cleared"
       }
     },
     "minimize": "Minimize",

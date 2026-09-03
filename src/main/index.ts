@@ -15,6 +15,8 @@ import {
 } from './log'
 import './cloudSync'
 import { stopCloudSyncScheduler } from './cloudSyncScheduler'
+import { stopCuratedLibraryLiveSync } from './curatedLibrarySync/liveSync'
+import { cancelCuratedLibrarySync } from './curatedLibrarySync/engine'
 import errorReport from './errorReport'
 import { replaceFingerprintList } from './fingerprintStore'
 import mainWindow from './window/mainWindow'
@@ -362,12 +364,8 @@ const cleanupAppRuntimeResources = () => {
   if (appRuntimeCleanupDone) return
   appRuntimeCleanupDone = true
   stopCloudSyncScheduler()
-  void import('./curatedLibrarySync/liveSync').then(({ stopCuratedLibraryLiveSync }) => {
-    stopCuratedLibraryLiveSync()
-  })
-  void import('./curatedLibrarySync/engine').then(({ cancelCuratedLibrarySync }) => {
-    void cancelCuratedLibrarySync()
-  })
+  stopCuratedLibraryLiveSync()
+  void cancelCuratedLibrarySync()
   terminateRegisteredChildProcesses()
   closeLibraryDb()
 }

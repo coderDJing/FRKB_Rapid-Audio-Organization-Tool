@@ -28,6 +28,12 @@ import globalSongSearchEngine from '../services/globalSongSearch'
 import databaseSchemaMigrationWindow from '../window/databaseSchemaMigrationWindow'
 import mainWindow from '../window/mainWindow'
 import { clearLibrarySetup } from '../librarySetupState'
+import { restartCloudSyncScheduler } from '../cloudSyncScheduler'
+import {
+  stopCuratedLibraryLiveSync,
+  syncCuratedLibraryLiveSync
+} from '../curatedLibrarySync/liveSync'
+import { cancelCuratedLibrarySync } from '../curatedLibrarySync/engine'
 import type { LibrarySetupErrorHint } from '../../shared/librarySetup'
 
 export type InitializeLibraryOptions = {
@@ -67,16 +73,8 @@ const completeLibrarySetup = (): void => {
   startKeyAnalysisBackground()
   void globalSongSearchEngine.warmup().catch(() => {})
   void maybeShowWhatsNew().catch(() => {})
-  void import('../cloudSyncScheduler')
-    .then(({ restartCloudSyncScheduler }) => {
-      restartCloudSyncScheduler({ immediate: true })
-    })
-    .catch(() => {})
-  void import('../curatedLibrarySync/liveSync')
-    .then(({ syncCuratedLibraryLiveSync }) => {
-      syncCuratedLibraryLiveSync()
-    })
-    .catch(() => {})
+  restartCloudSyncScheduler({ immediate: true })
+  syncCuratedLibraryLiveSync()
 }
 
 export const initializeLibraryAtPath = async (
@@ -137,9 +135,7 @@ export const initializeLibraryAtPath = async (
 
   if (options?.reset === true) {
     try {
-      const { stopCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
       stopCuratedLibraryLiveSync()
-      const { cancelCuratedLibrarySync } = await import('../curatedLibrarySync/engine')
       await cancelCuratedLibrarySync()
     } catch {}
     stopLibraryTreeWatcher()
@@ -158,9 +154,7 @@ export const initializeLibraryAtPath = async (
     } catch {}
   } else if (store.databaseDir && store.databaseDir !== dirPath) {
     try {
-      const { stopCuratedLibraryLiveSync } = await import('../curatedLibrarySync/liveSync')
       stopCuratedLibraryLiveSync()
-      const { cancelCuratedLibrarySync } = await import('../curatedLibrarySync/engine')
       await cancelCuratedLibrarySync()
     } catch {}
     stopLibraryTreeWatcher()

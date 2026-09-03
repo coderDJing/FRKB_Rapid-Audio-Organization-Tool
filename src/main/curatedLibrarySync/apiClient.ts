@@ -63,6 +63,15 @@ export type CuratedLibrarySyncStatus = {
   firstSnapshotLocked: boolean
 }
 
+export const resetCloudCuratedLibrary = async (): Promise<void> => {
+  const json = await postJson('/reset', { userKey: getUserKey() })
+  if (json.success !== true) {
+    throw Object.assign(new Error(String(json.error || 'CURATED_SYNC_RESET_FAILED')), {
+      payload: json
+    })
+  }
+}
+
 export const fetchCuratedLibraryStatus = async (): Promise<CuratedLibrarySyncStatus> => {
   const json = await postJson('/status', { userKey: getUserKey() })
   if (json.success !== true || !isRecord(json.data)) {
