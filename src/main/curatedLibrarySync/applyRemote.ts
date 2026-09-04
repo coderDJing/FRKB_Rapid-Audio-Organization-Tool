@@ -644,6 +644,20 @@ const dirHasAudioFiles = async (dirPath: string, audioExts: Set<string>): Promis
   return false
 }
 
+const listAudioFiles = async (dirPath: string, audioExts: Set<string>): Promise<string[]> => {
+  const items = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => [])
+  const files: string[] = []
+  for (const item of items) {
+    const full = path.join(dirPath, item.name)
+    if (item.isFile()) {
+      if (audioExts.has(path.extname(item.name).toLowerCase())) files.push(full)
+    } else if (item.isDirectory()) {
+      files.push(...(await listAudioFiles(full, audioExts)))
+    }
+  }
+  return files
+}
+
 const applyNodeTombstones = async (
   snapshot: CuratedLibrarySyncSnapshot,
   curatedRoot: string,
@@ -838,7 +852,19 @@ export const applyRemoteSnapshot = async (
         if (cloudNodeIds.has(node.uuid)) continue
         const abs = getNodeAbsPath(node.uuid)
         if (!abs || !isPathInside(abs, curatedRoot)) continue
-        if (await dirHasAudioFiles(abs, audioExts)) continue
+        const leftovers = await listAudioFiles(abs, audioExts)
+        let leftoverBusy = false
+        for (const leftover of leftovers) {
+          if (isBusyPath(leftover, ctx)) {
+            leftoverBusy = true
+            continue
+          }
+          await deleteLocalFile(leftover, ctx)
+        }
+        if (leftoverBusy || (await dirHasAudioFiles(abs, audioExts))) {
+          deferred.push({ type: 'deleteNode', nodeUuid: node.uuid })
+          continue
+        }
         await fs.remove(abs)
         removeLibraryNode(node.uuid)
       }

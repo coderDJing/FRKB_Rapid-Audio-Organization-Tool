@@ -148,7 +148,20 @@ export const registerCuratedLibrarySyncIpc = (): void => {
         forgetCuratedLibrarySyncJoinState()
         syncCuratedLibraryLiveSync()
         if (isCuratedLibrarySyncEnabled()) {
-          await runCuratedLibrarySync({ trigger: 'manual', joinMode: 'cloud-wins' })
+          const aligned = await runCuratedLibrarySync({ trigger: 'manual', joinMode: 'cloud-wins' })
+          if (aligned.status !== 'success' && aligned.status !== 'already_running') {
+            return {
+              success: false,
+              message:
+                aligned.status === 'failed'
+                  ? aligned.message
+                  : aligned.status === 'disk_full'
+                    ? 'cloudSync.curatedLibrary.errors.diskFull'
+                    : aligned.status === 'busy_library'
+                      ? 'cloudSync.curatedLibrary.errors.busyLibrary'
+                      : 'cloudSync.curatedLibrary.errors.failed'
+            }
+          }
         }
         return { success: true }
       } catch (error) {

@@ -25,7 +25,10 @@ import {
   setCuratedLibrarySyncLastAppliedRevision,
   forgetCuratedLibrarySyncJoinState
 } from '../librarySettingsDb'
-import { getPendingCuratedLibraryJoinPrompt } from './joinPrompt'
+import {
+  clearPendingCuratedLibraryJoinPrompt,
+  getPendingCuratedLibraryJoinPrompt
+} from './joinPrompt'
 import {
   CURATED_LIBRARY_SYNC_PLAYLISTS_CHANGED_CHANNEL,
   CURATED_LIBRARY_SYNC_PROGRESS_ID,
@@ -595,6 +598,9 @@ const runJoin = async (
     writeCuratedLibrarySyncDeferredOps([])
     return { status: 'success' }
   }
+  if (mode === 'cloud-wins') {
+    clearPendingCuratedLibraryJoinPrompt()
+  }
   const extras = mode === 'cloud-wins' ? 'delete' : 'keep'
   const release = beginLibraryTreeWatcherBulkOperation()
   let latest = local
@@ -938,6 +944,9 @@ export const runCuratedLibrarySync = async (
     }
     if (lastRevision === null) {
       if (!payload.joinMode) {
+        if (rewound && status.snapshotReady) {
+          return await runJoin('cloud-wins')
+        }
         const local = await scanCuratedLibraryForSync()
         return {
           status: 'needs_join_choice',

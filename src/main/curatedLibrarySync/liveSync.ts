@@ -48,6 +48,10 @@ const scheduleCloudChange = (revision: number, snapshotReady: boolean) => {
     const lastNow = getCuratedLibrarySyncLastAppliedRevision()
     if (lastNow === null) return
     if (!snapshotReady || revision < lastNow) {
+      if (snapshotReady && revision < lastNow) {
+        void enqueueCuratedLibrarySync({ trigger: 'scheduled', joinMode: 'cloud-wins' })
+        return
+      }
       enqueueJoinAlignment()
       return
     }
