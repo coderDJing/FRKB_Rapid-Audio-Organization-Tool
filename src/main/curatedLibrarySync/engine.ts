@@ -395,9 +395,21 @@ const buildPushOps = (
   const now = Date.now()
   const curated = findCuratedLibraryNode()
   const snapshotNodeIds = new Set(snapshot.nodes.map((node) => node.uuid))
+  const lastSnapshot = loadCachedSnapshot()
+  const lastNodeById = new Map((lastSnapshot?.nodes || []).map((node) => [node.uuid, node]))
+  const lastFileById = new Map((lastSnapshot?.files || []).map((file) => [file.fileId, file]))
+  const lastKnownFileIds = new Set<string>([
+    ...lastFileById.keys(),
+    ...(readCuratedLibrarySyncLastCloudIds()?.files || [])
+  ])
+  const lastNodeIds = new Set(lastNodeById.keys())
   const parentChanged = (cloudParent: string, localParent: string): boolean => {
     if (!curated) return cloudParent !== localParent
     return !sameCloudParentUuid(cloudParent, localParent, curated.uuid, snapshotNodeIds)
+  }
+  const lastParentChanged = (lastParent: string, localParent: string): boolean => {
+    if (!curated) return lastParent !== localParent
+    return !sameCloudParentUuid(lastParent, localParent, curated.uuid, lastNodeIds)
   }
   const pendingDeleted = listPendingDeletedCuratedNodeIds()
   for (const node of local.nodes) {
@@ -408,6 +420,15 @@ const buildPushOps = (
       continue
     }
     const cloud = diff.cloudNodes.get(node.uuid)
+    const lastNode = lastNodeById.get(node.uuid)
+    const localUnchangedSinceLast =
+      !!lastNode &&
+      lastNode.name === node.name &&
+      lastParentChanged(lastNode.parentUuid, node.parentUuid) === false &&
+      sameSortOrder(lastNode.sortOrder, node.sortOrder) &&
+      lastNode.nodeType === node.nodeType
+    // 本机相对上次快照没改，云端却不同：那是对端改的。禁止用 now() 把过期本地写回去。
+    if (cloud && localUnchangedSinceLast) continue
     if (
       !cloud ||
       cloud.name !== node.name ||
@@ -432,6 +453,15 @@ const buildPushOps = (
     if (pendingDeleted.has(file.parentUuid)) continue
     if (diff.tombstoneFiles.has(file.fileId) && !diff.cloudFiles.has(file.fileId)) continue
     const cloud = diff.cloudFiles.get(file.fileId)
+    const lastFile = lastFileById.get(file.fileId)
+    const localUnchangedSinceLast =
+      !!lastFile &&
+      lastParentChanged(lastFile.parentUuid, file.parentUuid) === false &&
+      lastFile.fileName === file.fileName &&
+      lastFile.sha256 === file.contentSha256 &&
+      asOptionalPositiveInt(lastFile.trackNumber) === asOptionalPositiveInt(file.trackNumber) &&
+      asOptionalPositiveInt(lastFile.addedAtMs) === asOptionalPositiveInt(file.addedAtMs)
+    if (cloud && localUnchangedSinceLast) continue
     if (
       !cloud ||
       parentChanged(cloud.parentUuid, file.parentUuid) ||
@@ -472,6 +502,12 @@ const buildPushOps = (
     if (pendingDeleted.has(file.parentUuid)) continue
     const tombstone = diff.tombstoneFiles.get(file.fileId)
     if (!tombstone) continue
+    if (diff.cloudFiles.has(file.fileId)) continue
+    // 上次同步还在本机/云快照里：这是过期副本，不是回收站恢复。
+    if (lastKnownFileIds.has(file.fileId)) {
+      logCuratedDeleteTrace('skip-undelete-stale-file', { fileId: file.fileId })
+      continue
+    }
     if (file.updatedAtMs <= tombstone.deletedAtMs) continue
     ops.push({
       type: 'undeleteFile',

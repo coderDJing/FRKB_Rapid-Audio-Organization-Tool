@@ -507,7 +507,8 @@ const applyFileTombstones = async (
   snapshot: CuratedLibrarySyncSnapshot,
   localById: Map<string, CuratedLocalFile>,
   curatedRoot: string,
-  ctx: ApplyRemoteContext
+  ctx: ApplyRemoteContext,
+  options: ApplyRemoteOptions
 ): Promise<DeferredRemoteOp[]> => {
   const deferred: DeferredRemoteOp[] = []
   const cloudFileIds = new Set(snapshot.files.map((file) => file.fileId))
@@ -516,18 +517,17 @@ const applyFileTombstones = async (
     assertNotCancelled(ctx.signal)
     const abs = resolveLocalAbsForFileId(tombstone.id, localById)
     if (!abs || !isPathInside(abs, curatedRoot) || !(await fs.pathExists(abs))) continue
-    const identity = getCuratedSyncFileById(tombstone.id)
-    if (
-      identity &&
-      identity.updatedAtMs > tombstone.deletedAtMs &&
-      identity.location === 'curated'
-    ) {
+    // 上次本机快照里没有这首：多半是回收站恢复，不要先搬回垃圾桶。
+    // 上次有过：对端删了，本机还留着，必须落地墓碑。禁止用扫描写成 now 的 updatedAtMs 跳过。
+    if (options.knownFileIds && !options.knownFileIds.has(tombstone.id)) {
+      logCuratedDeleteTrace('tombstone-skip-restored-file', { fileId: tombstone.id })
       continue
     }
     if (isBusyPath(abs, ctx)) {
       deferred.push({ type: 'deleteFile', fileId: tombstone.id })
       continue
     }
+    logCuratedDeleteTrace('tombstone-remove-file', { fileId: tombstone.id, abs })
     await deleteLocalFile(abs, ctx)
   }
   return deferred
@@ -720,7 +720,7 @@ export const applyRemoteSnapshot = async (
     }
 
     if (options.applyTombstones !== false) {
-      deferred.push(...(await applyFileTombstones(snapshot, localById, curatedRoot, ctx)))
+      deferred.push(...(await applyFileTombstones(snapshot, localById, curatedRoot, ctx, options)))
       deferred.push(...(await applyNodeTombstones(snapshot, curatedRoot, ctx)))
     }
 
@@ -736,16 +736,14 @@ export const applyRemoteSnapshot = async (
       }
       const cloudNodeIds = new Set(snapshot.nodes.map((node) => node.uuid))
       const localNodes = [...local.nodes].reverse()
+      const audioExts = audioExtSet()
       for (const node of localNodes) {
         if (cloudNodeIds.has(node.uuid)) continue
         const abs = getNodeAbsPath(node.uuid)
         if (!abs || !isPathInside(abs, curatedRoot)) continue
-        const leftover = await fs.readdir(abs).catch(() => [])
-        const meaningful = leftover.filter((name) => name !== '.frkb.uuid')
-        if (meaningful.length === 0) {
-          await fs.remove(abs)
-          removeLibraryNode(node.uuid)
-        }
+        if (await dirHasAudioFiles(abs, audioExts)) continue
+        await fs.remove(abs)
+        removeLibraryNode(node.uuid)
       }
     }
 
