@@ -753,6 +753,7 @@ const {
 const {
   handleCuratedLibrarySyncNotice,
   handleCuratedLibrarySyncNeedsJoin,
+  handleCuratedLibraryPlaylistsChanged,
   consumePendingCuratedLibraryJoin
 } = useCuratedLibrarySyncEvents()
 
@@ -857,6 +858,10 @@ onMounted(() => {
   window.electron.ipcRenderer.on('cloudSync/error', handleCloudSyncError)
   window.electron.ipcRenderer.on('curatedLibrarySync/notice', handleCuratedLibrarySyncNotice)
   window.electron.ipcRenderer.on('curatedLibrarySync/needsJoin', handleCuratedLibrarySyncNeedsJoin)
+  window.electron.ipcRenderer.on(
+    'curatedLibrarySync/playlistsChanged',
+    handleCuratedLibraryPlaylistsChanged
+  )
   void consumePendingCuratedLibraryJoin()
   window.electron.ipcRenderer.on('mainWindowBlur', handleMainWindowBlur)
   void (async () => {
@@ -913,6 +918,10 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener(
     'curatedLibrarySync/needsJoin',
     handleCuratedLibrarySyncNeedsJoin
+  )
+  window.electron.ipcRenderer.removeListener(
+    'curatedLibrarySync/playlistsChanged',
+    handleCuratedLibraryPlaylistsChanged
   )
   window.electron.ipcRenderer.removeListener('mainWindowBlur', handleMainWindowBlur)
   window.electron.ipcRenderer.removeListener('layoutConfigReaded', handleLayoutConfigReaded)

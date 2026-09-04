@@ -4,6 +4,23 @@ export const CURATED_LIBRARY_SYNC_PROGRESS_ID = 'curated-library-sync'
 
 export const CURATED_LIBRARY_SYNC_CANCEL_CHANNEL = 'curatedLibrarySync/cancel'
 
+/** 精选库同步改了哪些歌单文件。渲染进程按路径就地增删，不要整表重扫。 */
+export const CURATED_LIBRARY_SYNC_PLAYLISTS_CHANGED_CHANNEL = 'curatedLibrarySync/playlistsChanged'
+
+export type CuratedLibrarySyncListFileChange = {
+  listUUID: string
+  absPath: string
+  libraryPath: string
+  trackNumber: number | null
+  addedAtMs: number | null
+}
+
+export type CuratedLibrarySyncPlaylistsChangedPayload = {
+  uuids: string[]
+  removed: CuratedLibrarySyncListFileChange[]
+  added: CuratedLibrarySyncListFileChange[]
+}
+
 export const CURATED_LIBRARY_SYNC_BLOB_CHUNK_SIZE = 8 * 1024 * 1024
 
 /** 云端快照里代表「精选库根」的父节点。各机精选库 library 节点 UUID 不同，不能直接当 parentUuid。 */

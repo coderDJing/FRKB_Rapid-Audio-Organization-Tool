@@ -143,6 +143,7 @@ const exactListenChannels = new Set([
   'cloudSync/summary',
   'curatedLibrarySync/notice',
   'curatedLibrarySync/needsJoin',
+  'curatedLibrarySync/playlistsChanged',
   'curated-artists-updated',
   'databaseInitWindow-showErrorHint',
   'databaseInitWindow-schemaMigrationProgress',
