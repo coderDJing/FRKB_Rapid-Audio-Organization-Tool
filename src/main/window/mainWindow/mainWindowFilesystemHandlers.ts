@@ -14,6 +14,7 @@ import {
 import { transferTrackCaches } from '../../services/cacheMaintenance'
 import { scheduleCuratedLibrarySyncIfUnderCurated } from '../../cloudSyncScheduler'
 import { getNodeAbsPath } from '../../curatedLibrarySync/paths'
+import { rememberCuratedLibraryNodeDeletion } from '../../curatedLibrarySync/pendingDeletedNodes'
 import {
   cleanupMixtapeWaveformCache,
   cleanupOrphanedMixtapeVaultFiles
@@ -591,6 +592,7 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
           const { absPath: dirPath } = resolveLibraryPath(item.path)
           const isEmpty = await isDirectoryEffectivelyEmpty(dirPath, store.settingConfig.audioExt)
           if (isEmpty) {
+            rememberCuratedLibraryNodeDeletion(item.uuid, dirPath)
             await fs.remove(dirPath)
             removeLibraryNode(item.uuid)
             await clearSetMappingsForPlaylists(setListUuidsToClear)
@@ -662,6 +664,7 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
                 success === tasks.length &&
                 protectedFailedCount === 0
               if (allAudioMoved) {
+                rememberCuratedLibraryNodeDeletion(item.uuid, dirPath)
                 await fs.remove(dirPath)
                 removeLibraryNode(item.uuid)
                 await clearSetMappingsForPlaylists(setListUuidsToClear)
@@ -717,6 +720,7 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
           if (protectedFailedCount > 0) {
             operationStatus = 'permanent_delete_failed'
           } else {
+            rememberCuratedLibraryNodeDeletion(item.uuid, absPath)
             await fs.remove(absPath)
             removeLibraryNode(item.uuid)
             await clearSetMappingsForPlaylists(setListUuidsToClear)

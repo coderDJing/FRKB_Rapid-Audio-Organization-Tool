@@ -68,6 +68,10 @@ import {
 import { scanCuratedLibraryForSync, type CuratedLocalFile, type CuratedLocalNode } from './scan'
 import { findCuratedLibraryNode, sameCloudParentUuid } from './paths'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import {
+  listPendingDeletedCuratedNodeIds,
+  prunePendingDeletedCuratedNodes
+} from './pendingDeletedNodes'
 
 let running = false
 let cancelRequested = false
@@ -393,7 +397,9 @@ const buildPushOps = (
     if (!curated) return cloudParent !== localParent
     return !sameCloudParentUuid(cloudParent, localParent, curated.uuid, snapshotNodeIds)
   }
+  const pendingDeleted = listPendingDeletedCuratedNodeIds()
   for (const node of local.nodes) {
+    if (pendingDeleted.has(node.uuid)) continue
     const cloud = diff.cloudNodes.get(node.uuid)
     if (
       !cloud ||
@@ -416,6 +422,7 @@ const buildPushOps = (
     }
   }
   for (const file of local.files) {
+    if (pendingDeleted.has(file.parentUuid)) continue
     const cloud = diff.cloudFiles.get(file.fileId)
     if (
       !cloud ||
@@ -446,11 +453,15 @@ const buildPushOps = (
     }
   }
   for (const [uuid] of diff.cloudNodes) {
-    if (!diff.localNodeIds.has(uuid) && !retainCloudIds?.nodes.has(uuid)) {
+    if (
+      pendingDeleted.has(uuid) ||
+      (!diff.localNodeIds.has(uuid) && !retainCloudIds?.nodes.has(uuid))
+    ) {
       ops.push({ type: 'deleteNode', uuid, updatedAtMs: now })
     }
   }
   for (const file of local.files) {
+    if (pendingDeleted.has(file.parentUuid)) continue
     const tombstone = diff.tombstoneFiles.get(file.fileId)
     if (!tombstone) continue
     if (file.updatedAtMs <= tombstone.deletedAtMs) continue
@@ -492,6 +503,7 @@ const persistAppliedSnapshot = (
     files: snapshot.files,
     tombstones: snapshot.tombstones
   })
+  prunePendingDeletedCuratedNodes(new Set(snapshot.nodes.map((node) => node.uuid)))
 }
 
 const loadCachedSnapshot = () => parseCuratedLibrarySnapshot(readCuratedLibrarySyncLastSnapshot())
@@ -630,17 +642,20 @@ const incrementalApplyOptions = (): ApplyRemoteOptions => {
   const knownNodeIds = new Set<string>()
   if (cached) {
     for (const node of cached.nodes) knownNodeIds.add(node.uuid)
-  } else if (trustMaterialized && lastIds) {
+  }
+  if (trustMaterialized && lastIds) {
     for (const uuid of lastIds.nodes) knownNodeIds.add(uuid)
   }
+  const pendingDeletedNodeIds = listPendingDeletedCuratedNodeIds()
   return {
     extras: 'keep' as const,
     adoptIds: false,
     applyTombstones: true,
     knownFileIds: trustMaterialized && lastIds ? new Set(lastIds.files) : null,
-    // 用上一份已落地快照的节点，而不是当前本机树。空歌单没有文件身份，
-    // 若只记本机节点，删除后下一次同步会当成「云端新节点」又 mkdir 回来。
-    knownNodeIds: cached || (trustMaterialized && lastIds) ? knownNodeIds : null
+    // 快照节点 ∪ 上次本机落地节点。只信其中一份时，删歌单容易被当成云端新建。
+    knownNodeIds:
+      cached || trustMaterialized || pendingDeletedNodeIds.size > 0 ? knownNodeIds : null,
+    pendingDeletedNodeIds
   }
 }
 

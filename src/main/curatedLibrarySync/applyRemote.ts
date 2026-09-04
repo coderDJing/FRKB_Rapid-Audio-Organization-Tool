@@ -42,6 +42,7 @@ import {
   resolveCloudParentAbs,
   resolveCloudParentToLocalUuid
 } from './paths'
+import { removeLocalPendingCuratedNodeShell } from './pendingDeletedNodes'
 import type {
   CuratedLibrarySyncCloudFile,
   CuratedLibrarySyncCloudNode,
@@ -76,6 +77,7 @@ export type ApplyRemoteOptions = {
   applyTombstones?: boolean
   knownFileIds?: Set<string> | null
   knownNodeIds?: Set<string> | null
+  pendingDeletedNodeIds?: Set<string> | null
 }
 
 const isEnospc = (error: unknown): boolean => {
@@ -362,6 +364,7 @@ export const shouldSkipRestoringCloudFile = (
   options: ApplyRemoteOptions
 ): boolean => {
   if (options.extras === 'delete' || options.adoptIds) return false
+  if (options.pendingDeletedNodeIds?.has(file.parentUuid)) return true
   const identity = getCuratedSyncFileById(file.fileId)
   const abs =
     identity?.location === 'curated' && identity.relativePath
@@ -383,16 +386,20 @@ export const shouldSkipRecreatingCloudNode = (
   options: ApplyRemoteOptions
 ): boolean => {
   if (options.extras === 'delete' || options.adoptIds) return false
+  if (options.pendingDeletedNodeIds?.has(nodeUuid)) return true
   if (options.knownNodeIds == null) return false
   return options.knownNodeIds.has(nodeUuid)
 }
 
-/** 本机扫描已经没有、但上一份云端快照里有过：当成用户删了，不要 mkdir 回来。 */
+/** 用户刚删的，或本机扫描没有且上一份快照里有过：不要 mkdir 回来。 */
 export const shouldSkipRecreatingLocallyMissingCloudNode = (
   nodeUuid: string,
   localNodeIds: Set<string>,
   options: ApplyRemoteOptions
-): boolean => !localNodeIds.has(nodeUuid) && shouldSkipRecreatingCloudNode(nodeUuid, options)
+): boolean => {
+  if (options.pendingDeletedNodeIds?.has(nodeUuid)) return true
+  return !localNodeIds.has(nodeUuid) && shouldSkipRecreatingCloudNode(nodeUuid, options)
+}
 
 export const collectUnappliedCloudIds = (
   snapshot: CuratedLibrarySyncSnapshot,
@@ -564,6 +571,9 @@ export const applyRemoteSnapshot = async (
     for (const node of orderedNodes) {
       assertNotCancelled(ctx.signal)
       if (shouldSkipRecreatingLocallyMissingCloudNode(node.uuid, localNodeIds, options)) {
+        if (options.pendingDeletedNodeIds?.has(node.uuid)) {
+          await removeLocalPendingCuratedNodeShell(node.uuid, curatedRoot)
+        }
         continue
       }
       await ensureCloudNodeLocal(node, scope)

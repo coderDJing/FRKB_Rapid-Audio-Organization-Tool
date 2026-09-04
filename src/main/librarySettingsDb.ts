@@ -38,7 +38,8 @@ export const LIBRARY_SETTING_META_KEYS = {
   lastSnapshot: 'curated_library_sync_last_snapshot_v1',
   lastConflicts: 'curated_library_sync_last_conflicts_v1',
   lastFailures: 'curated_library_sync_last_failures_v1',
-  lastQuota: 'curated_library_sync_last_quota_v1'
+  lastQuota: 'curated_library_sync_last_quota_v1',
+  pendingDeletedNodes: 'curated_library_sync_pending_deleted_nodes_v1'
 } as const
 
 function parseStoredValue(raw: string): unknown {
@@ -354,6 +355,17 @@ export function writeCuratedLibrarySyncQuotaCache(value: unknown): void {
   writeJsonMeta(LIBRARY_SETTING_META_KEYS.lastQuota, value)
 }
 
+export function readCuratedLibrarySyncPendingDeletedNodeIds(): string[] {
+  const raw = readJsonMeta(LIBRARY_SETTING_META_KEYS.pendingDeletedNodes)
+  if (!Array.isArray(raw)) return []
+  return raw.map((item) => String(item || '').trim()).filter(Boolean)
+}
+
+export function writeCuratedLibrarySyncPendingDeletedNodeIds(ids: string[]): void {
+  const unique = [...new Set(ids.map((item) => String(item || '').trim()).filter(Boolean))]
+  writeJsonMeta(LIBRARY_SETTING_META_KEYS.pendingDeletedNodes, unique)
+}
+
 /** 忘掉本机已接上云精选库的锚点，下次同步会重新走首次对齐。 */
 export function forgetCuratedLibrarySyncJoinState(): void {
   setCuratedLibrarySyncLastAppliedRevision(null)
@@ -369,6 +381,7 @@ export function forgetCuratedLibrarySyncJoinState(): void {
     revision: 0,
     snapshotReady: false
   })
+  writeCuratedLibrarySyncPendingDeletedNodeIds([])
 }
 
 export async function syncLibrarySettingsFromDb(dirPath?: string): Promise<void> {
