@@ -42,7 +42,12 @@ import {
   resolveCloudParentAbs,
   resolveCloudParentToLocalUuid
 } from './paths'
-import { removeLocalPendingCuratedNodeShell } from './pendingDeletedNodes'
+import {
+  listPendingDeletedCuratedNodeIds,
+  logCuratedDeleteTrace,
+  purgePendingDeletedCuratedNodeShells,
+  removeLocalPendingCuratedNodeShell
+} from './pendingDeletedNodes'
 import type {
   CuratedLibrarySyncCloudFile,
   CuratedLibrarySyncCloudNode,
@@ -144,6 +149,10 @@ const ensureCloudNodeLocal = async (
   node: CuratedLibrarySyncCloudNode,
   scope: CloudParentScope
 ): Promise<string | null> => {
+  if (listPendingDeletedCuratedNodeIds().has(node.uuid)) {
+    logCuratedDeleteTrace('ensure-aborted-pending', { uuid: node.uuid, name: node.name })
+    return null
+  }
   const existing = (loadLibraryNodes() || []).find((item) => item.uuid === node.uuid)
   const parentUuid = localParentUuidOf(node.parentUuid, scope)
   const parentAbs = localParentAbsOf(node.parentUuid, scope)
@@ -359,12 +368,23 @@ const resolveLocalAbsForFileId = (
   return null
 }
 
+/** 同步开跑后用户才删歌单：options 里的 Set 可能是旧的，必须并上此刻库里的待删名单。 */
+export const livePendingDeletedNodeIds = (options?: ApplyRemoteOptions): Set<string> => {
+  const live = listPendingDeletedCuratedNodeIds()
+  const passed = options?.pendingDeletedNodeIds
+  if (!passed || passed.size === 0) return live
+  if (live.size === 0) return passed
+  const merged = new Set(passed)
+  for (const id of live) merged.add(id)
+  return merged
+}
+
 export const shouldSkipRestoringCloudFile = (
   file: CuratedLibrarySyncCloudFile,
   options: ApplyRemoteOptions
 ): boolean => {
   if (options.extras === 'delete' || options.adoptIds) return false
-  if (options.pendingDeletedNodeIds?.has(file.parentUuid)) return true
+  if (livePendingDeletedNodeIds(options).has(file.parentUuid)) return true
   const identity = getCuratedSyncFileById(file.fileId)
   const abs =
     identity?.location === 'curated' && identity.relativePath
@@ -386,7 +406,7 @@ export const shouldSkipRecreatingCloudNode = (
   options: ApplyRemoteOptions
 ): boolean => {
   if (options.extras === 'delete' || options.adoptIds) return false
-  if (options.pendingDeletedNodeIds?.has(nodeUuid)) return true
+  if (livePendingDeletedNodeIds(options).has(nodeUuid)) return true
   if (options.knownNodeIds == null) return false
   return options.knownNodeIds.has(nodeUuid)
 }
@@ -397,7 +417,7 @@ export const shouldSkipRecreatingLocallyMissingCloudNode = (
   localNodeIds: Set<string>,
   options: ApplyRemoteOptions
 ): boolean => {
-  if (options.pendingDeletedNodeIds?.has(nodeUuid)) return true
+  if (livePendingDeletedNodeIds(options).has(nodeUuid)) return true
   return !localNodeIds.has(nodeUuid) && shouldSkipRecreatingCloudNode(nodeUuid, options)
 }
 
@@ -570,14 +590,29 @@ export const applyRemoteSnapshot = async (
     const localNodeIds = new Set(local.nodes.map((node) => node.uuid))
     for (const node of orderedNodes) {
       assertNotCancelled(ctx.signal)
+      const pendingDeleted = livePendingDeletedNodeIds(options)
       if (shouldSkipRecreatingLocallyMissingCloudNode(node.uuid, localNodeIds, options)) {
-        if (options.pendingDeletedNodeIds?.has(node.uuid)) {
+        if (pendingDeleted.has(node.uuid)) {
+          logCuratedDeleteTrace('apply-skip-pending-node', {
+            uuid: node.uuid,
+            name: node.name,
+            staleLocalScanStillHadIt: localNodeIds.has(node.uuid)
+          })
           await removeLocalPendingCuratedNodeShell(node.uuid, curatedRoot)
         }
         continue
       }
+      const existedInScan = localNodeIds.has(node.uuid)
       await ensureCloudNodeLocal(node, scope)
+      if (!existedInScan) {
+        logCuratedDeleteTrace('apply-ensure-missing-node', {
+          uuid: node.uuid,
+          name: node.name,
+          pending: pendingDeleted.has(node.uuid)
+        })
+      }
     }
+    await purgePendingDeletedCuratedNodeShells()
 
     const cloudFileIds = new Set(snapshot.files.map((file) => file.fileId))
     const localById = new Map(local.files.map((file) => [file.fileId, file]))

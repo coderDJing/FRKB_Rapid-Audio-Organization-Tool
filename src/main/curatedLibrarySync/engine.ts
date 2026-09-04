@@ -70,7 +70,9 @@ import { findCuratedLibraryNode, sameCloudParentUuid } from './paths'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import {
   listPendingDeletedCuratedNodeIds,
-  prunePendingDeletedCuratedNodes
+  logCuratedDeleteTrace,
+  prunePendingDeletedCuratedNodes,
+  purgePendingDeletedCuratedNodeShells
 } from './pendingDeletedNodes'
 
 let running = false
@@ -486,12 +488,16 @@ const persistAppliedSnapshot = (
   snapshot: CuratedLibrarySyncSnapshot,
   local?: { files: Array<{ fileId: string }>; nodes: Array<{ uuid: string }> }
 ) => {
+  const pending = listPendingDeletedCuratedNodeIds()
+  const rawLocalNodeIds = local
+    ? local.nodes.map((node) => node.uuid)
+    : snapshot.nodes.map((node) => node.uuid)
   setCuratedLibrarySyncLastAppliedRevision(snapshot.revision)
   writeCuratedLibrarySyncLastCloudIds({
     files: local
       ? local.files.map((file) => file.fileId)
       : snapshot.files.map((file) => file.fileId),
-    nodes: local ? local.nodes.map((node) => node.uuid) : snapshot.nodes.map((node) => node.uuid),
+    nodes: rawLocalNodeIds.filter((uuid) => !pending.has(uuid)),
     materialized: true
   })
   writeCuratedLibrarySyncLastSnapshot({
@@ -503,7 +509,10 @@ const persistAppliedSnapshot = (
     files: snapshot.files,
     tombstones: snapshot.tombstones
   })
-  prunePendingDeletedCuratedNodes(new Set(snapshot.nodes.map((node) => node.uuid)))
+  prunePendingDeletedCuratedNodes(
+    new Set(snapshot.nodes.map((node) => node.uuid)),
+    new Set(rawLocalNodeIds)
+  )
 }
 
 const loadCachedSnapshot = () => parseCuratedLibrarySnapshot(readCuratedLibrarySyncLastSnapshot())
@@ -662,6 +671,20 @@ const incrementalApplyOptions = (): ApplyRemoteOptions => {
 const isDeletionOp = (op: CuratedLibrarySyncOp): boolean =>
   op.type === 'deleteNode' || op.type === 'deleteFile'
 
+const summarizePushOps = (phase: string, ops: CuratedLibrarySyncOp[]): void => {
+  const pending = [...listPendingDeletedCuratedNodeIds()]
+  const deleteNodes = ops.filter((op) => op.type === 'deleteNode').map((op) => op.uuid)
+  if (pending.length === 0 && deleteNodes.length === 0) return
+  logCuratedDeleteTrace('push-ops', {
+    phase,
+    pending,
+    deleteNode: deleteNodes,
+    deleteFile: ops.filter((op) => op.type === 'deleteFile').length,
+    upsertNode: ops.filter((op) => op.type === 'upsertNode').length,
+    upsertFile: ops.filter((op) => op.type === 'upsertFile').length
+  })
+}
+
 const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
   sessionCompletedWork = true
   const local = await scanCuratedLibraryForSync()
@@ -677,6 +700,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
       buildPushOps(local, snapshot, retainBefore),
       new Set()
     ).filter(isDeletionOp)
+    summarizePushOps('incremental-deletes', deletionOps)
     if (deletionOps.length > 0) {
       const pushedDeletes = await pushCuratedOps({
         baseRevision: snapshot.revision,
@@ -690,6 +714,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
       }
     }
     const applied = await applyRemoteSnapshot(snapshot, local, applyOptions, applyCtx())
+    await purgePendingDeletedCuratedNodeShells()
     latest = await scanCuratedLibraryForSync()
     if (applied.diskFull) return { status: 'disk_full' }
     remainingDeferred.push(...applied.deferred)
@@ -698,6 +723,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
     const failedSha = await uploadMissingBlobs(after.files)
     const retain = collectUnappliedCloudIds(snapshot, after, applyOptions)
     const ops = omitFailedBlobOps(buildPushOps(after, snapshot, retain), failedSha)
+    summarizePushOps('incremental-remaining', ops)
     if (ops.length === 0) {
       persistAppliedSnapshot(snapshot, after)
       writeCuratedLibrarySyncDeferredOps(remainingDeferred)
@@ -713,6 +739,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
         applyCtx()
       )
       writeCuratedLibrarySyncDeferredOps([...remainingDeferred, ...conflictApplied.deferred])
+      await purgePendingDeletedCuratedNodeShells()
       latest = await scanCuratedLibraryForSync()
       persistAppliedSnapshot(pushed.snapshot, latest)
       return { status: 'success' }

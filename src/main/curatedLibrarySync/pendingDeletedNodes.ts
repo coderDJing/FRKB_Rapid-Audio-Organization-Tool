@@ -1,4 +1,5 @@
 import fs from 'fs-extra'
+import { log } from '../log'
 import { loadLibraryNodes, removeLibraryNode } from '../libraryTreeDb'
 import {
   readCuratedLibrarySyncPendingDeletedNodeIds,
@@ -27,6 +28,11 @@ const collectDescendantUuids = (rootUuid: string): string[] => {
   return result
 }
 
+/** 空歌单删除竞态排查：只在待删/跳过/建回相关时落盘，方便对照 Dev A / Dev E。 */
+export const logCuratedDeleteTrace = (event: string, detail: Record<string, unknown>): void => {
+  log.info(`[curated-sync-delete] ${event}`, detail)
+}
+
 export const listPendingDeletedCuratedNodeIds = (): Set<string> =>
   new Set(readCuratedLibrarySyncPendingDeletedNodeIds())
 
@@ -35,17 +41,46 @@ export const rememberCuratedLibraryNodeDeletion = (uuid: string, absPath: string
   const root = getCuratedLibraryAbsRoot()
   const id = String(uuid || '').trim()
   const abs = String(absPath || '').trim()
-  if (!root || !id || !abs) return
-  if (!isPathInside(abs, root)) return
+  if (!root || !id || !abs) {
+    logCuratedDeleteTrace('remember-skip', {
+      uuid: id,
+      abs,
+      hasRoot: Boolean(root),
+      reason: 'missing-args'
+    })
+    return
+  }
+  if (!isPathInside(abs, root)) {
+    logCuratedDeleteTrace('remember-skip', { uuid: id, abs, root, reason: 'outside-curated' })
+    return
+  }
   const next = listPendingDeletedCuratedNodeIds()
   next.add(id)
   for (const child of collectDescendantUuids(id)) next.add(child)
   writeCuratedLibrarySyncPendingDeletedNodeIds([...next])
+  logCuratedDeleteTrace('remember', { uuid: id, abs, pending: [...next] })
 }
 
-export const prunePendingDeletedCuratedNodes = (cloudNodeIds: Set<string>): void => {
+/**
+ * 云上或本机还留着这个 UUID 时都要继续记着：
+ * 云上还有 → 继续推墓碑；本机还在 → 禁止当成新建 upsert 回去。
+ * 只有两边都没了才忘掉。
+ */
+export const prunePendingDeletedCuratedNodes = (
+  cloudNodeIds: Set<string>,
+  localNodeIds?: Set<string> | null
+): void => {
   const pending = readCuratedLibrarySyncPendingDeletedNodeIds()
-  writeCuratedLibrarySyncPendingDeletedNodeIds(pending.filter((id) => cloudNodeIds.has(id)))
+  const next = pending.filter((id) => cloudNodeIds.has(id) || Boolean(localNodeIds?.has(id)))
+  if (pending.length > 0) {
+    logCuratedDeleteTrace('prune-pending', {
+      before: pending,
+      after: next,
+      keptBecauseCloud: next.filter((id) => cloudNodeIds.has(id)),
+      keptBecauseLocal: next.filter((id) => Boolean(localNodeIds?.has(id)) && !cloudNodeIds.has(id))
+    })
+  }
+  writeCuratedLibrarySyncPendingDeletedNodeIds(next)
 }
 
 export const removeLocalPendingCuratedNodeShell = async (
@@ -59,4 +94,15 @@ export const removeLocalPendingCuratedNodeShell = async (
     if (meaningful.length === 0) await fs.remove(abs)
   }
   removeLibraryNode(uuid)
+}
+
+export const purgePendingDeletedCuratedNodeShells = async (): Promise<void> => {
+  const root = getCuratedLibraryAbsRoot()
+  if (!root) return
+  const pending = [...listPendingDeletedCuratedNodeIds()]
+  if (pending.length === 0) return
+  logCuratedDeleteTrace('purge-shells', { pending })
+  for (const uuid of pending) {
+    await removeLocalPendingCuratedNodeShell(uuid, root)
+  }
 }
