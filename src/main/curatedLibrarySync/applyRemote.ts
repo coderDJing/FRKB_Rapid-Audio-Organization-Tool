@@ -387,6 +387,13 @@ export const shouldSkipRecreatingCloudNode = (
   return options.knownNodeIds.has(nodeUuid)
 }
 
+/** 本机扫描已经没有、但上一份云端快照里有过：当成用户删了，不要 mkdir 回来。 */
+export const shouldSkipRecreatingLocallyMissingCloudNode = (
+  nodeUuid: string,
+  localNodeIds: Set<string>,
+  options: ApplyRemoteOptions
+): boolean => !localNodeIds.has(nodeUuid) && shouldSkipRecreatingCloudNode(nodeUuid, options)
+
 export const collectUnappliedCloudIds = (
   snapshot: CuratedLibrarySyncSnapshot,
   local: { files: CuratedLocalFile[]; nodes: CuratedLocalNode[] },
@@ -410,7 +417,8 @@ export const collectUnappliedCloudIds = (
       snapshot.nodes
         .filter(
           (node) =>
-            !localNodeIds.has(node.uuid) && !shouldSkipRecreatingCloudNode(node.uuid, options)
+            !localNodeIds.has(node.uuid) &&
+            !shouldSkipRecreatingLocallyMissingCloudNode(node.uuid, localNodeIds, options)
         )
         .map((node) => node.uuid)
     )
@@ -552,10 +560,12 @@ export const applyRemoteSnapshot = async (
     const orderedNodes = sortNodesParentsFirst(
       snapshot.nodes.filter((node) => node.parentUuid && node.uuid)
     )
+    const localNodeIds = new Set(local.nodes.map((node) => node.uuid))
     for (const node of orderedNodes) {
       assertNotCancelled(ctx.signal)
-      const existing = (loadLibraryNodes() || []).find((item) => item.uuid === node.uuid)
-      if (!existing && shouldSkipRecreatingCloudNode(node.uuid, options)) continue
+      if (shouldSkipRecreatingLocallyMissingCloudNode(node.uuid, localNodeIds, options)) {
+        continue
+      }
       await ensureCloudNodeLocal(node, scope)
     }
 

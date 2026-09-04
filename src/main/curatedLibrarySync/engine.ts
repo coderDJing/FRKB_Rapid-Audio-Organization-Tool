@@ -625,26 +625,55 @@ const runJoin = async (
 
 const incrementalApplyOptions = (): ApplyRemoteOptions => {
   const lastIds = readCuratedLibrarySyncLastCloudIds()
+  const cached = loadCachedSnapshot()
   const trustMaterialized = lastIds?.materialized === true
+  const knownNodeIds = new Set<string>()
+  if (cached) {
+    for (const node of cached.nodes) knownNodeIds.add(node.uuid)
+  } else if (trustMaterialized && lastIds) {
+    for (const uuid of lastIds.nodes) knownNodeIds.add(uuid)
+  }
   return {
     extras: 'keep' as const,
     adoptIds: false,
     applyTombstones: true,
     knownFileIds: trustMaterialized && lastIds ? new Set(lastIds.files) : null,
-    knownNodeIds: trustMaterialized && lastIds ? new Set(lastIds.nodes) : null
+    // 用上一份已落地快照的节点，而不是当前本机树。空歌单没有文件身份，
+    // 若只记本机节点，删除后下一次同步会当成「云端新节点」又 mkdir 回来。
+    knownNodeIds: cached || (trustMaterialized && lastIds) ? knownNodeIds : null
   }
 }
+
+const isDeletionOp = (op: CuratedLibrarySyncOp): boolean =>
+  op.type === 'deleteNode' || op.type === 'deleteFile'
 
 const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
   sessionCompletedWork = true
   const local = await scanCuratedLibraryForSync()
-  const snapshot = await pullMergedSnapshot(getCuratedLibrarySyncLastAppliedRevision())
+  let snapshot = await pullMergedSnapshot(getCuratedLibrarySyncLastAppliedRevision())
   const release = beginLibraryTreeWatcherBulkOperation()
   let latest = local
   try {
     const deferred = toDeferred(readCuratedLibrarySyncDeferredOps())
     const applyOptions = incrementalApplyOptions()
     const remainingDeferred = await retryDeferredRemoteOps(deferred, snapshot, applyCtx())
+    const retainBefore = collectUnappliedCloudIds(snapshot, local, applyOptions)
+    const deletionOps = omitFailedBlobOps(
+      buildPushOps(local, snapshot, retainBefore),
+      new Set()
+    ).filter(isDeletionOp)
+    if (deletionOps.length > 0) {
+      const pushedDeletes = await pushCuratedOps({
+        baseRevision: snapshot.revision,
+        ops: deletionOps
+      })
+      if (pushedDeletes.ok) {
+        snapshot = pushedDeletes.snapshot
+      } else {
+        rememberPushConflicts(deletionOps, pushedDeletes.snapshot)
+        snapshot = pushedDeletes.snapshot
+      }
+    }
     const applied = await applyRemoteSnapshot(snapshot, local, applyOptions, applyCtx())
     latest = await scanCuratedLibraryForSync()
     if (applied.diskFull) return { status: 'disk_full' }
@@ -654,20 +683,6 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
     const failedSha = await uploadMissingBlobs(after.files)
     const retain = collectUnappliedCloudIds(snapshot, after, applyOptions)
     const ops = omitFailedBlobOps(buildPushOps(after, snapshot, retain), failedSha)
-    const deleteFileCount = ops.filter((op) => op.type === 'deleteFile').length
-    if (
-      deleteFileCount > 0 ||
-      retain.files.size > 0 ||
-      after.files.length !== snapshot.files.length
-    ) {
-      log.info('[curated-sync] 增量推送差分', {
-        localFiles: after.files.length,
-        cloudFiles: snapshot.files.length,
-        retainFiles: retain.files.size,
-        deleteFiles: deleteFileCount,
-        ops: ops.length
-      })
-    }
     if (ops.length === 0) {
       persistAppliedSnapshot(snapshot, after)
       writeCuratedLibrarySyncDeferredOps(remainingDeferred)
