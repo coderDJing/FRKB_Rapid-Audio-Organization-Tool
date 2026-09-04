@@ -74,6 +74,13 @@ import {
   prunePendingDeletedCuratedNodes,
   purgePendingDeletedCuratedNodeShells
 } from './pendingDeletedNodes'
+import {
+  asOptionalNumber,
+  asOptionalPositiveInt,
+  localFilePendingSinceLast,
+  localNodePendingSinceLast,
+  sameSortOrder
+} from './pendingLocal'
 
 let running = false
 let cancelRequested = false
@@ -364,27 +371,6 @@ const rememberPushConflicts = (
   if (dropped.length > 0) sessionConflicts = dropped
 }
 
-const asOptionalNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === '') return null
-  const num = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(num) ? num : null
-}
-
-const sameSortOrder = (left: unknown, right: unknown): boolean => {
-  const a = asOptionalNumber(left)
-  const b = asOptionalNumber(right)
-  if (a === b) return true
-  // 旧服务端曾把 null 写成 0（Number(null) === 0）
-  return (a === null && b === 0) || (a === 0 && b === null)
-}
-
-const asOptionalPositiveInt = (value: unknown): number | null => {
-  const num = asOptionalNumber(value)
-  if (num === null) return null
-  const rounded = Math.floor(num)
-  return rounded > 0 ? rounded : null
-}
-
 const buildPushOps = (
   local: Awaited<ReturnType<typeof scanCuratedLibraryForSync>>,
   snapshot: Awaited<ReturnType<typeof pullCuratedSnapshot>>,
@@ -408,10 +394,6 @@ const buildPushOps = (
     if (!curated) return cloudParent !== localParent
     return !sameCloudParentUuid(cloudParent, localParent, curated.uuid, snapshotNodeIds)
   }
-  const lastParentChanged = (lastParent: string, localParent: string): boolean => {
-    if (!curated) return lastParent !== localParent
-    return !sameCloudParentUuid(lastParent, localParent, curated.uuid, lastNodeIds)
-  }
   const pendingDeleted = listPendingDeletedCuratedNodeIds()
   for (const node of local.nodes) {
     if (pendingDeleted.has(node.uuid)) continue
@@ -424,10 +406,7 @@ const buildPushOps = (
     const lastNode = lastNodeById.get(node.uuid)
     const localUnchangedSinceLast =
       !!lastNode &&
-      lastNode.name === node.name &&
-      lastParentChanged(lastNode.parentUuid, node.parentUuid) === false &&
-      sameSortOrder(lastNode.sortOrder, node.sortOrder) &&
-      lastNode.nodeType === node.nodeType
+      localNodePendingSinceLast(node, lastNode, curated?.uuid || null, lastNodeIds) === false
     // 本机相对上次快照没改，云端却不同：那是对端改的。禁止用 now() 把过期本地写回去。
     if (cloud && localUnchangedSinceLast) continue
     if (
@@ -457,11 +436,7 @@ const buildPushOps = (
     const lastFile = lastFileById.get(file.fileId)
     const localUnchangedSinceLast =
       !!lastFile &&
-      lastParentChanged(lastFile.parentUuid, file.parentUuid) === false &&
-      lastFile.fileName === file.fileName &&
-      lastFile.sha256 === file.contentSha256 &&
-      asOptionalPositiveInt(lastFile.trackNumber) === asOptionalPositiveInt(file.trackNumber) &&
-      asOptionalPositiveInt(lastFile.addedAtMs) === asOptionalPositiveInt(file.addedAtMs)
+      localFilePendingSinceLast(file, lastFile, curated?.uuid || null, lastNodeIds) === false
     if (cloud && localUnchangedSinceLast) continue
     if (
       !cloud ||
@@ -710,7 +685,10 @@ const incrementalApplyOptions = (): ApplyRemoteOptions => {
     // 快照节点 ∪ 上次本机落地节点。只信其中一份时，删歌单容易被当成云端新建。
     knownNodeIds:
       cached || trustMaterialized || pendingDeletedNodeIds.size > 0 ? knownNodeIds : null,
-    pendingDeletedNodeIds
+    pendingDeletedNodeIds,
+    preservePendingLocal: true,
+    lastAppliedNodes: cached ? new Map(cached.nodes.map((node) => [node.uuid, node])) : null,
+    lastAppliedFiles: cached ? new Map(cached.files.map((file) => [file.fileId, file])) : null
   }
 }
 
@@ -720,13 +698,18 @@ const isDeletionOp = (op: CuratedLibrarySyncOp): boolean =>
 const summarizePushOps = (phase: string, ops: CuratedLibrarySyncOp[]): void => {
   const pending = [...listPendingDeletedCuratedNodeIds()]
   const deleteNodes = ops.filter((op) => op.type === 'deleteNode').map((op) => op.uuid)
-  const upsertNodes = ops.filter((op) => op.type === 'upsertNode').map((op) => op.node.uuid)
+  const upsertNodeOps = ops.filter((op) => op.type === 'upsertNode')
+  const upsertNodes = upsertNodeOps.map((op) => op.node.uuid)
   if (pending.length === 0 && deleteNodes.length === 0 && upsertNodes.length === 0) return
   logCuratedDeleteTrace('push-ops', {
     phase,
     pending,
     deleteNode: deleteNodes,
     upsertNodeIds: upsertNodes,
+    upsertNodeOrders: upsertNodeOps.map((op) => ({
+      uuid: op.node.uuid,
+      sortOrder: op.node.sortOrder
+    })),
     deleteFile: ops.filter((op) => op.type === 'deleteFile').length,
     upsertNode: upsertNodes.length,
     upsertFile: ops.filter((op) => op.type === 'upsertFile').length
@@ -795,7 +778,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
       const conflictApplied = await applyRemoteSnapshot(
         pushed.snapshot,
         after,
-        applyOptions,
+        { ...applyOptions, preservePendingLocal: false },
         applyCtx()
       )
       writeCuratedLibrarySyncDeferredOps([...remainingDeferred, ...conflictApplied.deferred])
