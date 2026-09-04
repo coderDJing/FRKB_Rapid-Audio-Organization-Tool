@@ -393,6 +393,7 @@ const buildPushOps = (
   const diff = diffLocalAgainstSnapshot(local, snapshot)
   const ops: CuratedLibrarySyncOp[] = []
   const now = Date.now()
+  // Date.now() 是 Unix 毫秒（UTC），同一 userKey 跨时区可比；设备时钟不准时听服务端 revision。
   const curated = findCuratedLibraryNode()
   const snapshotNodeIds = new Set(snapshot.nodes.map((node) => node.uuid))
   const lastSnapshot = loadCachedSnapshot()
