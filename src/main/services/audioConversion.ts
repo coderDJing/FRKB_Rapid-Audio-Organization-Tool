@@ -17,6 +17,7 @@ import { writeWavRiffInfoWindows } from './wavRiffInfo'
 import { moveFileToRecycleBin } from '../recycleBinService'
 import { compactSongListTrackNumbersByFilePaths } from './playlistTrackNumbers'
 import { markGlobalSongSearchDirty } from './globalSongSearch'
+import { scheduleCuratedLibrarySyncIfUnderCurated } from '../cloudSyncScheduler'
 import { updateSetItemFilePathReferences } from '../setListDb'
 import { registerChildProcess, terminateChildProcess } from './childProcessRegistry'
 import type { IAudioMetadata } from 'music-metadata'
@@ -717,6 +718,7 @@ export async function startAudioConversion(
     if (compactResult.roots > 0) {
       markGlobalSongSearchDirty('audio:convert')
     }
+    scheduleCuratedLibrarySyncIfUnderCurated([...files, ...convertedDestPaths])
   }
 
   if (mainWindow) {

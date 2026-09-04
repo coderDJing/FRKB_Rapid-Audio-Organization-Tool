@@ -36,7 +36,10 @@ import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { waitForPlaybackForegroundIdle } from '../services/playbackForegroundActivity'
 import { beginLibraryTreeWatcherBulkOperation } from '../libraryTreeWatcher'
-import { scheduleCuratedLibrarySyncAfterLocalChange } from '../cloudSyncScheduler'
+import {
+  scheduleCuratedLibrarySyncAfterLocalChange,
+  scheduleCuratedLibrarySyncIfUnderCurated
+} from '../cloudSyncScheduler'
 import { getCuratedLibraryAbsRoot, isPathInside } from '../curatedLibrarySync/paths'
 import {
   getRecordingLibraryRootAbs,
@@ -654,6 +657,7 @@ export function registerLibraryMaintenanceHandlers() {
           })
         }
         markGlobalSongSearchDirty('recycleBin:restore')
+        scheduleCuratedLibrarySyncIfUnderCurated([...restoredByPlaylist.values()].flat())
       }
       return {
         total: uniquePaths.length,

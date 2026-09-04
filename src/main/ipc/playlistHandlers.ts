@@ -32,6 +32,7 @@ import {
   previewPlaylistBatchRename
 } from '../services/playlistBatchRename'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import { scheduleCuratedLibrarySyncIfUnderCurated } from '../cloudSyncScheduler'
 import {
   compactSongListTrackNumbers,
   compactSongListTrackNumbersByFilePaths,
@@ -243,6 +244,7 @@ export function registerPlaylistHandlers() {
       markGlobalSongSearchDirty('songList:reorder-track-numbers', {
         songListUUID: findLibraryNodeByPath(resolvedPlaylist.mappedPath)?.uuid
       })
+      scheduleCuratedLibrarySyncIfUnderCurated([resolvedPlaylist.absPath])
       return result
     }
   )
@@ -258,6 +260,9 @@ export function registerPlaylistHandlers() {
         markGlobalSongSearchDirty('songList:compact-track-numbers', {
           songListUUID: findLibraryNodeByPath(resolvedPlaylist.mappedPath)?.uuid
         })
+        if (result.updated) {
+          scheduleCuratedLibrarySyncIfUnderCurated([resolvedPlaylist.absPath])
+        }
         return {
           ...result,
           roots: 1
@@ -270,6 +275,9 @@ export function registerPlaylistHandlers() {
       const result = await compactSongListTrackNumbersByFilePaths(filePaths)
       if (result.roots > 0) {
         markGlobalSongSearchDirty('songList:compact-track-numbers')
+      }
+      if (result.updated) {
+        scheduleCuratedLibrarySyncIfUnderCurated(filePaths)
       }
       return result
     }
@@ -473,6 +481,14 @@ export function registerPlaylistHandlers() {
       return await executePlaylistBatchRename({
         taskId: String(payload?.taskId || ''),
         items: Array.isArray(payload?.items) ? payload.items : []
+      }).then((result) => {
+        if (result.summary.success > 0) {
+          scheduleCuratedLibrarySyncIfUnderCurated([
+            ...result.updates.map((item) => item.oldFilePath),
+            ...result.updates.map((item) => item.song.filePath)
+          ])
+        }
+        return result
       })
     }
   )
@@ -674,6 +690,7 @@ export function registerPlaylistHandlers() {
         if (movedPaths.length > 0) {
           await compactSongListTrackNumbers(scanPath)
           markGlobalSongSearchDirty('deduplicateSongListByFingerprint')
+          scheduleCuratedLibrarySyncIfUnderCurated([scanPath, ...movedPaths])
         }
 
         const recycleBinInfo = null

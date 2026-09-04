@@ -7,6 +7,7 @@ import {
 import { is } from '@electron-toolkit/utils'
 import { resolveDevCloudSyncUserKey } from '../shared/cloudSyncDevUserKey'
 import { isCuratedLibrarySyncEnabled } from './librarySettingsDb'
+import { getCuratedLibraryAbsRoot, isPathInside } from './curatedLibrarySync/paths'
 import { enqueueCuratedLibrarySync } from './curatedLibrarySync/queue'
 import {
   hasPendingCuratedLibraryJoinPrompt,
@@ -73,6 +74,20 @@ function scheduleCuratedLibrarySyncAfterTreeChange(): void {
 
 export function scheduleCuratedLibrarySyncAfterLocalChange(): void {
   scheduleCuratedLibrarySyncAfterTreeChange()
+}
+
+/** 只改 cache / 树 DB、没有磁盘事件时，用这个判断是否落在精选库里再排队。 */
+export function scheduleCuratedLibrarySyncIfUnderCurated(
+  absPaths: Array<string | null | undefined>
+): void {
+  const root = getCuratedLibraryAbsRoot()
+  if (!root) return
+  for (const absPath of absPaths) {
+    if (absPath && isPathInside(absPath, root)) {
+      scheduleCuratedLibrarySyncAfterLocalChange()
+      return
+    }
+  }
 }
 
 function ensureLibraryTreeSyncTrigger(): void {

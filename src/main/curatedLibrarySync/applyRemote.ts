@@ -60,7 +60,6 @@ export type DeferredRemoteOp = {
 
 export type ApplyRemoteContext = {
   signal: AbortSignal
-  onProgress?: (labelKey: string, now: number, total: number) => void
   isBusy?: (absPath: string) => boolean
   onTransferFailure?: (payload: {
     direction: 'download'
@@ -315,6 +314,26 @@ const persistImportedIdentity = (
   upsertCuratedSyncFile(row)
 }
 
+const persistMatchedCloudFile = async (
+  file: CuratedLibrarySyncCloudFile,
+  absPath: string,
+  destDir: string,
+  curatedRoot: string,
+  scope: CloudParentScope,
+  previousAddedAtMs: number | null
+) => {
+  persistImportedIdentity(file, absPath, absToRel(curatedRoot, absPath), scope)
+  const cloudAdded = file.addedAtMs
+  if (cloudAdded == null || !Number.isFinite(cloudAdded) || cloudAdded === previousAddedAtMs) {
+    return
+  }
+  await stampPlaylistSongsAddedAt({
+    listRoot: destDir,
+    filePaths: [absPath],
+    addedAtMs: cloudAdded
+  })
+}
+
 const deleteLocalFile = async (absPath: string, ctx: ApplyRemoteContext): Promise<boolean> => {
   if (isBusyPath(absPath, ctx)) return false
   const setProtection = await protectSetReferencedFilesForDeletion([absPath])
@@ -549,19 +568,8 @@ export const applyRemoteSnapshot = async (
       localByHash.set(file.contentSha256, list)
     }
 
-    let index = 0
-    const reportApplyProgress = (downloading: boolean) => {
-      ctx.onProgress?.(
-        downloading
-          ? 'cloudSync.curatedLibrary.progressDownloading'
-          : 'cloudSync.curatedLibrary.progressApplying',
-        index,
-        snapshot.files.length
-      )
-    }
     for (const file of snapshot.files) {
       assertNotCancelled(ctx.signal)
-      index += 1
       const localFile = localById.get(file.fileId)
       let matched = localFile
       if (!matched && options.adoptIds) {
@@ -587,7 +595,6 @@ export const applyRemoteSnapshot = async (
           continue
         }
         if (matched.contentSha256 !== file.sha256) {
-          reportApplyProgress(true)
           const imported = await tryImportCloudFile(file, ctx, scope)
           if (imported) {
             await moveFileToRecycleBin(matched.absPath)
@@ -604,25 +611,25 @@ export const applyRemoteSnapshot = async (
           continue
         }
         if (path.normalize(matched.absPath) !== path.normalize(destPath)) {
-          reportApplyProgress(false)
           const moved = await relocateLibraryAudioFile({
             sourceAbs: matched.absPath,
             destAbs: destPath,
             mode: 'move'
           })
-          persistImportedIdentity(file, moved, absToRel(curatedRoot, moved), scope)
+          await persistMatchedCloudFile(file, moved, destDir, curatedRoot, scope, matched.addedAtMs)
         } else {
-          persistImportedIdentity(
+          await persistMatchedCloudFile(
             file,
             matched.absPath,
-            absToRel(curatedRoot, matched.absPath),
-            scope
+            destDir,
+            curatedRoot,
+            scope,
+            matched.addedAtMs
           )
         }
         continue
       }
       if (shouldSkipRestoringCloudFile(file, options)) continue
-      reportApplyProgress(true)
       const imported = await tryImportCloudFile(file, ctx, scope)
       if (imported) persistImportedIdentity(file, imported, absToRel(curatedRoot, imported), scope)
     }
@@ -634,14 +641,7 @@ export const applyRemoteSnapshot = async (
 
     if (options.extras === 'delete') {
       const extraFiles = local.files.filter((localFile) => !cloudFileIds.has(localFile.fileId))
-      let extraIndex = 0
       for (const localFile of extraFiles) {
-        extraIndex += 1
-        ctx.onProgress?.(
-          'cloudSync.curatedLibrary.progressApplying',
-          extraIndex,
-          Math.max(extraFiles.length, 1)
-        )
         assertNotCancelled(ctx.signal)
         if (isBusyPath(localFile.absPath, ctx)) {
           deferred.push({ type: 'deleteFile', fileId: localFile.fileId })

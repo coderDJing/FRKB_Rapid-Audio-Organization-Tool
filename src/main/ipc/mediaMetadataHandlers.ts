@@ -38,6 +38,7 @@ import {
   ISimilarTrackBlockTarget
 } from '../../types/globals'
 import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
+import { scheduleCuratedLibrarySyncIfUnderCurated } from '../cloudSyncScheduler'
 import {
   SongCoverSessionRegistry,
   type SongCoverSessionContext
@@ -150,6 +151,11 @@ export function registerMediaMetadataHandlers() {
     }
     try {
       const result = await svcUpdateTrackMetadata(payload)
+      scheduleCuratedLibrarySyncIfUnderCurated([
+        payload?.filePath,
+        result.renamedFrom,
+        result.songInfo?.filePath
+      ])
       return {
         success: true,
         songInfo: result.songInfo,
@@ -179,7 +185,12 @@ export function registerMediaMetadataHandlers() {
     }
     return await autoFillTrackMetadata(
       payload && Array.isArray(payload.filePaths) ? payload : { filePaths: [] }
-    )
+    ).then((result) => {
+      scheduleCuratedLibrarySyncIfUnderCurated(
+        payload && Array.isArray(payload.filePaths) ? payload.filePaths : []
+      )
+      return result
+    })
   })
   ipcMain.handle('metadata:autoFill:cancel', async (_e, progressId: string) => {
     cancelMetadataAutoFill(typeof progressId === 'string' ? progressId : '')

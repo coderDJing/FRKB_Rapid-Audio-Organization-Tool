@@ -19,6 +19,7 @@ export type CuratedLibrarySyncPlaylistsChangedPayload = {
   uuids: string[]
   removed: CuratedLibrarySyncListFileChange[]
   added: CuratedLibrarySyncListFileChange[]
+  updated: CuratedLibrarySyncListFileChange[]
 }
 
 export const CURATED_LIBRARY_SYNC_BLOB_CHUNK_SIZE = 8 * 1024 * 1024

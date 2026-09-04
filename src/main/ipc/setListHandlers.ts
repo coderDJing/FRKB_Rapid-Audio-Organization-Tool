@@ -7,6 +7,8 @@ import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runt
 import store from '../store'
 import { getCoreFsDirName } from '../coreLibraries'
 import { notifyCuratedFilePathChanged } from '../curatedLibrarySync/identityDb'
+import { getCuratedLibraryAbsRoot, isPathInside } from '../curatedLibrarySync/paths'
+import { notifyLibraryFsChanged } from '../libraryTreeWatcher'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import { scanSongList } from '../services/scanSongs'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
@@ -619,6 +621,11 @@ export async function protectSetReferencedFilesForDeletion(
     movedMap = custodyResult.movedMap
     custodyFailures.push(...custodyResult.failures)
     await updateSetMappingsForMovedFiles(movedMap, custodyResult.sourceStats)
+    if (
+      [...movedMap.keys()].some((filePath) => isPathInside(filePath, getCuratedLibraryAbsRoot()))
+    ) {
+      notifyLibraryFsChanged()
+    }
   }
 
   const protectedFiles = protectedPaths.map((filePath) => {

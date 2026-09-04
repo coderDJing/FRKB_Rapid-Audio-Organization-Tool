@@ -37,6 +37,7 @@ import {
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
 import { stampPlaylistSongsAddedAt } from '../services/playlistAddedAt'
+import { scheduleCuratedLibrarySyncIfUnderCurated } from '../cloudSyncScheduler'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 type MoveSongsToDirOptions = {
@@ -392,6 +393,7 @@ export function registerExportHandlers() {
       if (compactResult.roots > 0) {
         markGlobalSongSearchDirty('exportSongsToDir')
       }
+      scheduleCuratedLibrarySyncIfUnderCurated(summary.removedPaths)
     }
     if (failed > 0) {
       throw new Error('exportSongsToDir failed')
@@ -536,6 +538,7 @@ export function registerExportHandlers() {
     if (movedPaths.length > 0) {
       markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
     }
+    scheduleCuratedLibrarySyncIfUnderCurated([target.absPath, ...taskSourcePaths, ...movedPaths])
     if (failed > 0 && !options.returnSummary) {
       throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
     }

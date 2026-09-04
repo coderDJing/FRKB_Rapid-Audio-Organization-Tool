@@ -27,6 +27,7 @@ import {
 } from '../mixtapeDb'
 import { emitSongHotCuesUpdated } from '../services/songHotCueEvents'
 import { emitSongMemoryCuesUpdated } from '../services/songMemoryCueEvents'
+import { scheduleCuratedLibrarySyncIfUnderCurated } from '../cloudSyncScheduler'
 
 const isPathInside = (rootDir: string, targetPath: string) => {
   const relative = path.relative(rootDir, targetPath)
@@ -343,6 +344,7 @@ export const registerSongEditHandlers = () => {
         }
       }
 
+      scheduleCuratedLibrarySyncIfUnderCurated([sourceFilePath, destPath, listRoot])
       return {
         outputFilePath: destPath,
         outputTitle: canOverwrite

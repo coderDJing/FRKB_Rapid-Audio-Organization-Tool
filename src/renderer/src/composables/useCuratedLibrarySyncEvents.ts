@@ -54,8 +54,11 @@ const parsePlaylistsChangedPayload = (
     : []
   const removed = Array.isArray(rec.removed) ? rec.removed.filter(isListFileChange) : []
   const added = Array.isArray(rec.added) ? rec.added.filter(isListFileChange) : []
-  if (uuids.length === 0 && removed.length === 0 && added.length === 0) return null
-  return { uuids, removed, added }
+  const updated = Array.isArray(rec.updated) ? rec.updated.filter(isListFileChange) : []
+  if (uuids.length === 0 && removed.length === 0 && added.length === 0 && updated.length === 0) {
+    return null
+  }
+  return { uuids, removed, added, updated }
 }
 
 const groupByListUuid = (items: CuratedLibrarySyncListFileChange[]) => {
@@ -170,6 +173,20 @@ export function useCuratedLibrarySyncEvents() {
       })
       try {
         emitter.emit('songsArea/optimistic-restore', { listUUID, items: restoreItems })
+      } catch {}
+    }
+
+    for (const [listUUID, items] of groupByListUuid(parsed.updated)) {
+      if (listUUID === RECYCLE_BIN_UUID) continue
+      try {
+        emitter.emit('songsArea/sync-fields', {
+          listUUID,
+          items: items.map((item) => ({
+            absPath: item.absPath,
+            trackNumber: item.trackNumber,
+            addedAtMs: item.addedAtMs
+          }))
+        })
       } catch {}
     }
 

@@ -228,6 +228,82 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers()
   }
 
+  const onSongsFieldsPatched = (payload: {
+    listUUID?: string
+    items?: Array<{
+      absPath?: string
+      trackNumber?: number | null
+      addedAtMs?: number | null
+    }>
+  }) => {
+    const listUUID = payload?.listUUID
+    const currentListUUID = songsAreaState.songListUUID
+    if (listUUID && listUUID !== currentListUUID) return
+    const items = Array.isArray(payload?.items) ? payload.items : []
+    if (!items.length) return
+
+    const patchByPath = new Map<
+      string,
+      { trackNumber?: number | null; addedAtMs?: number | null }
+    >()
+    for (const item of items) {
+      const key = normalizePath(item.absPath)
+      if (!key) continue
+      patchByPath.set(key, item)
+    }
+    if (!patchByPath.size) return
+
+    let changed = false
+    let trackChanged = false
+    const nextSongs = originalSongInfoArr.value.map((song) => {
+      const patch = patchByPath.get(normalizePath(song.filePath))
+      if (!patch) return song
+      const next = { ...song }
+      if ('trackNumber' in patch) {
+        const value =
+          typeof patch.trackNumber === 'number' && patch.trackNumber > 0
+            ? patch.trackNumber
+            : undefined
+        if (next.playlistTrackNumber !== value) {
+          next.playlistTrackNumber = value
+          changed = true
+          trackChanged = true
+        }
+      }
+      if ('addedAtMs' in patch) {
+        const value =
+          typeof patch.addedAtMs === 'number' && Number.isFinite(patch.addedAtMs)
+            ? patch.addedAtMs
+            : undefined
+        if (next.addedAtMs !== value) {
+          next.addedAtMs = value
+          changed = true
+        }
+      }
+      return next
+    })
+    if (!changed) return
+
+    if (trackChanged) {
+      nextSongs.sort((left, right) => {
+        const valueA =
+          typeof left.playlistTrackNumber === 'number' && Number.isFinite(left.playlistTrackNumber)
+            ? left.playlistTrackNumber
+            : Number.MAX_SAFE_INTEGER
+        const valueB =
+          typeof right.playlistTrackNumber === 'number' &&
+          Number.isFinite(right.playlistTrackNumber)
+            ? right.playlistTrackNumber
+            : Number.MAX_SAFE_INTEGER
+        return valueA - valueB
+      })
+    }
+
+    originalSongInfoArr.value = markRaw(nextSongs)
+    applyFiltersAndSorting()
+    syncPlayingSongTrackNumberForCurrentList()
+  }
+
   const onSongsRemoved = (payload: {
     listUUID?: string
     paths?: string[]
@@ -862,6 +938,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   onMounted(() => {
     emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
+    emitter.on('songsArea/sync-fields', onSongsFieldsPatched)
     emitter.on('songsRemoved', onSongsRemoved)
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
@@ -888,6 +965,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   onUnmounted(() => {
     emitter.off('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.off('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
+    emitter.off('songsArea/sync-fields', onSongsFieldsPatched)
     emitter.off('songsRemoved', onSongsRemoved)
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)

@@ -27,7 +27,6 @@ import {
 } from '../librarySettingsDb'
 import { getPendingCuratedLibraryJoinPrompt } from './joinPrompt'
 import {
-  CURATED_LIBRARY_SYNC_CANCEL_CHANNEL,
   CURATED_LIBRARY_SYNC_PLAYLISTS_CHANGED_CHANNEL,
   CURATED_LIBRARY_SYNC_PROGRESS_ID,
   CURATED_LIBRARY_SYNC_ROOT_PARENT_UUID,
@@ -146,31 +145,7 @@ const persistSessionReports = (keepPrevious: boolean) => {
   if (sessionFailures.length > 0) writeCuratedLibrarySyncFailures(sessionFailures)
 }
 
-let progressEmitted = false
-
-const sendProgress = (
-  titleKey: string,
-  now: number,
-  total: number,
-  extra?: Record<string, unknown>
-) => {
-  const win = mainWindow.instance
-  if (!win || win.isDestroyed()) return
-  progressEmitted = true
-  win.webContents.send('progressSet', {
-    id: CURATED_LIBRARY_SYNC_PROGRESS_ID,
-    titleKey,
-    now,
-    total,
-    cancelable: true,
-    cancelChannel: CURATED_LIBRARY_SYNC_CANCEL_CHANNEL,
-    ...extra
-  })
-}
-
 const dismissProgress = () => {
-  if (!progressEmitted) return
-  progressEmitted = false
   const win = mainWindow.instance
   if (!win || win.isDestroyed()) return
   win.webContents.send('progressSet', {
@@ -225,6 +200,7 @@ const collectPlaylistFileChanges = (
   const uuids = new Set<string>()
   const removed: CuratedLibrarySyncListFileChange[] = []
   const added: CuratedLibrarySyncListFileChange[] = []
+  const updated: CuratedLibrarySyncListFileChange[] = []
   const pushChange = (target: CuratedLibrarySyncListFileChange[], file: CuratedLocalFile) => {
     const change = toListFileChange(file)
     if (!change) return
@@ -244,6 +220,10 @@ const collectPlaylistFileChanges = (
     if (next.parentUuid !== file.parentUuid || next.fileName !== file.fileName) {
       pushChange(removed, file)
       pushChange(added, next)
+      continue
+    }
+    if (next.trackNumber !== file.trackNumber || next.addedAtMs !== file.addedAtMs) {
+      pushChange(updated, next)
     }
   }
   for (const [fileId, file] of afterFiles) {
@@ -264,11 +244,16 @@ const collectPlaylistFileChanges = (
     if (parent) uuids.add(parent)
   }
   if (recycled) uuids.add(RECYCLE_BIN_UUID)
-  return { uuids: [...uuids], removed, added }
+  return { uuids: [...uuids], removed, added, updated }
 }
 
 const notifyPlaylistsChanged = (payload: CuratedLibrarySyncPlaylistsChangedPayload) => {
-  if (payload.uuids.length === 0 && payload.removed.length === 0 && payload.added.length === 0) {
+  if (
+    payload.uuids.length === 0 &&
+    payload.removed.length === 0 &&
+    payload.added.length === 0 &&
+    payload.updated.length === 0
+  ) {
     return
   }
   markGlobalSongSearchDirty('curated-library-sync', { songListUUIDs: payload.uuids })
@@ -304,7 +289,6 @@ const uploadMissingBlobs = async (files: CuratedLocalFile[]): Promise<Set<string
     await waitIfSuspended()
     if (seen.has(file.contentSha256)) continue
     seen.add(file.contentSha256)
-    sendProgress('cloudSync.curatedLibrary.progressUploading', index, files.length)
     index += 1
     try {
       const begin = await beginBlobUpload({ sha256: file.contentSha256, size: file.contentSize })
@@ -530,9 +514,6 @@ const waitForFirstSnapshotUnlock = async (): Promise<
   while (true) {
     throwIfCancelled()
     await waitIfSuspended()
-    sendProgress('cloudSync.curatedLibrary.progressWaitingFirstSnapshot', 0, 1, {
-      noProgress: true
-    })
     const status = await fetchCuratedLibraryStatus()
     if (status.snapshotReady || !status.firstSnapshotLocked) return status
     if (Date.now() >= deadline) {
@@ -542,9 +523,8 @@ const waitForFirstSnapshotUnlock = async (): Promise<
   }
 }
 
-const applyCtx = (onProgress = false): ApplyRemoteContext => ({
+const applyCtx = (): ApplyRemoteContext => ({
   signal: abortController?.signal || new AbortController().signal,
-  onProgress: onProgress ? (titleKey, now, total) => sendProgress(titleKey, now, total) : undefined,
   onTransferFailure: (payload) => {
     sessionAttemptedTransfers = true
     recordFailure({
@@ -561,7 +541,6 @@ const runJoin = async (
   mode: CuratedLibrarySyncJoinMode
 ): Promise<CuratedLibrarySyncStartResult> => {
   sessionCompletedWork = true
-  sendProgress('cloudSync.curatedLibrary.progressScanning', 0, 1, { noProgress: true })
   const local = await scanCuratedLibraryForSync()
   const snapshot = await pullMergedSnapshot(null)
   if (mode === 'local-wins') {
@@ -592,7 +571,7 @@ const runJoin = async (
         knownFileIds: null,
         knownNodeIds: null
       },
-      applyCtx(true)
+      applyCtx()
     )
     latest = await scanCuratedLibraryForSync()
     if (applied.diskFull) return { status: 'disk_full' }
@@ -622,7 +601,7 @@ const runJoin = async (
               knownFileIds: null,
               knownNodeIds: null
             },
-            applyCtx(true)
+            applyCtx()
           )
           writeCuratedLibrarySyncDeferredOps([...applied.deferred, ...conflictApplied.deferred])
           latest = await scanCuratedLibraryForSync()
@@ -666,7 +645,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
     const deferred = toDeferred(readCuratedLibrarySyncDeferredOps())
     const applyOptions = incrementalApplyOptions()
     const remainingDeferred = await retryDeferredRemoteOps(deferred, snapshot, applyCtx())
-    const applied = await applyRemoteSnapshot(snapshot, local, applyOptions, applyCtx(true))
+    const applied = await applyRemoteSnapshot(snapshot, local, applyOptions, applyCtx())
     latest = await scanCuratedLibraryForSync()
     if (applied.diskFull) return { status: 'disk_full' }
     remainingDeferred.push(...applied.deferred)
@@ -701,7 +680,7 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
         pushed.snapshot,
         after,
         applyOptions,
-        applyCtx(true)
+        applyCtx()
       )
       writeCuratedLibrarySyncDeferredOps([...remainingDeferred, ...conflictApplied.deferred])
       latest = await scanCuratedLibraryForSync()
@@ -744,7 +723,6 @@ const isFirstSnapshotRace = (error: unknown): boolean => {
 
 const runFirstSnapshotUpload = async (): Promise<CuratedLibrarySyncStartResult> => {
   sessionCompletedWork = true
-  sendProgress('cloudSync.curatedLibrary.progressScanning', 0, 1, { noProgress: true })
   const local = await scanCuratedLibraryForSync()
   const failedSha = await uploadMissingBlobs(local.files)
   const session = await beginFirstCuratedSnapshot()
@@ -803,14 +781,8 @@ export const runCuratedLibrarySync = async (
   sessionConflicts = []
   sessionAttemptedTransfers = false
   sessionCompletedWork = false
-  progressEmitted = false
-  const beginVisibleProgress = () => {
-    sendProgress('cloudSync.curatedLibrary.progressStarting', 0, 1, {
-      noProgress: true,
-      isInitial: true
-    })
-  }
   try {
+    dismissProgress()
     throwIfCancelled()
     let status = await fetchCuratedLibraryStatus()
     cacheQuotaFromStatus(status)
@@ -831,12 +803,10 @@ export const runCuratedLibrarySync = async (
       return await runIncremental()
     }
     if (!status.snapshotReady && status.firstSnapshotLocked) {
-      beginVisibleProgress()
       status = await waitForFirstSnapshotUnlock()
     }
     if (!status.snapshotReady) {
       if (payload.joinMode === 'cloud-wins') {
-        beginVisibleProgress()
         return await runJoin('cloud-wins')
       }
       if (rewound && !payload.joinMode) {
@@ -852,13 +822,11 @@ export const runCuratedLibrarySync = async (
         (rewound || lastRevision !== null) &&
         (payload.joinMode === 'local-wins' || payload.joinMode === 'merge')
       ) {
-        beginVisibleProgress()
         return await runFirstSnapshotUpload()
       }
       if (lastRevision !== null) {
         return { status: 'success' }
       }
-      beginVisibleProgress()
       try {
         return await runFirstSnapshotUpload()
       } catch (error) {
@@ -890,10 +858,8 @@ export const runCuratedLibrarySync = async (
           }
         }
       }
-      beginVisibleProgress()
       return await runJoin(payload.joinMode)
     }
-    if (trigger !== 'scheduled') beginVisibleProgress()
     return await runIncremental()
   } catch (error) {
     if (cancelRequested || (error as { name?: string })?.name === 'AbortError') {

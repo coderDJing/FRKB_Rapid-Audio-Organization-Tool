@@ -12,6 +12,8 @@ import {
   waitForUserDecision
 } from '../../utils'
 import { transferTrackCaches } from '../../services/cacheMaintenance'
+import { scheduleCuratedLibrarySyncIfUnderCurated } from '../../cloudSyncScheduler'
+import { getNodeAbsPath } from '../../curatedLibrarySync/paths'
 import {
   cleanupMixtapeWaveformCache,
   cleanupOrphanedMixtapeVaultFiles
@@ -542,6 +544,11 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
         } else if (item.type === 'reorder') {
           updateLibraryNodeOrder(item.uuid, item.order ?? null)
           operationStatus = 'reordered'
+          let reorderAbs = ''
+          try {
+            if (item.path) reorderAbs = resolveLibraryPath(item.path).absPath
+          } catch {}
+          scheduleCuratedLibrarySyncIfUnderCurated([reorderAbs, getNodeAbsPath(item.uuid)])
         } else if (item.type === 'rename') {
           const oldTarget = resolveLibraryPath(item.path)
           const newTarget = item.newPath
@@ -745,6 +752,23 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
         }
         results.push({ uuid: item.uuid, status: operationStatus })
       }
+      scheduleCuratedLibrarySyncIfUnderCurated(
+        operateArray.flatMap((item) => {
+          const paths: string[] = []
+          const remember = (rendererPath?: string) => {
+            const raw = String(rendererPath || '').trim()
+            if (!raw) return
+            try {
+              paths.push(resolveLibraryPath(raw).absPath)
+            } catch {}
+          }
+          remember(item.path)
+          remember(item.newPath)
+          const nodeAbs = getNodeAbsPath(item.uuid)
+          if (nodeAbs) paths.push(nodeAbs)
+          return paths
+        })
+      )
       const failedDetails = results.filter((item) => item.status.includes('failed'))
       if (failedDetails.length > 0) {
         return {
