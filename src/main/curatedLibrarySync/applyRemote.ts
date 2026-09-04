@@ -399,6 +399,37 @@ const persistMatchedCloudFile = async (
   })
 }
 
+/** 扫描开跑后文件被改名/挪走/改内容/改曲序：不要按云端旧快照搬回去。 */
+const liveMatchedFileApplyState = async (
+  matched: CuratedLocalFile,
+  lastFile: CuratedLibrarySyncCloudFile | undefined,
+  scope: CloudParentScope,
+  lastNodeIds: Set<string>
+): Promise<'missing' | 'pending' | 'stable'> => {
+  if (!(await fs.pathExists(matched.absPath))) return 'missing'
+  try {
+    const stat = await fs.stat(matched.absPath)
+    if (
+      stat.size !== matched.contentSize ||
+      (matched.mtimeMs != null && Number(matched.mtimeMs) !== Number(stat.mtimeMs))
+    ) {
+      return 'pending'
+    }
+  } catch {
+    return 'missing'
+  }
+  const liveCache = await readCacheFields(matched.absPath)
+  const live = {
+    parentUuid: matched.parentUuid,
+    fileName: path.basename(matched.absPath),
+    contentSha256: matched.contentSha256,
+    trackNumber: liveCache.trackNumber ?? matched.trackNumber,
+    addedAtMs: liveCache.addedAtMs ?? matched.addedAtMs
+  }
+  if (localFilePendingSinceLast(live, lastFile, scope.curatedUuid, lastNodeIds)) return 'pending'
+  return 'stable'
+}
+
 const deleteLocalFile = async (absPath: string, ctx: ApplyRemoteContext): Promise<boolean> => {
   if (isBusyPath(absPath, ctx)) return false
   const setProtection = await protectSetReferencedFilesForDeletion([absPath])
@@ -723,15 +754,16 @@ export const applyRemoteSnapshot = async (
       if (matched) {
         const lastFile = options.lastAppliedFiles?.get(file.fileId)
         const lastNodeIds = new Set(options.lastAppliedNodes?.keys() || [])
-        if (
-          shouldPreservePendingLocal(options) &&
-          localFilePendingSinceLast(matched, lastFile, scope.curatedUuid, lastNodeIds)
-        ) {
-          logCuratedDeleteTrace('apply-skip-pending-file-meta', {
-            fileId: file.fileId,
-            fileName: matched.fileName
-          })
-          continue
+        if (shouldPreservePendingLocal(options)) {
+          const liveState = await liveMatchedFileApplyState(matched, lastFile, scope, lastNodeIds)
+          if (liveState !== 'stable') {
+            logCuratedDeleteTrace('apply-skip-pending-file-meta', {
+              fileId: file.fileId,
+              fileName: matched.fileName,
+              liveState
+            })
+            continue
+          }
         }
         const destPath = path.join(destDir, file.fileName)
         if (isBusyPath(matched.absPath, ctx)) {
