@@ -402,6 +402,11 @@ const buildPushOps = (
   const pendingDeleted = listPendingDeletedCuratedNodeIds()
   for (const node of local.nodes) {
     if (pendingDeleted.has(node.uuid)) continue
+    // 墓碑赢：扫描会把 updatedAtMs 写成 now，不能靠时间戳判断「本机更新」。
+    if (diff.tombstoneNodes.has(node.uuid) && !diff.cloudNodes.has(node.uuid)) {
+      logCuratedDeleteTrace('skip-upsert-tombstoned-node', { uuid: node.uuid, name: node.name })
+      continue
+    }
     const cloud = diff.cloudNodes.get(node.uuid)
     if (
       !cloud ||
@@ -425,6 +430,7 @@ const buildPushOps = (
   }
   for (const file of local.files) {
     if (pendingDeleted.has(file.parentUuid)) continue
+    if (diff.tombstoneFiles.has(file.fileId) && !diff.cloudFiles.has(file.fileId)) continue
     const cloud = diff.cloudFiles.get(file.fileId)
     if (
       !cloud ||
@@ -651,6 +657,9 @@ const incrementalApplyOptions = (): ApplyRemoteOptions => {
   const knownNodeIds = new Set<string>()
   if (cached) {
     for (const node of cached.nodes) knownNodeIds.add(node.uuid)
+    for (const tombstone of cached.tombstones) {
+      if (tombstone.kind === 'node') knownNodeIds.add(tombstone.id)
+    }
   }
   if (trustMaterialized && lastIds) {
     for (const uuid of lastIds.nodes) knownNodeIds.add(uuid)
@@ -674,13 +683,15 @@ const isDeletionOp = (op: CuratedLibrarySyncOp): boolean =>
 const summarizePushOps = (phase: string, ops: CuratedLibrarySyncOp[]): void => {
   const pending = [...listPendingDeletedCuratedNodeIds()]
   const deleteNodes = ops.filter((op) => op.type === 'deleteNode').map((op) => op.uuid)
-  if (pending.length === 0 && deleteNodes.length === 0) return
+  const upsertNodes = ops.filter((op) => op.type === 'upsertNode').map((op) => op.node.uuid)
+  if (pending.length === 0 && deleteNodes.length === 0 && upsertNodes.length === 0) return
   logCuratedDeleteTrace('push-ops', {
     phase,
     pending,
     deleteNode: deleteNodes,
+    upsertNodeIds: upsertNodes,
     deleteFile: ops.filter((op) => op.type === 'deleteFile').length,
-    upsertNode: ops.filter((op) => op.type === 'upsertNode').length,
+    upsertNode: upsertNodes.length,
     upsertFile: ops.filter((op) => op.type === 'upsertFile').length
   })
 }
@@ -705,6 +716,18 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
       const pushedDeletes = await pushCuratedOps({
         baseRevision: snapshot.revision,
         ops: deletionOps
+      })
+      logCuratedDeleteTrace('push-deletes-result', {
+        ok: pushedDeletes.ok,
+        baseRevision: snapshot.revision,
+        nextRevision: pushedDeletes.snapshot.revision,
+        stillOnCloud: deletionOps
+          .filter((op) => op.type === 'deleteNode')
+          .map((op) => op.uuid)
+          .filter((uuid) => pushedDeletes.snapshot.nodes.some((node) => node.uuid === uuid)),
+        tombstoneIds: pushedDeletes.snapshot.tombstones
+          .filter((item) => item.kind === 'node')
+          .map((item) => item.id)
       })
       if (pushedDeletes.ok) {
         snapshot = pushedDeletes.snapshot

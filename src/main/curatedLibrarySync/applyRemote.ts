@@ -38,6 +38,7 @@ import {
   getCuratedLibraryAbsRoot,
   getLibraryAbsRoot,
   getNodeAbsPath,
+  isPathInside,
   libraryRelativeToAbs,
   resolveCloudParentAbs,
   resolveCloudParentToLocalUuid
@@ -514,7 +515,7 @@ const applyFileTombstones = async (
     if (tombstone.kind !== 'file' || cloudFileIds.has(tombstone.id)) continue
     assertNotCancelled(ctx.signal)
     const abs = resolveLocalAbsForFileId(tombstone.id, localById)
-    if (!abs || !abs.startsWith(curatedRoot) || !(await fs.pathExists(abs))) continue
+    if (!abs || !isPathInside(abs, curatedRoot) || !(await fs.pathExists(abs))) continue
     const identity = getCuratedSyncFileById(tombstone.id)
     if (
       identity &&
@@ -532,6 +533,33 @@ const applyFileTombstones = async (
   return deferred
 }
 
+const audioExtSet = (): Set<string> => {
+  const list = store.settingConfig?.audioExt
+  const result = new Set<string>()
+  if (!Array.isArray(list)) return result
+  for (const raw of list) {
+    const ext = String(raw || '')
+      .trim()
+      .toLowerCase()
+    if (!ext) continue
+    result.add(ext.startsWith('.') ? ext : `.${ext}`)
+  }
+  return result
+}
+
+const dirHasAudioFiles = async (dirPath: string, audioExts: Set<string>): Promise<boolean> => {
+  const items = await fs.readdir(dirPath, { withFileTypes: true }).catch(() => [])
+  for (const item of items) {
+    const full = path.join(dirPath, item.name)
+    if (item.isFile()) {
+      if (audioExts.has(path.extname(item.name).toLowerCase())) return true
+    } else if (item.isDirectory() && (await dirHasAudioFiles(full, audioExts))) {
+      return true
+    }
+  }
+  return false
+}
+
 const applyNodeTombstones = async (
   snapshot: CuratedLibrarySyncSnapshot,
   curatedRoot: string,
@@ -539,6 +567,7 @@ const applyNodeTombstones = async (
 ): Promise<DeferredRemoteOp[]> => {
   const deferred: DeferredRemoteOp[] = []
   const cloudNodeIds = new Set(snapshot.nodes.map((node) => node.uuid))
+  const audioExts = audioExtSet()
   const tombstoned = snapshot.tombstones
     .filter((item) => item.kind === 'node' && !cloudNodeIds.has(item.id))
     .map((item) => item.id)
@@ -550,17 +579,18 @@ const applyNodeTombstones = async (
     .sort((left, right) => right.depth - left.depth)
   for (const item of withDepth) {
     assertNotCancelled(ctx.signal)
-    if (!item.abs || !item.abs.startsWith(curatedRoot) || !(await fs.pathExists(item.abs))) {
+    if (!item.abs || !isPathInside(item.abs, curatedRoot) || !(await fs.pathExists(item.abs))) {
       const nodes = loadLibraryNodes() || []
       if (nodes.some((node) => node.uuid === item.uuid)) removeLibraryNode(item.uuid)
       continue
     }
-    const leftover = await fs.readdir(item.abs).catch(() => [])
-    const meaningful = leftover.filter((name) => name !== '.frkb.uuid')
-    if (meaningful.length > 0) {
+    // 本机删空歌单只看有没有音频；封面等残留不能挡住墓碑，否则对端会 upsert 把歌单救回云端。
+    if (await dirHasAudioFiles(item.abs, audioExts)) {
+      logCuratedDeleteTrace('tombstone-defer-has-audio', { uuid: item.uuid, abs: item.abs })
       deferred.push({ type: 'deleteNode', nodeUuid: item.uuid })
       continue
     }
+    logCuratedDeleteTrace('tombstone-remove-node', { uuid: item.uuid, abs: item.abs })
     await fs.remove(item.abs)
     removeLibraryNode(item.uuid)
   }
@@ -709,7 +739,7 @@ export const applyRemoteSnapshot = async (
       for (const node of localNodes) {
         if (cloudNodeIds.has(node.uuid)) continue
         const abs = getNodeAbsPath(node.uuid)
-        if (!abs || !abs.startsWith(curatedRoot)) continue
+        if (!abs || !isPathInside(abs, curatedRoot)) continue
         const leftover = await fs.readdir(abs).catch(() => [])
         const meaningful = leftover.filter((name) => name !== '.frkb.uuid')
         if (meaningful.length === 0) {
