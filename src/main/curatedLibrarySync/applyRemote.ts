@@ -344,21 +344,19 @@ export const shouldSkipRestoringCloudFile = (
 ): boolean => {
   if (options.extras === 'delete' || options.adoptIds) return false
   const identity = getCuratedSyncFileById(file.fileId)
-  const locallyRemoved = !!identity && identity.location !== 'curated'
-  if (locallyRemoved) {
-    return options.knownFileIds == null || options.knownFileIds.has(file.fileId)
-  }
-  if (!options.knownFileIds?.has(file.fileId)) return false
   const abs =
     identity?.location === 'curated' && identity.relativePath
       ? curatedRelativeToAbs(identity.relativePath)
       : null
-  if (!abs) return true
+  let onDisk = false
   try {
-    return !fs.pathExistsSync(abs)
+    onDisk = !!abs && fs.pathExistsSync(abs)
   } catch {
-    return true
+    onDisk = false
   }
+  const locallyRemoved = !!identity && (identity.location !== 'curated' || !onDisk)
+  if (locallyRemoved) return true
+  return !identity && !!options.knownFileIds?.has(file.fileId)
 }
 
 export const shouldSkipRecreatingCloudNode = (

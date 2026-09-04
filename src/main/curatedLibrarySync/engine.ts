@@ -574,6 +574,20 @@ const runIncremental = async (): Promise<CuratedLibrarySyncStartResult> => {
     const failedSha = await uploadMissingBlobs(after.files)
     const retain = collectUnappliedCloudIds(snapshot, after, applyOptions)
     const ops = omitFailedBlobOps(buildPushOps(after, snapshot, retain), failedSha)
+    const deleteFileCount = ops.filter((op) => op.type === 'deleteFile').length
+    if (
+      deleteFileCount > 0 ||
+      retain.files.size > 0 ||
+      after.files.length !== snapshot.files.length
+    ) {
+      log.info('[curated-sync] 增量推送差分', {
+        localFiles: after.files.length,
+        cloudFiles: snapshot.files.length,
+        retainFiles: retain.files.size,
+        deleteFiles: deleteFileCount,
+        ops: ops.length
+      })
+    }
     if (ops.length === 0) {
       persistAppliedSnapshot(snapshot, after)
       writeCuratedLibrarySyncDeferredOps(remainingDeferred)

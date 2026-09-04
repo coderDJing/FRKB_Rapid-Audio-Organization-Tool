@@ -36,6 +36,8 @@ import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { waitForPlaybackForegroundIdle } from '../services/playbackForegroundActivity'
 import { beginLibraryTreeWatcherBulkOperation } from '../libraryTreeWatcher'
+import { scheduleCuratedLibrarySyncAfterLocalChange } from '../cloudSyncScheduler'
+import { getCuratedLibraryAbsRoot, isPathInside } from '../curatedLibrarySync/paths'
 import {
   getRecordingLibraryRootAbs,
   hasRecordings,
@@ -330,6 +332,9 @@ export function registerLibraryMaintenanceHandlers() {
       }
       if (compacted) {
         markGlobalSongSearchDirty('delSongs')
+      }
+      if (removedPaths.some((item) => isPathInside(item, getCuratedLibraryAbsRoot()))) {
+        scheduleCuratedLibrarySyncAfterLocalChange()
       }
       if (removedPaths.some((item) => isInRecordingLibraryAbsPath(item))) {
         mainWindow.instance?.webContents.send(RECORDING_LIBRARY_CHANGED_EVENT, {

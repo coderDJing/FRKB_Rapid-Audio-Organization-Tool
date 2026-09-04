@@ -136,9 +136,14 @@ export function beginLibraryTreeWatcherBulkOperation(): () => void {
   }
 }
 
-/** 精选库内容变了（含删除后文件落在回收站）。不是把回收站同步上云。 */
+/**
+ * 精选库内容变了（含删除后文件落在回收站）。不是把回收站同步上云。
+ * 必须立刻通知 mutationListener：delSongs 会包在 bulk 里，结束时 fromBulk
+ * 对账不会触发同步，只靠 reconcile 会把这次删除吃掉。
+ */
 export function notifyLibraryFsChanged(_absPath?: string): void {
   pendingCuratedContentChange = true
+  mutationListener?.()
   scheduleReconcile(watchWindow)
 }
 
