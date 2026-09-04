@@ -191,7 +191,7 @@ const zhContent = {
     {
       title: '单轨编辑与波形可视化',
       details:
-        '支持 SoundCloud、细节、RGB 以及单轨编辑模式波形，配合区间播放和列表预览快速筛歌。精准定位高潮段落与鼓点能量。'
+        '播放器、列表预览和单轨编辑统一使用 RGB 三频能量波形，可切换半波形/全波形，配合区间播放快速筛歌。精准定位高潮段落与鼓点能量。'
     },
     {
       title: '内容感知去重与真实映射',
@@ -346,7 +346,7 @@ const enContent = {
     {
       title: 'Waveform Edit & Visualization',
       details:
-        'SoundCloud, detailed, RGB, and single-track editing waveforms with range playback. Precisely locate drops and drum energy.'
+        'RGB three-band energy waveforms in the player, list previews, and single-track editing, with half/full height and range playback. Precisely locate drops and drum energy.'
     },
     {
       title: 'Content-Aware Dedup & Mapping',

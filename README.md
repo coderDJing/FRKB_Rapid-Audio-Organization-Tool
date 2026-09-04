@@ -86,7 +86,7 @@ Track Studio does not provide an official Linux release.
 - **Selectable playback range**: Start and stop playback within a chosen section when only part of a track needs to be checked.
 - **Browser-mode mini player**: Open a compact player window from browser mode, with range playback, waveform seeking, cover actions, and deleting tracks above the current song.
 - **Output device selection**: Play through a selected audio device or follow the system default.
-- **Multiple waveform styles**: SoundCloud-style waveform, detailed waveform, RGB energy view, list waveform previews, and single-track editing waveforms.
+- **RGB waveform visualization**: The player, list previews, and single-track editing all use RGB three-band energy waveforms, with a half/full height option.
 - **Large waveform browsing**: Dual-track and edit-mode waveforms support precise seeking, cue placement, grid inspection, and smooth redraw during playback.
 - **Lightweight waveform caches**: RGB display data and surface-specific caches keep large waveforms, list previews, and Mixtape timelines responsive across repeat visits.
 - **Title-bar audio visualization**: Monitor playback energy from the title bar without giving up screen space.
