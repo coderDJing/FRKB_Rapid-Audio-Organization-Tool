@@ -1,7 +1,6 @@
 import path from 'node:path'
 import { findSongListRootByPath } from '../libraryTreeDb'
 import * as LibraryCacheDb from '../libraryCacheDb'
-import type { SongCacheEntry } from '../libraryCacheDb'
 import { normalizeAddedAtMs } from '../../shared/songAddedAt'
 import { normalizePlaylistTrackNumber } from '../services/playlistTrackNumbers'
 
@@ -17,16 +16,15 @@ const normalizeAbsPath = (value: string): string => {
   return process.platform === 'win32' ? resolved.toLocaleLowerCase() : resolved
 }
 
-const toCacheFields = (entry: SongCacheEntry | null | undefined): CuratedCacheFields => ({
-  trackNumber: normalizePlaylistTrackNumber(entry?.info?.playlistTrackNumber) ?? null,
-  addedAtMs: normalizeAddedAtMs(entry?.info?.addedAtMs) ?? null
-})
-
 export const readCacheFields = async (absPath: string): Promise<CuratedCacheFields> => {
   try {
     const listRoot = await findSongListRootByPath(path.dirname(absPath))
     if (!listRoot) return EMPTY_CACHE_FIELDS
-    return toCacheFields(await LibraryCacheDb.loadSongCacheEntry(listRoot, absPath))
+    const entry = await LibraryCacheDb.loadSongCacheEntry(listRoot, absPath)
+    return {
+      trackNumber: normalizePlaylistTrackNumber(entry?.info?.playlistTrackNumber) ?? null,
+      addedAtMs: normalizeAddedAtMs(entry?.info?.addedAtMs) ?? null
+    }
   } catch {
     return EMPTY_CACHE_FIELDS
   }
@@ -63,13 +61,13 @@ export const readCacheFieldsBatch = async (
 
   for (const { listRoot, paths } of pathsByListRoot.values()) {
     try {
-      const cache = await LibraryCacheDb.loadSongCache(listRoot)
-      const normalizedCache = new Map<string, SongCacheEntry>()
-      for (const [filePath, entry] of cache || []) {
-        normalizedCache.set(normalizeAbsPath(filePath), entry)
+      const cache = await LibraryCacheDb.loadSongCacheTrackFields(listRoot)
+      const normalizedCache = new Map<string, CuratedCacheFields>()
+      for (const [filePath, fields] of cache || []) {
+        normalizedCache.set(normalizeAbsPath(filePath), fields)
       }
       for (const absPath of paths) {
-        result.set(absPath, toCacheFields(normalizedCache.get(normalizeAbsPath(absPath))))
+        result.set(absPath, normalizedCache.get(normalizeAbsPath(absPath)) ?? EMPTY_CACHE_FIELDS)
       }
     } catch {
       for (const absPath of paths) result.set(absPath, EMPTY_CACHE_FIELDS)

@@ -4,6 +4,7 @@ import { createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import { createReadStream } from 'node:fs'
 import { LibraryMergeError } from './types'
+import { invalidateLibraryNodeCache } from '../../libraryNodeCache'
 
 type SqliteDatabase = InstanceType<typeof import('better-sqlite3')>
 
@@ -357,6 +358,7 @@ export async function clearSourceCuratedLibrarySubtree(params: {
     }
     await fs.rm(childAbs, { recursive: true, force: true })
     sourceDb.prepare('DELETE FROM library_nodes WHERE uuid = ?').run(child.uuid)
+    invalidateLibraryNodeCache()
   }
 
   const remaining = collectSubtreeNodes(curatedCore.uuid, buildChildren(listNodes(sourceDb)))

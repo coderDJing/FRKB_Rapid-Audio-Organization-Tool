@@ -27,6 +27,7 @@ import {
   type LibraryMergeScope
 } from './types'
 import { clearSourceCuratedLibrarySubtree } from './clearSourceCuratedLibrary'
+import { invalidateLibraryNodeCache } from '../../libraryNodeCache'
 
 type SqliteDatabase = InstanceType<typeof import('better-sqlite3')>
 
@@ -882,6 +883,7 @@ export async function mergeFrkbLibraries(
         throw new LibraryMergeError('TARGET_VERIFY_FAILED', '写入后的目标库外键检查失败')
       }
       targetDb.exec('COMMIT')
+      invalidateLibraryNodeCache()
       targetTransactionOpen = false
       committed = true
       journal.phase = 'completed'

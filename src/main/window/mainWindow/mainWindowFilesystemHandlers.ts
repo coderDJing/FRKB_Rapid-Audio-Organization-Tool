@@ -681,7 +681,10 @@ function isUnderPath(parentPath: string, targetPath: string): boolean {
   return target === parent || target.startsWith(parent + path.sep)
 }
 
-function buildNodePathMap(nodes: LibraryNodeRow[], root: LibraryNodeRow): Map<string, string> {
+function buildNodePathMap(
+  nodes: readonly LibraryNodeRow[],
+  root: LibraryNodeRow
+): Map<string, string> {
   const childrenMap = new Map<string, LibraryNodeRow[]>()
   for (const row of nodes) {
     if (!row.parentUuid) continue

@@ -612,7 +612,7 @@ const isPathUnderRoot = (rootPath: string, filePath: string): boolean => {
   return fileKey === rootKey || fileKey.startsWith(`${rootKey}${path.sep}`)
 }
 
-const buildLibraryNodePathMap = (nodes: LibraryNodeRow[]): Map<string, string> => {
+const buildLibraryNodePathMap = (nodes: readonly LibraryNodeRow[]): Map<string, string> => {
   const root = nodes.find((row) => row.parentUuid === null && row.nodeType === 'root')
   if (!root) return new Map()
 

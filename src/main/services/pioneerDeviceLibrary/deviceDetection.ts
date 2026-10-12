@@ -43,8 +43,13 @@ const WINDOWS_DRIVE_TYPE_LABELS: Record<number, string> = {
 const DRIVE_EJECT_WAIT_MS = 6000
 const DRIVE_EJECT_POLL_MS = 400
 const WINDOWS_SHELL_EJECT_WAIT_MS = 1600
-const WINDOWS_DRIVE_LIST_TIMEOUT_MS = 10_000
+const WINDOWS_LOGICAL_DISK_TIMEOUT_MS = 4_000
+const WINDOWS_USB_LETTER_TIMEOUT_MS = 12_000
 const REMOVABLE_DRIVE_CACHE_TTL_MS = 60_000
+const INCOMPLETE_REMOVABLE_DRIVE_CACHE_TTL_MS = 15_000
+const DRIVE_PROBE_LOG_INTERVAL_MS = 10 * 60 * 1000
+
+const driveProbeLogAt = new Map<string, number>()
 
 let removableDriveCache: {
   value: PioneerRemovableDriveInfo[]
@@ -137,6 +142,14 @@ const extractExecErrorDetail = (error: unknown) => {
     trimOutput(err?.message) ||
     'unknown error'
   )
+}
+
+const logDriveProbeError = (key: string, message: string, detail: unknown) => {
+  const now = Date.now()
+  const lastLoggedAt = driveProbeLogAt.get(key) || 0
+  if (now - lastLoggedAt < DRIVE_PROBE_LOG_INTERVAL_MS) return
+  driveProbeLogAt.set(key, now)
+  log.error(message, detail)
 }
 
 const getExecFailureDiagnostic = (error: unknown) => {
@@ -341,35 +354,98 @@ const runMacPlistCommand = async (command: string, args: string[]) => {
   return await convertPlistToJson(String(stdout || ''))
 }
 
-async function listWindowsRemovableDrives(): Promise<BaseDriveRow[]> {
+const runWindowsPowerShell = (script: string, timeoutMs: number) =>
+  execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    {
+      windowsHide: true,
+      // PowerShell 输出与 Node 解码统一使用 UTF-8，避免卷标受系统代码页影响。
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: 1024 * 1024 * 8
+    }
+  )
+
+async function listWindowsLogicalDisks(): Promise<Array<Record<string, unknown>>> {
   const script = [
     "$ErrorActionPreference = 'Stop'",
-    // PowerShell 输出与 Node 解码统一使用 UTF-8，避免卷标受系统代码页影响。
+    "$ProgressPreference = 'SilentlyContinue'",
     '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
-    "$usbLetters = New-Object 'System.Collections.Generic.HashSet[string]'",
+    '$rows = @(Get-CimInstance -ClassName Win32_LogicalDisk -Property DeviceID,DriveType,VolumeName,FileSystem,Size,FreeSpace -OperationTimeoutSec 3 | ForEach-Object {',
+    '  [PSCustomObject]@{',
+    '    deviceId = [string]$_.DeviceID',
+    '    volumeName = [string]$_.VolumeName',
+    '    driveType = [int]$_.DriveType',
+    '    fileSystem = [string]$_.FileSystem',
+    '    size = if ($_.Size) { [int64]$_.Size } else { 0 }',
+    '    freeSpace = if ($_.FreeSpace) { [int64]$_.FreeSpace } else { 0 }',
+    '  }',
+    '})',
+    "if ($rows.Count -eq 0) { '[]' } else { $rows | ConvertTo-Json -Compress -Depth 4 }"
+  ].join('\n')
+  const { stdout, stderr } = await runWindowsPowerShell(script, WINDOWS_LOGICAL_DISK_TIMEOUT_MS)
+  const partialProbeError = trimOutput(stderr)
+  if (partialProbeError) {
+    logDriveProbeError(
+      'logical-disk-partial',
+      '[pioneer-device-library] windows logical disk probe partially failed',
+      { stderr: partialProbeError }
+    )
+  }
+  return normalizeJsonArray<Record<string, unknown>>(JSON.parse(String(stdout || '[]')))
+}
+
+type UsbLetterProbe = {
+  letters: Set<string>
+  complete: boolean
+}
+
+/** stderr 有内容说明脚本内部的关联查询失败过；这时 [] 不是“没有 USB 盘”。 */
+export const readUsbLetterProbe = (stdout: string, stderr: string): UsbLetterProbe => {
+  const parsed = JSON.parse(String(stdout || '[]')) as unknown
+  const rawLetters = Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
+  const letters = rawLetters
+    .map((letter) =>
+      String(letter || '')
+        .trim()
+        .toUpperCase()
+    )
+    .filter(Boolean)
+  return { letters: new Set(letters), complete: trimOutput(stderr).length === 0 }
+}
+
+type RemovableDriveListing = {
+  rows: BaseDriveRow[]
+  complete: boolean
+}
+
+async function listWindowsUsbDriveLetters(): Promise<UsbLetterProbe> {
+  const script = [
+    "$ErrorActionPreference = 'Continue'",
+    "$ProgressPreference = 'SilentlyContinue'",
+    '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
+    "$letters = New-Object 'System.Collections.Generic.List[string]'",
     'try {',
-    '  Get-CimInstance Win32_DiskDrive -ErrorAction Stop | Where-Object {',
-    "    $_.InterfaceType -eq 'USB' -or ($_.PNPDeviceID -like 'USBSTOR*')",
-    '  } | ForEach-Object {',
-    '    $disk = $_',
-    '    Get-CimAssociatedInstance -InputObject $disk -Association Win32_DiskDriveToDiskPartition -ErrorAction SilentlyContinue | ForEach-Object {',
-    '      $partition = $_',
-    '      Get-CimAssociatedInstance -InputObject $partition -Association Win32_LogicalDiskToPartition -ErrorAction SilentlyContinue | ForEach-Object {',
-    '        $id = [string]$_.DeviceID',
-    '        if ($id) { [void]$usbLetters.Add($id.ToUpperInvariant()) }',
+    '  Get-CimInstance -ClassName Win32_DiskDrive -OperationTimeoutSec 8 -ErrorAction Stop |',
+    "    Where-Object { $_.InterfaceType -eq 'USB' -or ($_.PNPDeviceID -like 'USBSTOR*') } | ForEach-Object {",
+    '      $disk = $_',
+    '      Get-CimAssociatedInstance -InputObject $disk -Association Win32_DiskDriveToDiskPartition -ErrorAction SilentlyContinue | ForEach-Object {',
+    '        Get-CimAssociatedInstance -InputObject $_ -Association Win32_LogicalDiskToPartition -ErrorAction SilentlyContinue | ForEach-Object {',
+    '          $id = [string]$_.DeviceID',
+    '          if ($id) { [void]$letters.Add($id.ToUpperInvariant()) }',
+    '        }',
     '      }',
     '    }',
-    '  }',
     '} catch {',
     '  [Console]::Error.WriteLine("cim-usb-association: $($_.Exception.Message)")',
     '}',
     'if (Get-Command Get-Disk -ErrorAction SilentlyContinue) {',
     '  try {',
     "    Get-Disk -ErrorAction Stop | Where-Object { $_.BusType -eq 'USB' } | ForEach-Object {",
-    '      $diskNumber = $_.Number',
-    '      Get-Partition -DiskNumber $diskNumber -ErrorAction SilentlyContinue | ForEach-Object {',
+    '      Get-Partition -DiskNumber $_.Number -ErrorAction SilentlyContinue | ForEach-Object {',
     '        if ($_.DriveLetter) {',
-    "          [void]$usbLetters.Add((([string]$_.DriveLetter + ':').ToUpperInvariant()))",
+    "          [void]$letters.Add((([string]$_.DriveLetter + ':').ToUpperInvariant()))",
     '        }',
     '      }',
     '    }',
@@ -377,78 +453,85 @@ async function listWindowsRemovableDrives(): Promise<BaseDriveRow[]> {
     '    [Console]::Error.WriteLine("storage-usb-association: $($_.Exception.Message)")',
     '  }',
     '}',
-    '$rows = @()',
-    'Get-CimInstance Win32_LogicalDisk -ErrorAction Stop | ForEach-Object {',
-    '  $id = [string]$_.DeviceID',
-    '  if (-not $id) { return }',
-    '  $driveType = [int]$_.DriveType',
-    '  $isUsb = $usbLetters.Contains($id.ToUpperInvariant())',
-    '  $isRemovable = ($driveType -eq 2) -or $isUsb',
-    '  if (-not $isRemovable) { return }',
-    '  $rows += [PSCustomObject]@{',
-    '    deviceId = $id',
-    '    volumeName = [string]$_.VolumeName',
-    '    driveType = $driveType',
-    '    fileSystem = [string]$_.FileSystem',
-    '    size = if ($_.Size) { [int64]$_.Size } else { 0 }',
-    '    freeSpace = if ($_.FreeSpace) { [int64]$_.FreeSpace } else { 0 }',
-    '    isUsb = $isUsb',
-    '  }',
-    '}',
-    "if ($rows.Count -eq 0) { '[]' } else { $rows | ConvertTo-Json -Compress -Depth 4 }"
+    '$unique = @($letters | Select-Object -Unique)',
+    "if ($unique.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $unique -Compress }"
   ].join('\n')
-
   try {
-    const { stdout, stderr } = await execFileAsync(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      {
-        windowsHide: true,
-        encoding: 'utf8',
-        timeout: WINDOWS_DRIVE_LIST_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024 * 8
-      }
-    )
-    const partialProbeError = trimOutput(stderr)
-    if (partialProbeError) {
-      log.error('[pioneer-device-library] windows removable drive probe partially failed', {
-        stderr: partialProbeError
-      })
+    const { stdout, stderr } = await runWindowsPowerShell(script, WINDOWS_USB_LETTER_TIMEOUT_MS)
+    const probe = readUsbLetterProbe(String(stdout || ''), String(stderr || ''))
+    const probeError = trimOutput(stderr)
+    if (probeError) {
+      logDriveProbeError(
+        'usb-letter-probe',
+        '[pioneer-device-library] windows usb drive letter probe failed',
+        { stderr: probeError }
+      )
     }
-    const rows = normalizeJsonArray<Record<string, unknown>>(JSON.parse(String(stdout || '[]')))
-    const normalizedRows: BaseDriveRow[] = []
-    for (const row of rows) {
-      const deviceId = String(row?.deviceId || '')
-        .trim()
-        .toUpperCase()
-      const rootPath = normalizeDriveRoot(deviceId)
-      if (!deviceId || !rootPath) continue
-      const driveType = Number.isFinite(Number(row?.driveType)) ? Number(row.driveType) : null
-      const volumeName = String(row?.volumeName || '').trim()
-      normalizedRows.push({
-        id: deviceId,
-        name: volumeName || deviceId,
-        path: rootPath,
-        volumeName,
-        fileSystem: String(row?.fileSystem || '').trim(),
-        size: toSafeInt(row?.size),
-        freeSpace: toSafeInt(row?.freeSpace),
-        driveType,
-        driveTypeLabel:
-          driveType !== null ? WINDOWS_DRIVE_TYPE_LABELS[driveType] || 'unknown' : 'unknown',
-        isUsb: Boolean(row?.isUsb),
-        isRemovable: true
-      })
-    }
-    return normalizedRows.sort((left, right) =>
-      left.path.localeCompare(right.path, undefined, { sensitivity: 'base' })
-    )
+    return probe
   } catch (error) {
-    log.error(
+    logDriveProbeError(
+      'usb-letter-probe',
+      '[pioneer-device-library] windows usb drive letter probe failed',
+      getExecFailureDiagnostic(error)
+    )
+    return { letters: new Set(), complete: false }
+  }
+}
+
+export function buildWindowsRemovableDriveRows(
+  logicalRows: ReadonlyArray<Record<string, unknown>>,
+  usbLetters: ReadonlySet<string>
+): BaseDriveRow[] {
+  const normalizedRows: BaseDriveRow[] = []
+  for (const row of logicalRows) {
+    const deviceId = String(row?.deviceId || '')
+      .trim()
+      .toUpperCase()
+    const rootPath = normalizeDriveRoot(deviceId)
+    if (!deviceId || !rootPath) continue
+    const driveType = Number.isFinite(Number(row?.driveType)) ? Number(row.driveType) : null
+    const isUsb = usbLetters.has(deviceId)
+    const isRemovable = driveType === 2 || isUsb
+    if (!isRemovable) continue
+    const volumeName = String(row?.volumeName || '').trim()
+    normalizedRows.push({
+      id: deviceId,
+      name: volumeName || deviceId,
+      path: rootPath,
+      volumeName,
+      fileSystem: String(row?.fileSystem || '').trim(),
+      size: toSafeInt(row?.size),
+      freeSpace: toSafeInt(row?.freeSpace),
+      driveType,
+      driveTypeLabel:
+        driveType !== null ? WINDOWS_DRIVE_TYPE_LABELS[driveType] || 'unknown' : 'unknown',
+      isUsb,
+      isRemovable: true
+    })
+  }
+  return normalizedRows.sort((left, right) =>
+    left.path.localeCompare(right.path, undefined, { sensitivity: 'base' })
+  )
+}
+
+async function listWindowsRemovableDrives(): Promise<RemovableDriveListing> {
+  const usbTask = listWindowsUsbDriveLetters()
+  let logicalRows: Array<Record<string, unknown>>
+  try {
+    logicalRows = await listWindowsLogicalDisks()
+  } catch (error) {
+    logDriveProbeError(
+      'logical-disk-failed',
       '[pioneer-device-library] windows removable drive detection failed',
       getExecFailureDiagnostic(error)
     )
-    return []
+    void usbTask.catch(() => undefined)
+    return { rows: [], complete: false }
+  }
+  const usb = await usbTask
+  return {
+    rows: buildWindowsRemovableDriveRows(logicalRows, usb.letters),
+    complete: usb.complete
   }
 }
 
@@ -575,17 +658,17 @@ async function listMacRemovableDrives(): Promise<BaseDriveRow[]> {
   }
 }
 
-async function listPlatformRemovableDrives(): Promise<BaseDriveRow[]> {
+async function listPlatformRemovableDrives(): Promise<RemovableDriveListing> {
   if (process.platform === 'win32') {
     return await listWindowsRemovableDrives()
   }
   if (process.platform === 'linux') {
-    return await listLinuxRemovableDrives()
+    return { rows: await listLinuxRemovableDrives(), complete: true }
   }
   if (process.platform === 'darwin') {
-    return await listMacRemovableDrives()
+    return { rows: await listMacRemovableDrives(), complete: true }
   }
-  return []
+  return { rows: [], complete: true }
 }
 
 const isDriveDetached = async (rootPath: string) => {
@@ -597,8 +680,9 @@ const isDriveDetached = async (rootPath: string) => {
     if (!exists) return true
   } catch {}
 
-  const rows = await listPlatformRemovableDrives()
-  return !rows.some((row) => normalizeDriveRoot(row.path) === normalizedRoot)
+  const listed = await listPlatformRemovableDrives()
+  if (!listed.complete) return false
+  return !listed.rows.some((row) => normalizeDriveRoot(row.path) === normalizedRoot)
 }
 
 const waitForDriveDetach = async (rootPath: string, timeoutMs = DRIVE_EJECT_WAIT_MS) => {
@@ -807,8 +891,8 @@ export async function isPioneerUsbWriteRoot(rootPath: string): Promise<boolean> 
   if (process.platform !== 'win32' && process.platform !== 'darwin') return false
   const normalizedRoot = normalizeDriveRoot(rootPath)
   if (process.platform === 'win32') return (await probeWindowsUsbWriteRoot(normalizedRoot)).eligible
-  const rows = await listPlatformRemovableDrives()
-  return rows.some(
+  const listed = await listPlatformRemovableDrives()
+  return listed.rows.some(
     (row) => normalizeDriveRoot(row.path) === normalizedRoot && (row.isUsb || row.isRemovable)
   )
 }
@@ -822,7 +906,8 @@ export async function listPioneerRemovableDrives(
   if (removableDriveInflight) return await removableDriveInflight
 
   const request = (async () => {
-    const baseRows = await listPlatformRemovableDrives()
+    const listed = await listPlatformRemovableDrives()
+    const baseRows = listed.rows
 
     const results: PioneerRemovableDriveInfo[] = []
     for (const baseRow of baseRows) {
@@ -858,7 +943,9 @@ export async function listPioneerRemovableDrives(
     )
     removableDriveCache = {
       value: sorted,
-      expiresAt: Date.now() + REMOVABLE_DRIVE_CACHE_TTL_MS
+      expiresAt:
+        Date.now() +
+        (listed.complete ? REMOVABLE_DRIVE_CACHE_TTL_MS : INCOMPLETE_REMOVABLE_DRIVE_CACHE_TTL_MS)
     }
     return sorted
   })()

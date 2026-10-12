@@ -254,7 +254,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   const resolveSongListRoots = (): string[] => {
     const rootDir = store.databaseDir
     if (!rootDir) return []
-    const rows: LibraryNodeRow[] = loadLibraryNodes(rootDir) || []
+    const rows: readonly LibraryNodeRow[] = loadLibraryNodes(rootDir) || []
     const root = rows.find((row) => row.parentUuid === null && row.nodeType === 'root')
     if (!root) return []
     const childrenMap = new Map<string, LibraryNodeRow[]>()

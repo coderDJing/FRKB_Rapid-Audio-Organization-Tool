@@ -2,6 +2,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import { v4 as uuidV4 } from 'uuid'
 import { getLibraryDb, initLibraryDb, isSqliteRow } from './libraryDb'
+import { invalidateLibraryNodeCache } from './libraryNodeCache'
 import { log } from './log'
 import type { SqliteDatabase } from './libraryDb'
 
@@ -169,6 +170,7 @@ export function ensureRootNode(db: SqliteDatabase): LibraryNodeRow | null {
     db.prepare(
       'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
     ).run(uuid, null, 'library', 'root', 1)
+    invalidateLibraryNodeCache()
     return {
       uuid,
       parentUuid: null,

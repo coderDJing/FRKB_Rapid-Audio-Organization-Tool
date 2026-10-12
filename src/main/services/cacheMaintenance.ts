@@ -118,7 +118,10 @@ function normalizeSongInfoForCache(info: ISongInfo): ISongInfo {
   }
 }
 
-function buildNodePathMap(nodes: LibraryNodeRow[], root: LibraryNodeRow): Map<string, string> {
+function buildNodePathMap(
+  nodes: readonly LibraryNodeRow[],
+  root: LibraryNodeRow
+): Map<string, string> {
   const childrenMap = new Map<string, LibraryNodeRow[]>()
   for (const row of nodes) {
     if (!row.parentUuid) continue

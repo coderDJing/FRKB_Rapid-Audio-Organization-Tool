@@ -20,6 +20,11 @@ import {
 } from './libraryTreeDbHelpers'
 import type { LibraryNodeType, LibraryNodeRow, LegacyLibraryNode } from './libraryTreeDbHelpers'
 import type { SqliteDatabase } from './libraryDb'
+import {
+  invalidateLibraryNodeCache,
+  readLibraryNodeCache,
+  writeLibraryNodeCache
+} from './libraryNodeCache'
 
 export type { LibraryNodeType, LibraryNodeRow, LegacyLibraryNode } from './libraryTreeDbHelpers'
 
@@ -196,6 +201,7 @@ export async function migrateLegacyLibraryTree(
       }
     })
     run(nodes)
+    invalidateLibraryNodeCache()
     return nodes
   } catch (error) {
     log.error('[sqlite] library tree migrate failed', error)
@@ -317,6 +323,7 @@ export async function ensureLibraryTreeBaseline(
       insert.run(recycleUuid, root.uuid, coreNames.RecycleBin, 'library', 6)
     })
     run()
+    invalidateLibraryNodeCache()
     setLibraryTreeMigrationDone(db, true)
     setLibraryTreeMigrationInProgress(db, false)
   } catch (error) {
@@ -324,15 +331,19 @@ export async function ensureLibraryTreeBaseline(
   }
 }
 
-export function loadLibraryNodes(dbRoot?: string): LibraryNodeRow[] | null {
+export function loadLibraryNodes(dbRoot?: string): readonly LibraryNodeRow[] | null {
   const db = getDb(dbRoot)
   if (!db) return null
+  const cached = readLibraryNodeCache(db)
+  if (cached) return cached
   try {
     const rows = db
       .prepare('SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes')
       .all() as Array<Record<string, unknown>>
     const mapped = rows.map((row) => toNodeRow(row)) as Array<LibraryNodeRow | null>
-    return mapped.filter((row): row is LibraryNodeRow => !!row)
+    const nodes = mapped.filter((row): row is LibraryNodeRow => !!row)
+    writeLibraryNodeCache(db, nodes)
+    return nodes
   } catch (error) {
     log.error('[sqlite] library nodes load failed', error)
     return null
@@ -708,6 +719,7 @@ export async function syncLibraryTreeFromDisk(
       }
     })
     run()
+    invalidateLibraryNodeCache()
   } catch (error) {
     log.error('[sqlite] library tree sync failed', error)
   }
@@ -806,6 +818,7 @@ export async function pruneMissingLibraryNodes(dbRoot?: string): Promise<number>
       }
     })
     run(Array.from(missing))
+    invalidateLibraryNodeCache()
     return missing.size
   } catch (error) {
     log.error('[sqlite] library node cleanup failed', error)
@@ -859,6 +872,7 @@ export function insertLibraryNode(
     db.prepare(
       'INSERT OR IGNORE INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
     ).run(node.uuid, node.parentUuid, node.dirName, node.nodeType, normalizeOrder(node.order))
+    invalidateLibraryNodeCache()
     return true
   } catch (error) {
     log.error('[sqlite] library node insert failed', error)
@@ -878,6 +892,7 @@ export function updateLibraryNodeOrder(
       normalizeOrder(order),
       uuid
     )
+    invalidateLibraryNodeCache()
     return true
   } catch (error) {
     log.error('[sqlite] library node reorder failed', error)
@@ -890,6 +905,7 @@ export function updateLibraryNodeName(uuid: string, dirName: string, dbRoot?: st
   if (!db || !uuid || !dirName) return false
   try {
     db.prepare('UPDATE library_nodes SET dir_name = ? WHERE uuid = ?').run(dirName, uuid)
+    invalidateLibraryNodeCache()
     return true
   } catch (error) {
     log.error('[sqlite] library node rename failed', error)
@@ -911,6 +927,7 @@ export function moveLibraryNode(
       dirName,
       uuid
     )
+    invalidateLibraryNodeCache()
     return true
   } catch (error) {
     log.error('[sqlite] library node move failed', error)
@@ -923,6 +940,7 @@ export function removeLibraryNode(uuid: string, dbRoot?: string): boolean {
   if (!db || !uuid) return false
   try {
     db.prepare('DELETE FROM library_nodes WHERE uuid = ?').run(uuid)
+    invalidateLibraryNodeCache()
     return true
   } catch (error) {
     log.error('[sqlite] library node delete failed', error)
@@ -935,6 +953,7 @@ export function removeLibraryNodesByParentUuid(parentUuid: string, dbRoot?: stri
   if (!db || !parentUuid) return false
   try {
     db.prepare('DELETE FROM library_nodes WHERE parent_uuid = ?').run(parentUuid)
+    invalidateLibraryNodeCache()
     return true
   } catch (error) {
     log.error('[sqlite] library node delete by parent failed', error)

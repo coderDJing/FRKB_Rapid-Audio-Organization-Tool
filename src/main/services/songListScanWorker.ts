@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads'
 import type { scanSongList } from './scanSongs'
 import { resolveMainWorkerPath } from '../workerPath'
+import { trackForegroundSongCacheRead } from './foregroundSongCacheRead'
 
 type ScanSongListResult = Awaited<ReturnType<typeof scanSongList>>
 
@@ -198,8 +199,10 @@ const runSongListScanWorker = (
 
 export const scanSongListOffMainThread = (
   request: Omit<WorkerRequest, 'mode' | 'requestId'>
-): Promise<ScanSongListResult> => runSongListScanWorker({ ...request, mode: 'scan' })
+): Promise<ScanSongListResult> =>
+  trackForegroundSongCacheRead(() => runSongListScanWorker({ ...request, mode: 'scan' }))
 
 export const verifyPlaylistCacheOffMainThread = (
   request: Omit<WorkerRequest, 'mode' | 'requestId'>
-): Promise<ScanSongListResult> => runSongListScanWorker({ ...request, mode: 'verify' })
+): Promise<ScanSongListResult> =>
+  trackForegroundSongCacheRead(() => runSongListScanWorker({ ...request, mode: 'verify' }))

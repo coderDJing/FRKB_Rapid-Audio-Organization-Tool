@@ -1,10 +1,17 @@
 import { Worker, isMainThread } from 'node:worker_threads'
 import { resolveMainWorkerPath } from '../workerPath'
-import { readSongCacheRows, type SongCacheDbRow } from '../libraryCacheDb/songCacheRead'
+import {
+  readSongCacheRows,
+  readSongCacheTrackFieldRows,
+  type SongCacheDbRow,
+  type SongCacheTrackFieldRow
+} from '../libraryCacheDb/songCacheRead'
 import type { SqliteDatabase } from '../libraryDb'
 
+type CacheReadMode = 'rows' | 'track-fields'
+
 type PendingRead = {
-  resolve: (rows: SongCacheDbRow[][]) => void
+  resolve: (rows: unknown[][]) => void
   reject: (error: Error) => void
 }
 
@@ -53,25 +60,45 @@ const ensureWorker = (): Worker => {
   return current
 }
 
-export const readSongCacheOffMainThread = (
+const readSongCacheOffMainThreadWithMode = <T>(
   db: SqliteDatabase,
-  roots: string[]
-): Promise<SongCacheDbRow[][]> => {
+  roots: string[],
+  mode: CacheReadMode
+): Promise<T[][]> => {
   // 已在扫描 worker 内时直接读；事务内必须使用原连接，才能看见尚未提交的写入。
   if (!isMainThread || db.inTransaction || db.memory) {
-    return Promise.resolve(readSongCacheRows(db, roots))
+    const rows =
+      mode === 'track-fields'
+        ? readSongCacheTrackFieldRows(db, roots)
+        : readSongCacheRows(db, roots)
+    return Promise.resolve(rows as T[][])
   }
   const current = ensureWorker()
   clearIdleTimer()
   current.ref()
   const id = ++sequence
-  return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject })
+  return new Promise<T[][]>((resolve, reject) => {
+    pending.set(id, {
+      resolve: (rows) => resolve(rows as T[][]),
+      reject
+    })
     try {
-      current.postMessage({ id, databasePath: db.name, roots })
+      current.postMessage({ id, databasePath: db.name, roots, mode })
     } catch (error) {
       pending.delete(id)
       reject(error instanceof Error ? error : new Error(String(error)))
     }
   })
 }
+
+export const readSongCacheOffMainThread = (
+  db: SqliteDatabase,
+  roots: string[]
+): Promise<SongCacheDbRow[][]> =>
+  readSongCacheOffMainThreadWithMode<SongCacheDbRow>(db, roots, 'rows')
+
+export const readSongCacheTrackFieldsOffMainThread = (
+  db: SqliteDatabase,
+  roots: string[]
+): Promise<SongCacheTrackFieldRow[][]> =>
+  readSongCacheOffMainThreadWithMode<SongCacheTrackFieldRow>(db, roots, 'track-fields')

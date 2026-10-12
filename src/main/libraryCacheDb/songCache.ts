@@ -155,7 +155,7 @@ function toLooseCompareExprRaw(expr: string): string {
   return `REPLACE(LOWER(${expr}), '/', '\\\\') = REPLACE(LOWER(?), '/', '\\\\')`
 }
 
-function getLooseSongCacheRoots(
+export function getLooseSongCacheRoots(
   db: SqliteDatabase,
   candidates: Array<string | null | undefined>,
   listRootKey: string

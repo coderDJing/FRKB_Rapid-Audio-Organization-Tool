@@ -2,6 +2,8 @@ export type { SongCacheEntry, CoverIndexEntry, LegacyCacheRoots } from './librar
 
 export { resolveCacheListRootAbs, resolveCacheFilePath } from './libraryCacheDb/pathResolvers'
 
+export { loadSongCacheTrackFields } from './libraryCacheDb/songCacheTrackFields'
+
 export {
   loadSongCache,
   loadSongCacheAnalysisSources,

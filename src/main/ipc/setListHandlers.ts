@@ -162,7 +162,7 @@ function createMissingSetSong(item: SetItemRecord): ISongInfo {
   )
 }
 
-function buildLibraryNodePathMap(rows: LibraryNodeRow[]): Map<string, string> {
+function buildLibraryNodePathMap(rows: readonly LibraryNodeRow[]): Map<string, string> {
   const childrenByParent = new Map<string, LibraryNodeRow[]>()
   for (const row of rows) {
     if (!row.parentUuid) continue

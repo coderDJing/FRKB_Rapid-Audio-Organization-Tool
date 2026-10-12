@@ -257,12 +257,15 @@ export const scanCuratedLibraryForSync = async (options?: {
 
   const nodes: CuratedLocalNode[] = []
   const allNodes = loadLibraryNodes() || []
-  const children = new Map<string, typeof allNodes>()
+  const children = new Map<string, Array<(typeof allNodes)[number]>>()
   for (const node of allNodes) {
     if (!node.parentUuid) continue
-    const list = children.get(node.parentUuid) || []
-    list.push(node)
-    children.set(node.parentUuid, list)
+    const list = children.get(node.parentUuid)
+    if (list) {
+      list.push(node)
+    } else {
+      children.set(node.parentUuid, [node])
+    }
   }
   const stack = [...(children.get(curatedNode.uuid) || [])]
   while (stack.length > 0) {

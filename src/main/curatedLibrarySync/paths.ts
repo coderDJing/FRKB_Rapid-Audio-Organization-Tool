@@ -129,25 +129,53 @@ export const findCuratedLibraryNode = (): LibraryNodeRow | null => {
   )
 }
 
+const createLibraryNodeAbsResolver = (nodes: readonly LibraryNodeRow[], dbRoot: string) => {
+  const byUuid = new Map(nodes.map((node) => [node.uuid, node]))
+  const cache = new Map<string, string | null>()
+  return (uuid: string): string | null => {
+    if (!uuid) return null
+    const cached = cache.get(uuid)
+    if (cached !== undefined) return cached
+    const parts: string[] = []
+    let current = byUuid.get(uuid) || null
+    const seen = new Set<string>()
+    while (current) {
+      if (seen.has(current.uuid)) {
+        cache.set(uuid, null)
+        return null
+      }
+      seen.add(current.uuid)
+      parts.unshift(current.dirName)
+      if (!current.parentUuid) break
+      current = byUuid.get(current.parentUuid) || null
+    }
+    const result = parts.length === 0 ? null : path.join(dbRoot, ...parts)
+    cache.set(uuid, result)
+    return result
+  }
+}
+
+let nodeAbsIndex: {
+  dbRoot: string
+  nodes: readonly LibraryNodeRow[]
+  resolve: (uuid: string) => string | null
+} | null = null
+
 export const getNodeAbsPath = (uuid: string): string | null => {
   const dbRoot = String(store.databaseDir || '').trim()
   if (!dbRoot || !uuid) return null
   const db = getLibraryDb()
   if (!db) return null
-  const nodes = loadLibraryNodes() || []
-  const byUuid = new Map(nodes.map((node) => [node.uuid, node]))
-  const parts: string[] = []
-  let current = byUuid.get(uuid) || null
-  const seen = new Set<string>()
-  while (current) {
-    if (seen.has(current.uuid)) return null
-    seen.add(current.uuid)
-    parts.unshift(current.dirName)
-    if (!current.parentUuid) break
-    current = byUuid.get(current.parentUuid) || null
+  const nodes = loadLibraryNodes()
+  if (!nodes) return null
+  if (!nodeAbsIndex || nodeAbsIndex.dbRoot !== dbRoot || nodeAbsIndex.nodes !== nodes) {
+    nodeAbsIndex = {
+      dbRoot,
+      nodes,
+      resolve: createLibraryNodeAbsResolver(nodes, dbRoot)
+    }
   }
-  if (parts.length === 0) return null
-  return path.join(dbRoot, ...parts)
+  return nodeAbsIndex.resolve(uuid)
 }
 
 export const resolveCloudParentAbs = (
