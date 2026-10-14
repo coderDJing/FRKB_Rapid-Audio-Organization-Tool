@@ -73,7 +73,14 @@ const ensureWorker = (): Worker => {
           projectionMs: Math.round(projectionMs),
           roundTripMs: Math.round(roundTripMs),
           transportAndSchedulingMs: Math.round(
-            Math.max(0, roundTripMs - openMs - sqlMs - projectionMs)
+            Math.max(
+              0,
+              roundTripMs -
+                openMs -
+                sqlMs -
+                projectionMs -
+                (response.timings.context?.contextCollectionMs || 0)
+            )
           )
         })
       }

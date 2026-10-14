@@ -219,6 +219,7 @@ export function registerPlaylistHandlers() {
           listFilesMs: result.perf?.listFilesMs,
           listMode: result.perf?.listMode,
           cacheLoadMs: result.perf?.cacheLoadMs,
+          cacheLoadBreakdown: result.perf?.cacheLoadBreakdown,
           statMs: result.perf?.statMs,
           parseMetadataMs: result.perf?.parseMetadataMs,
           refreshMissingMs: result.perf?.refreshMissingMs,

@@ -1,4 +1,5 @@
 import path = require('path')
+import { isSqliteReadDiagnosticsEnabled } from './sqliteReadDiagnostics'
 import { runWithConcurrency } from '../nodeTaskUtils'
 import { ISongInfo } from '../../types/globals'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
@@ -84,6 +85,7 @@ export type ScanSongListResult = {
     /** 以下为定位慢开销的细分项：读缓存表、stat、跨库补分析各花了多久。 */
     cacheLoadedFromDb: boolean
     cacheLoadMs: number
+    cacheLoadBreakdown?: import('../libraryCacheDb/songCacheLoad').SongCacheLoadTimings
     cacheRows: number
     /** 未命中按原因拆分；仅用于慢扫描诊断，四项之和等于 filesCount - cacheHits。 */
     cacheMisses: {
@@ -396,8 +398,16 @@ export async function scanSongList(
   let cacheMap = new Map<string, CacheEntry>()
   let cacheFromDb = false
   const perfCacheLoadStart = Date.now()
+  let cacheLoadBreakdown: import('../libraryCacheDb/songCacheLoad').SongCacheLoadTimings | undefined
   if (cacheRoot) {
-    const dbCache = await LibraryCacheDb.loadSongCache(cacheRoot)
+    const dbCache = await LibraryCacheDb.loadSongCache(
+      cacheRoot,
+      isSqliteReadDiagnosticsEnabled()
+        ? (timings) => {
+            cacheLoadBreakdown = timings
+          }
+        : undefined
+    )
     if (dbCache) {
       if (process.platform === 'win32') {
         const normalizedMap = new Map<string, CacheEntry>()
@@ -558,6 +568,7 @@ export async function scanSongList(
         parsedCount,
         cacheLoadedFromDb: cacheFromDb,
         cacheLoadMs: perfCacheLoadMs,
+        cacheLoadBreakdown,
         cacheRows: cacheMap.size,
         cacheMisses,
         cacheRootResolveMs: perfCacheRootResolveMs,

@@ -402,12 +402,19 @@ export async function ensureSongCacheMigrated(db: SqliteDatabase, listRoot: stri
   }
 }
 
-export async function loadSongCache(listRoot: string): Promise<Map<string, SongCacheEntry> | null> {
-  return loadSongCacheWithHelpers(listRoot, {
-    ensureMigrated: ensureSongCacheMigrated,
-    findLooseRoots: getLooseSongCacheRoots,
-    migrateRows: migrateSongCacheRows
-  })
+export async function loadSongCache(
+  listRoot: string,
+  onTimings?: (timings: import('./songCacheLoad').SongCacheLoadTimings) => void
+): Promise<Map<string, SongCacheEntry> | null> {
+  return loadSongCacheWithHelpers(
+    listRoot,
+    {
+      ensureMigrated: ensureSongCacheMigrated,
+      findLooseRoots: getLooseSongCacheRoots,
+      migrateRows: migrateSongCacheRows
+    },
+    onTimings
+  )
 }
 
 /**

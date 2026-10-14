@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
 import { createSongBeatGridMapV2FromClips } from '../../shared/songBeatGridMapV2'
-import { readSongSearchPage } from './songSearchPageRead'
+import { readSongSearchPage, type SongSearchPageTimings } from './songSearchPageRead'
+import { collectSqliteReadContext } from './sqliteReadDiagnostics'
 import { collectSongSearchTerms } from './songSearchProjection'
 
 describe('collectSongSearchTerms', () => {
@@ -64,6 +65,22 @@ describe('readSongSearchPage', () => {
     insert.run('library/list', 'third.mp3', 1, 1, '{"title":"Later"}')
 
     const firstPage = readSongSearchPage(db, 0, 2)
+    let timings: SongSearchPageTimings | undefined
+    const diagnosedPage = readSongSearchPage(db, 0, 2, (value) => {
+      timings = value
+    })
+    expect(diagnosedPage).toEqual(firstPage)
+    expect(timings?.rowCount).toBe(2)
+    expect(timings?.jsonChars).toBeGreaterThan(0)
+    // 诊断迭代器已经释放，不得妨碍后续事务/查询。
+    expect(db.prepare('SELECT count(*) AS count FROM song_cache').get()).toEqual({ count: 3 })
+    const context = collectSqliteReadContext(
+      db,
+      'SELECT rowid FROM song_cache WHERE rowid > ? ORDER BY rowid LIMIT ?',
+      [0, 2]
+    )
+    expect(context.queryPlan.join(' ')).toContain('INTEGER PRIMARY KEY')
+    expect(context.diagnosticError).toBeUndefined()
     expect(firstPage).toHaveLength(2)
     expect(firstPage[0]).toMatchObject({
       listRoot: 'library/list',

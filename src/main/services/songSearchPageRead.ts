@@ -1,5 +1,6 @@
 import type { SqliteDatabase } from '../libraryDb'
 import { performance } from 'node:perf_hooks'
+import { collectSqliteReadContext, type SqliteReadContext } from './sqliteReadDiagnostics'
 import {
   projectSongSearchRow,
   type ProjectedSongSearchRow,
@@ -13,7 +14,15 @@ export type SongSearchPageTimings = {
   rowCount: number
   jsonChars: number
   maxJsonChars: number
+  prepareMs: number
+  firstRowMs: number
+  remainingRowsMs: number
+  processCpuUserMs: number
+  processCpuSystemMs: number
+  context?: SqliteReadContext
 }
+
+const contextCollected = new WeakSet<SqliteDatabase>()
 
 export const readSongSearchPage = (
   db: SqliteDatabase,
@@ -24,16 +33,36 @@ export const readSongSearchPage = (
   const safeLimit = Math.max(1, Math.min(500, Math.floor(limit) || 1))
   const safeAfter = Number.isFinite(afterRowId) ? Math.max(0, Math.floor(afterRowId)) : 0
   const startedAt = performance.now()
-  const rows = db
-    .prepare<SongSearchPageSourceRow>(
-      `SELECT rowid AS row_id, list_root, file_path, info_json
+  const startedCpu = onTimings ? process.cpuUsage() : undefined
+  const sql = `SELECT rowid AS row_id, list_root, file_path, info_json
        FROM song_cache
        WHERE rowid > ?
        ORDER BY rowid ASC
        LIMIT ?`
-    )
-    .all(safeAfter, safeLimit)
+  const statement = db.prepare<SongSearchPageSourceRow>(sql)
+  const preparedAt = performance.now()
+  let firstRowMs = 0
+  let remainingRowsMs = 0
+  let rows: SongSearchPageSourceRow[]
+  if (onTimings) {
+    // 诊断路径仍完整读取同一个 SELECT，不额外重读冷页。
+    const iterator = statement.iterate(safeAfter, safeLimit)
+    rows = []
+    try {
+      const first = iterator.next()
+      const firstRowAt = performance.now()
+      firstRowMs = firstRowAt - preparedAt
+      if (!first.done) rows.push(first.value)
+      for (const row of iterator) rows.push(row)
+      remainingRowsMs = performance.now() - firstRowAt
+    } finally {
+      iterator.return?.()
+    }
+  } else {
+    rows = statement.all(safeAfter, safeLimit)
+  }
   const sqlFinishedAt = performance.now()
+  const sqlCpu = startedCpu ? process.cpuUsage(startedCpu) : undefined
   const projected = rows.map((row) => projectSongSearchRow(row))
   const projectionFinishedAt = performance.now()
   if (onTimings) {
@@ -49,7 +78,20 @@ export const readSongSearchPage = (
       projectionMs: projectionFinishedAt - sqlFinishedAt,
       rowCount: rows.length,
       jsonChars,
-      maxJsonChars
+      maxJsonChars,
+      prepareMs: Math.round(preparedAt - startedAt),
+      firstRowMs: Math.round(firstRowMs),
+      remainingRowsMs: Math.round(remainingRowsMs),
+      // CPU 为进程级差值，不能单独证明该 worker 的 CPU 或锁等待。
+      processCpuUserMs: Math.round((sqlCpu?.user || 0) / 1000),
+      processCpuSystemMs: Math.round((sqlCpu?.system || 0) / 1000),
+      context:
+        sqlFinishedAt - startedAt >= 500 && !contextCollected.has(db)
+          ? (() => {
+              contextCollected.add(db)
+              return collectSqliteReadContext(db, sql, [safeAfter, safeLimit])
+            })()
+          : undefined
     })
   }
   return projected
