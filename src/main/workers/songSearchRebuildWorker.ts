@@ -1,5 +1,6 @@
 import { parentPort } from 'node:worker_threads'
-import { readSongSearchPage } from '../services/songSearchPageRead'
+import { performance } from 'node:perf_hooks'
+import { readSongSearchPage, type SongSearchPageTimings } from '../services/songSearchPageRead'
 import type { SqliteDatabase } from '../libraryDb'
 
 type SearchPageRequest = {
@@ -8,6 +9,7 @@ type SearchPageRequest = {
   afterRowId?: number
   limit?: number
   close?: boolean
+  diagnostics?: boolean
 }
 
 let db: SqliteDatabase | null = null
@@ -39,12 +41,21 @@ parentPort?.on('message', (request: SearchPageRequest) => {
       return
     }
     const databasePath = String(request.databasePath || '')
+    const openStartedAt = performance.now()
+    const connection = openDatabase(databasePath)
+    const openMs = performance.now() - openStartedAt
+    let timings: SongSearchPageTimings | undefined
     const rows = readSongSearchPage(
-      openDatabase(databasePath),
+      connection,
       Number(request.afterRowId) || 0,
-      Number(request.limit) || 1
+      Number(request.limit) || 1,
+      request.diagnostics
+        ? (value) => {
+            timings = value
+          }
+        : undefined
     )
-    parentPort?.postMessage({ id: request.id, rows })
+    parentPort?.postMessage({ id: request.id, rows, timings, openMs })
   } catch (error) {
     parentPort?.postMessage({
       id: request.id,

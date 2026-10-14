@@ -2,12 +2,17 @@ import { Worker, isMainThread } from 'node:worker_threads'
 import { resolveMainWorkerPath } from '../workerPath'
 import type { SqliteDatabase } from '../libraryDb'
 import { log } from '../log'
-import { readSongSearchPage } from './songSearchPageRead'
+import { readSongSearchPage, type SongSearchPageTimings } from './songSearchPageRead'
+import { performance } from 'node:perf_hooks'
+import { isPackagedRcMainProcess } from './rcDiagnosticEnvironment'
 import type { ProjectedSongSearchRow } from './songSearchProjection'
 
 type PendingRead = {
   resolve: (rows: ProjectedSongSearchRow[]) => void
   reject: (error: Error) => void
+  startedAt: number
+  afterRowId?: number
+  diagnostics: boolean
 }
 
 type SearchWorkerRequest = {
@@ -16,6 +21,7 @@ type SearchWorkerRequest = {
   afterRowId?: number
   limit?: number
   close?: boolean
+  diagnostics?: boolean
 }
 
 let worker: Worker | null = null
@@ -44,10 +50,33 @@ const ensureWorker = (): Worker => {
   current.on('exit', (code) => fail(new Error(`song search rebuild worker exited (${code})`)))
   current.on(
     'message',
-    (response: { id: number; rows?: ProjectedSongSearchRow[]; error?: string }) => {
+    (response: {
+      id: number
+      rows?: ProjectedSongSearchRow[]
+      error?: string
+      timings?: SongSearchPageTimings
+      openMs?: number
+    }) => {
       const read = pending.get(response.id)
       if (!read) return
       pending.delete(response.id)
+      const roundTripMs = performance.now() - read.startedAt
+      if (read.diagnostics && response.timings && roundTripMs >= 500) {
+        const { sqlMs, projectionMs } = response.timings
+        const openMs = response.openMs || 0
+        // 此差值包含 worker 启动、消息传输和主线程调度；不能直接当成锁等待。
+        log.warn('[song-search] slow page breakdown', {
+          ...response.timings,
+          afterRowId: read.afterRowId,
+          openMs: Math.round(openMs),
+          sqlMs: Math.round(sqlMs),
+          projectionMs: Math.round(projectionMs),
+          roundTripMs: Math.round(roundTripMs),
+          transportAndSchedulingMs: Math.round(
+            Math.max(0, roundTripMs - openMs - sqlMs - projectionMs)
+          )
+        })
+      }
       if (response.error) read.reject(new Error(response.error))
       else if (response.rows) read.resolve(response.rows)
       else read.reject(new Error('song search rebuild worker returned no rows'))
@@ -76,7 +105,13 @@ const postWorker = (request: SearchWorkerRequest): Promise<ProjectedSongSearchRo
   clearIdleTimer()
   current.ref()
   return new Promise((resolve, reject) => {
-    pending.set(request.id, { resolve, reject })
+    pending.set(request.id, {
+      resolve,
+      reject,
+      startedAt: performance.now(),
+      afterRowId: request.afterRowId,
+      diagnostics: request.diagnostics === true
+    })
     try {
       current.postMessage(request)
     } catch (error) {
@@ -95,7 +130,10 @@ export const readSongSearchPageOffMainThread = (
     return Promise.resolve(readSongSearchPage(db, afterRowId, limit))
   }
   const id = ++sequence
-  return postWorker({ id, databasePath: db.name, afterRowId, limit })
+  const diagnostics =
+    isPackagedRcMainProcess() ||
+    (process.type === 'browser' && process.env.FRKB_APP_PACKAGED === '0')
+  return postWorker({ id, databasePath: db.name, afterRowId, limit, diagnostics })
 }
 
 export const releaseSongSearchRebuildConnection = (): Promise<void> => {

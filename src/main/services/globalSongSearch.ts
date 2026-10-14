@@ -509,8 +509,12 @@ class GlobalSongSearchEngine {
       useInProcess: !isMainThread || db.inTransaction || db.memory,
       loggedFailure: false
     }
-    const rcDiagnostics = isPackagedRcMainProcess()
+    const rcDiagnostics =
+      isPackagedRcMainProcess() ||
+      (process.type === 'browser' && process.env.FRKB_APP_PACKAGED === '0')
     const rebuildStartedAt = performance.now()
+    let totalReadMs = 0
+    let totalIndexMs = 0
     let lastRebuildProgressLogAt = rebuildStartedAt
     let pageActivityId: number | null = null
     const endPageActivity = () => {
@@ -532,8 +536,10 @@ class GlobalSongSearchEngine {
           readMode
         )
         const queryMs = performance.now() - queryStartedAt
+        totalReadMs += queryMs
         if (page.length === 0 || getLibraryDb() !== db) break
 
+        const indexStartedAt = performance.now()
         pageActivityId = beginMainThreadActivity({
           kind: 'sync',
           name: 'song-search:rebuild-page'
@@ -644,6 +650,7 @@ class GlobalSongSearchEngine {
           }
         } finally {
           endPageActivity()
+          totalIndexMs += performance.now() - indexStartedAt
         }
 
         if (rcDiagnostics && queryMs >= 1000) {
@@ -689,6 +696,19 @@ class GlobalSongSearchEngine {
     this.ready = true
     this.dirty = false
     this.dirtyPlaylists = new Set()
+    if (rcDiagnostics && performance.now() - rebuildStartedAt >= 5000) {
+      // 临时诊断：没有进度日志不代表已完成，慢重建需要明确的完成记录。
+      log.warn('[song-search] slow rebuild completed', {
+        elapsedMs: Math.round(performance.now() - rebuildStartedAt),
+        processedRows,
+        indexedRows: docs.length,
+        readMs: Math.round(totalReadMs),
+        indexAndYieldMs: Math.round(totalIndexMs),
+        otherWaitAndFinalizeMs: Math.round(
+          Math.max(0, performance.now() - rebuildStartedAt - totalReadMs - totalIndexMs)
+        )
+      })
+    }
   }
 
   private getIndexedCandidatesByToken(token: string) {

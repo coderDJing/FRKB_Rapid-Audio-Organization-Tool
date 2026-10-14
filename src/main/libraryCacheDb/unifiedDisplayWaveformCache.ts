@@ -7,6 +7,7 @@ import {
 } from '../../shared/unifiedDisplayWaveform'
 import { getLibraryDb, isSqliteRow, type SqliteDatabase } from '../libraryDb'
 import { log } from '../log'
+import { createStageDiagnostics } from '../services/stageDiagnostics'
 import {
   resolveAbsoluteListRoot,
   resolveFilePathInput,
@@ -549,7 +550,16 @@ export async function relocateUnifiedDisplayWaveformCacheEntry(params: {
   const fromKeys = resolveCacheKeys(params.fromRoot, params.fromPath)
   const toKeys = resolveCacheKeys(params.toRoot, params.toPath)
   if (!db || !fromKeys || !toKeys) return false
-  const hit = loadMetaRow(params.fromRoot, params.fromPath)
+  // 临时定位慢缓存转移：同步读取和写事务分别计时，复测确认根因后删除。
+  const diagnostics = createStageDiagnostics('display-waveform-relocate-perf', {
+    removeSource: params.removeSource,
+    inTransaction: db.inTransaction
+  })
+  const hit = diagnostics.measureSync(
+    'read-meta',
+    () => loadMetaRow(params.fromRoot, params.fromPath),
+    500
+  )
   if (!hit) return false
   if (!cacheIdentityMatches(hit.meta, params.loadStat)) {
     await removeUnifiedDisplayWaveformCacheEntry(params.fromRoot, params.fromPath)
@@ -575,40 +585,45 @@ export async function relocateUnifiedDisplayWaveformCacheEntry(params: {
         FROM ${TABLE}
        WHERE list_root = ? AND file_path = ?`
     )
-    const changed = db.transaction(() => {
-      for (const [root, file] of collectCacheKeys(toKeys)) {
-        if (root === hit.hitListRoot && file === hit.hitFilePath) continue
-        del.run(root, file)
-      }
-      if (params.removeSource || sameRow) {
-        const result = update.run(
-          destRoot,
-          destFile,
-          params.toStat.size,
-          params.toStat.mtimeMs,
-          Date.now(),
-          hit.hitListRoot,
-          hit.hitFilePath
-        )
-        if (params.removeSource) {
-          for (const [root, file] of collectCacheKeys(fromKeys)) {
-            if (root === destRoot && file === destFile) continue
+    const changed = diagnostics.measureSync(
+      'write-transaction',
+      () =>
+        db.transaction(() => {
+          for (const [root, file] of collectCacheKeys(toKeys)) {
+            if (root === hit.hitListRoot && file === hit.hitFilePath) continue
             del.run(root, file)
           }
-        }
-        return Number(result?.changes) || 0
-      }
-      const result = copy.run(
-        destRoot,
-        destFile,
-        params.toStat.size,
-        params.toStat.mtimeMs,
-        Date.now(),
-        hit.hitListRoot,
-        hit.hitFilePath
-      )
-      return Number(result?.changes) || 0
-    })()
+          if (params.removeSource || sameRow) {
+            const result = update.run(
+              destRoot,
+              destFile,
+              params.toStat.size,
+              params.toStat.mtimeMs,
+              Date.now(),
+              hit.hitListRoot,
+              hit.hitFilePath
+            )
+            if (params.removeSource) {
+              for (const [root, file] of collectCacheKeys(fromKeys)) {
+                if (root === destRoot && file === destFile) continue
+                del.run(root, file)
+              }
+            }
+            return Number(result?.changes) || 0
+          }
+          const result = copy.run(
+            destRoot,
+            destFile,
+            params.toStat.size,
+            params.toStat.mtimeMs,
+            Date.now(),
+            hit.hitListRoot,
+            hit.hitFilePath
+          )
+          return Number(result?.changes) || 0
+        })(),
+      500
+    )
     return changed > 0
   } catch (error) {
     log.error('[sqlite] unified display waveform cache relocate failed', error)
