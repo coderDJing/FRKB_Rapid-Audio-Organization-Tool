@@ -12,6 +12,7 @@ export default defineConfig({
           name: 'node',
           exclude: [
             ...configDefaults.exclude,
+            '**/rust_package/**',
             '**/CoverThumbnailImage.spec.ts',
             '**/CuratedLibrarySyncSettings.spec.ts'
           ]

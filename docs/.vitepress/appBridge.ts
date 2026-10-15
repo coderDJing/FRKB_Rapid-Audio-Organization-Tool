@@ -3,7 +3,7 @@
 // - 路径别名 @renderer / @shared / src
 // - electron-vite 专有的 `?asset` 导入（改写成 Vite 标准的 `?url`）
 // - 应用自定义的 `*.wasm?inline`、`<template src>` 外置模板
-// - renderer 代码里读取的 process.env.NODE_ENV 与 vue-i18n 编译期开关
+// - renderer 代码里读取的 vue-i18n 编译期开关
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { Plugin, UserConfig } from 'vite'
@@ -107,7 +107,7 @@ export const appBridgeViteConfig: UserConfig = {
     ]
   },
   define: {
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+    // NODE_ENV 由 Vite 按开发/构建模式注入，避免开发预编译时关闭 Vue 热更新。
     // vue-i18n 的 esm-bundler 构建读取这些编译期开关，Vite + plugin-vue 默认只注入 Vue 自己的
     __VUE_PROD_DEVTOOLS__: 'false',
     __VUE_I18N_FULL_INSTALL__: 'true',

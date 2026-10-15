@@ -1,6 +1,6 @@
 import { resolve } from 'path'
 import { readFile } from 'node:fs/promises'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { defineConfig } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
 const inlineWasmPlugin = () => ({
@@ -11,7 +11,7 @@ const inlineWasmPlugin = () => ({
     if (!filePath.endsWith('.wasm') || !query.split('&').includes('inline')) return null
     const bytes = await readFile(filePath)
     const dataUrl = `data:application/wasm;base64,${bytes.toString('base64')}`
-    return `export default ${JSON.stringify(dataUrl)}`
+    return { code: `export default ${JSON.stringify(dataUrl)}`, moduleType: 'js' as const }
   }
 })
 
@@ -32,9 +32,8 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [externalizeDepsPlugin()],
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
           audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts'),
@@ -149,7 +148,6 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [externalizeDepsPlugin()],
     define: {
       'process.env.CLOUD_SYNC_BASE_URL_DEV': JSON.stringify(
         process.env.CLOUD_SYNC_BASE_URL_DEV || ''
@@ -181,7 +179,7 @@ export default defineConfig({
     },
     plugins: [inlineWasmPlugin(), vue()],
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/', 'index.html'),
           databaseInit: resolve(__dirname, 'src/renderer/', 'databaseInit.html'),

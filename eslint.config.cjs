@@ -38,7 +38,21 @@ module.exports = [
     }
   },
   {
+    files: ['src/renderer/src/workers/*.worklet.js'],
+    languageOptions: {
+      globals: {
+        AudioWorkletProcessor: 'readonly',
+        currentTime: 'readonly',
+        registerProcessor: 'readonly',
+        sampleRate: 'readonly'
+      }
+    }
+  },
+  {
     rules: {
+      // Keep new ESLint 10 recommendations visible while existing code is migrated.
+      'no-useless-assignment': 'warn',
+      'preserve-caught-error': 'warn',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
