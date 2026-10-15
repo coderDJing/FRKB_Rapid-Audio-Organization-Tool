@@ -98,7 +98,7 @@ def _read_u32(data: bytes, offset: int) -> int:
     return struct.unpack_from(">I", data, offset)[0]
 
 
-def _unmask_pssi_body(body: bytes, len_entries: int) -> bytes:
+def _unmask_pssi_body(body: bytes, len_entries: int, version: int) -> bytes:
     if len(body) < 2:
         return body
     raw_mood = _read_u16(body, 0)
@@ -106,7 +106,7 @@ def _unmask_pssi_body(body: bytes, len_entries: int) -> bytes:
         return body
     add = len_entries & 0xFF
     mask = bytes((value + add) & 0xFF for value in PSSI_XOR_BASE)
-    return bytes(byte ^ mask[index % len(mask)] for index, byte in enumerate(body))
+    return bytes(byte ^ mask[(index + version) % len(mask)] for index, byte in enumerate(body))
 
 
 def _resolve_high_label(kind: int, k1: int, k2: int, k3: int) -> str:
@@ -155,19 +155,25 @@ def parse_anlz_sections(path: Path) -> list[tuple[bytes, bytes]]:
 
 
 def parse_pssi_tag(tag: bytes) -> dict[str, Any]:
-    if len(tag) < 20 or tag[0:4] != b"PSSI":
+    if len(tag) < 32 or tag[0:4] != b"PSSI":
         raise ValueError("不是 PSSI 标签")
     len_header = _read_u32(tag, 4)
     len_tag = _read_u32(tag, 8)
-    len_entry_bytes = _read_u32(tag, 12)
+    version = _read_u16(tag, 12)
+    len_entry_bytes = _read_u16(tag, 14)
     len_entries = _read_u16(tag, 16)
-    body = _unmask_pssi_body(tag[18:len_tag], len_entries)
+    if (version not in (0, 1) or len_header != 32 or len_tag != len(tag)
+            or len_entry_bytes != 24 or len_tag != len_header + len_entries * len_entry_bytes):
+        raise ValueError("不支持或不完整的 PSSI 乐句结构")
+    body = _unmask_pssi_body(tag[18:len_tag], len_entries, version)
     mood = _read_u16(body, 0) if len(body) >= 2 else 0
+    if mood not in (1, 2, 3):
+        raise ValueError("不支持的 PSSI 乐句编码")
     end_beat = _read_u16(body, 8) if len(body) >= 10 else 0
     bank = body[12] if len(body) >= 13 else 0
     entries_blob = body[14:]
     phrases: list[dict[str, Any]] = []
-    stride = len_entry_bytes if len_entry_bytes > 0 else 24
+    stride = len_entry_bytes
     for index in range(len_entries):
         start = index * stride
         chunk = entries_blob[start : start + stride]
@@ -209,13 +215,14 @@ def parse_pssi_tag(tag: bytes) -> dict[str, Any]:
             phrase["fillLengthBeats"] = 0
     return {
         "lenHeader": len_header,
+        "version": version,
         "lenEntryBytes": len_entry_bytes,
         "mood": mood,
         "moodName": MOOD_NAMES.get(mood, f"unknown_{mood}"),
         "bank": bank,
         "bankName": BANK_NAMES.get(bank, f"unknown_{bank}"),
         "endBeat": end_beat,
-        "maskedExport": _read_u16(tag, 18) > 20 if len(tag) >= 20 else False,
+        "maskedExport": _read_u16(tag, 18) not in (1, 2, 3),
         "phrases": phrases,
     }
 

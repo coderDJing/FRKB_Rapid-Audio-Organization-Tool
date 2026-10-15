@@ -326,7 +326,7 @@ def load_rekordbox_candidates(
     if bridge_root not in sys.path:
         sys.path.insert(0, bridge_root)
     try:
-        import bridge as rekordbox_bridge
+        import bridge_runtime as rekordbox_bridge
     except Exception as error:
         raise New357RecoveryError(
             "failed to load Rekordbox runtime; run with the bundled rekordbox-desktop Python"
@@ -338,7 +338,7 @@ def load_rekordbox_candidates(
 
     target_names = {normalize_name(path.name) for path in audio_paths}
     candidates: dict[str, list[dict[str, Any]]] = {name: [] for name in target_names}
-    database = rekordbox_bridge.Rekordbox6Database(
+    database = rekordbox_bridge.MasterDatabase(
         path=str(db_path.resolve()), db_dir=str(db_path.resolve().parent)
     )
     try:

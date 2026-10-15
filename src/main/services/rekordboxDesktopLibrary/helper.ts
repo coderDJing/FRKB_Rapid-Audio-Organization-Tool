@@ -61,7 +61,9 @@ type ResolvedPythonCommand = {
   runtimeSource: 'bundled' | 'env-python' | 'dev-launcher'
 }
 
-const BENIGN_STDERR_PATTERNS = [/pyrekordbox\.db6\.database:WARNING\s+-\s+Rekordbox is running!/i]
+const BENIGN_STDERR_PATTERNS = [
+  /pyrekordbox\.masterdb\.database:WARNING\s+-\s+Rekordbox is running!/i
+]
 
 const sanitizeHelperStderr = (stderr: string) =>
   String(stderr || '')

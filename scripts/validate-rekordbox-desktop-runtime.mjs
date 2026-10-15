@@ -30,6 +30,10 @@ const CURRENT_PLATFORM_KEY = (() => {
 
 const runtimeRootValues = getArgValues('--runtime-root')
 const runtimeRoot = path.resolve(runtimeRootValues[0] || 'vendor/rekordbox-desktop-runtime')
+const requiredPyrekordboxVersion = fs
+  .readFileSync(path.resolve('scripts/rekordbox-desktop-runtime-requirements.txt'), 'utf8')
+  .match(/^pyrekordbox==([^\s]+)\s*$/m)?.[1]
+if (!requiredPyrekordboxVersion) throw new Error('Missing pinned pyrekordbox runtime version')
 const requestedPlatformKeys = Array.from(new Set(getArgValues('--platform-key').filter(Boolean)))
 const platformKeys =
   requestedPlatformKeys.length > 0 ? requestedPlatformKeys : [CURRENT_PLATFORM_KEY]
@@ -81,6 +85,8 @@ const validateRuntime = (platformKey) => {
         'import json',
         'import sys',
         'import pyrekordbox',
+        'from pyrekordbox import MasterDatabase',
+        'from pyrekordbox.masterdb import models',
         'import sqlalchemy',
         'import sqlcipher3',
         'print(json.dumps({',
@@ -122,6 +128,11 @@ const validateRuntime = (platformKey) => {
   }
 
   const normalizedRuntimeDir = path.normalize(runtimeDir)
+  if (parsed.pyrekordbox !== requiredPyrekordboxVersion) {
+    throw new Error(
+      `[rekordbox-runtime] Version mismatch for ${platformKey}: ${parsed.pyrekordbox} expected=${requiredPyrekordboxVersion}`
+    )
+  }
   const prefix = path.normalize(String(parsed.prefix || '').trim())
   const basePrefix = path.normalize(String(parsed.base_prefix || '').trim())
   if (prefix !== normalizedRuntimeDir || basePrefix !== normalizedRuntimeDir) {

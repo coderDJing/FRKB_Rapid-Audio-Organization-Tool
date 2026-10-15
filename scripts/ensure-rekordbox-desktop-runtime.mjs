@@ -35,6 +35,10 @@ const runtimeRootArg = getArgValue('--runtime-root', 'vendor/rekordbox-desktop-r
 const runtimeRoot = path.resolve(runtimeRootArg)
 const runtimeDir = path.join(runtimeRoot, platformKey, 'python')
 const requirementsPath = path.resolve('./scripts/rekordbox-desktop-runtime-requirements.txt')
+const requiredPyrekordboxVersion = fs
+  .readFileSync(requirementsPath, 'utf8')
+  .match(/^pyrekordbox==([^\s]+)\s*$/m)?.[1]
+if (!requiredPyrekordboxVersion) throw new Error('Missing pinned pyrekordbox runtime version')
 const force = hasFlag('--force')
 
 const resolvePythonLauncher = () => {
@@ -183,6 +187,8 @@ const isRuntimeReady = () => {
       [
         'import json',
         'import pyrekordbox',
+        'from pyrekordbox import MasterDatabase',
+        'from pyrekordbox.masterdb import models',
         'import sqlalchemy',
         'import sqlcipher3',
         'print(json.dumps({"ok": True, "version": getattr(pyrekordbox, "__version__", "")}))'
@@ -195,7 +201,12 @@ const isRuntimeReady = () => {
       }
     }
   )
-  return probe.status === 0
+  if (probe.status !== 0) return false
+  try {
+    return JSON.parse(String(probe.stdout)).version === requiredPyrekordboxVersion
+  } catch {
+    return false
+  }
 }
 
 ensureDirectory(runtimeDir)

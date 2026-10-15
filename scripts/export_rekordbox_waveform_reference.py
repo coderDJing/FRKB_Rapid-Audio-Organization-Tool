@@ -25,10 +25,10 @@ DEFAULT_REKORDBOX_DB = (
 
 def _import_pyrekordbox() -> tuple[Any, Any]:
     try:
-        from pyrekordbox import Rekordbox6Database
+        from pyrekordbox import MasterDatabase
         from pyrekordbox.anlz import AnlzFile
 
-        return Rekordbox6Database, AnlzFile
+        return MasterDatabase, AnlzFile
     except Exception as exc:
         runtime_python = (
             REPO_ROOT

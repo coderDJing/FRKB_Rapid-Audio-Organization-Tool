@@ -13,14 +13,14 @@ PYREKORDBOX_IMPORT_ERROR: Optional[str] = None
 SELECTINLOAD = None
 
 try:
-    from pyrekordbox import Rekordbox6Database, get_config, update_config
+    from pyrekordbox import MasterDatabase, get_config, update_config
     from pyrekordbox.anlz import AnlzFile
     from pyrekordbox.config import get_pioneer_app_dir, read_rekordbox6_options
-    from pyrekordbox.db6 import tables
+    from pyrekordbox.masterdb import models as tables
     from pyrekordbox.utils import get_rekordbox_pid
 except Exception as exc:  # pragma: no cover
     PYREKORDBOX_IMPORT_ERROR = str(exc)
-    Rekordbox6Database = None  # type: ignore[assignment]
+    MasterDatabase = None  # type: ignore[assignment]
     AnlzFile = None  # type: ignore[assignment]
     get_config = None  # type: ignore[assignment]
     update_config = None  # type: ignore[assignment]
@@ -786,7 +786,7 @@ def _build_write_status(config: Dict[str, Any]) -> Dict[str, Any]:
 def _open_database(config: Dict[str, Any]) -> Any:
     db_path = _normalize_path(config.get("dbPath"))
     db_dir = _normalize_path(config.get("dbDir"))
-    return Rekordbox6Database(path=db_path, db_dir=db_dir)
+    return MasterDatabase(path=db_path, db_dir=db_dir)
 
 
 def _close_database(db: Any) -> None:
