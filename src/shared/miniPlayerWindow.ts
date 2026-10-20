@@ -5,10 +5,7 @@ import type { ISongInfo } from 'src/types/globals'
 
 export type MiniPlayerTransferActionMode = 'move' | 'copy'
 export type MiniPlayerTransferTarget =
-  | 'FilterLibrary'
-  | 'CuratedLibrary'
-  | 'SetLibrary'
-  | 'MixtapeLibrary'
+  'FilterLibrary' | 'CuratedLibrary' | 'SetLibrary' | 'MixtapeLibrary'
 
 export const MINI_PLAYER_WINDOW_HEIGHT = 62
 export const MINI_PLAYER_WINDOW_MIN_WIDTH = 720
@@ -82,6 +79,9 @@ export type MiniPlayerPlayheadGapDiagnostic = {
   documentHidden?: boolean
   documentHasFocus?: boolean
   watchLateMs?: number
+  reportTrigger?: 'watchdog' | 'update'
+  incomingSequence?: number | null
+  incomingPublishedAtMs?: number | null
 }
 
 export type MiniPlayerHostPlayheadStallDiagnostic = {

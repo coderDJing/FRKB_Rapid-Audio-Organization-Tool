@@ -127,8 +127,11 @@ class DecodeQueueOverflowError extends Error {
 
 const nowMs = () => Date.now()
 
+export const isDecodeJobSupersededError = (error: unknown) =>
+  error instanceof DecodeJobSupersededError
+
 const isDecodeQueueControlError = (error: unknown) =>
-  error instanceof DecodeJobSupersededError || error instanceof DecodeQueueOverflowError
+  isDecodeJobSupersededError(error) || error instanceof DecodeQueueOverflowError
 
 const normalizeDecodePriority = (value: unknown): DecodeAudioPriority => {
   if (value === 'high' || value === 'low' || value === 'normal') return value

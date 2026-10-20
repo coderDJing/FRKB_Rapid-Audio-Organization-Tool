@@ -11,6 +11,7 @@ import {
 } from '../../shared/waveformSurfaceCache'
 import { getLibraryDb, isSqliteRow, type SqliteDatabase } from '../libraryDb'
 import { log } from '../log'
+import { createStageDiagnostics } from '../services/stageDiagnostics'
 import {
   resolveAbsoluteListRoot,
   resolveFilePathInput,
@@ -374,8 +375,11 @@ async function loadWaveformSurfaceByKind(
   kind: WaveformSurfaceKind
 ): Promise<WaveformSurfaceData | null | undefined> {
   if (!listRoot || !filePath) return undefined
+  const diagnostics = createStageDiagnostics('waveform-surface-perf', { filePath, kind })
   try {
-    const row = loadSurfacePayloadRow(listRoot, filePath, kind)
+    const row = diagnostics.measureSync('read-payload', () =>
+      loadSurfacePayloadRow(listRoot, filePath, kind)
+    )
     if (!row) return null
     const meta = normalizeMeta(row)
     if (!isMetaMatch(meta, stat)) {
@@ -387,7 +391,9 @@ async function loadWaveformSurfaceByKind(
       await removeWaveformSurfaceCacheEntry(listRoot, filePath)
       return null
     }
-    const decoded = decodeWaveformSurfacePayload(meta!, kind, payload)
+    const decoded = diagnostics.measureSync('decode-payload', () =>
+      decodeWaveformSurfacePayload(meta!, kind, payload)
+    )
     if (!decoded) {
       await removeWaveformSurfaceCacheEntry(listRoot, filePath)
       return null
@@ -513,8 +519,13 @@ export async function upsertWaveformSurfaceCacheEntry(
   const db = getLibraryDb()
   const keys = resolveCacheKeys(listRoot, filePath)
   if (!db || !keys || !data) return false
-  const listPreviewPayload = encodeWaveformSurfacePayload(data.listPreview)
-  const globalOverviewPayload = encodeWaveformSurfacePayload(data.globalOverview)
+  const diagnostics = createStageDiagnostics('waveform-surface-perf', { filePath })
+  const listPreviewPayload = diagnostics.measureSync('encode-list-preview', () =>
+    encodeWaveformSurfacePayload(data.listPreview)
+  )
+  const globalOverviewPayload = diagnostics.measureSync('encode-global-overview', () =>
+    encodeWaveformSurfacePayload(data.globalOverview)
+  )
   if (!listPreviewPayload || !globalOverviewPayload) return false
   try {
     const upsertMain = db.prepare(
@@ -539,7 +550,7 @@ export async function upsertWaveformSurfaceCacheEntry(
         updated_at_ms = excluded.updated_at_ms`
     )
     const deleteMain = db.prepare(`DELETE FROM ${TABLE} WHERE list_root = ? AND file_path = ?`)
-    db.transaction(() => {
+    const save = db.transaction(() => {
       upsertMain.run(
         keys.listRootKey,
         keys.fileKey,
@@ -562,7 +573,8 @@ export async function upsertWaveformSurfaceCacheEntry(
       if (keys.legacyListRoot && keys.legacyFilePath) {
         deleteMain.run(keys.legacyListRoot, keys.legacyFilePath)
       }
-    })()
+    })
+    diagnostics.measureSync('write-payload', save)
     return true
   } catch (error) {
     log.error('[sqlite] waveform surface cache upsert failed', error)

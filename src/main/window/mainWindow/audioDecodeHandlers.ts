@@ -9,7 +9,8 @@ import {
   isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinition
 } from '../../services/sharedSongGrid'
-import { decodeAudioShared } from '../../services/audioDecodePool'
+import { decodeAudioShared, isDecodeJobSupersededError } from '../../services/audioDecodePool'
+import { createStageDiagnostics } from '../../services/stageDiagnostics'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
 import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
@@ -166,17 +167,26 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
             await LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, filePath)
           }
         }
+        const diagnostics = createStageDiagnostics('playback-decode-perf', {
+          eventName,
+          filePath,
+          pcmBytes: result.pcmData.byteLength,
+          sampleRate: result.sampleRate,
+          channels: result.channels
+        })
         const payload = {
-          pcmData: clonePcmData(result.pcmData),
+          pcmData: diagnostics.measureSync('clone-pcm', () => clonePcmData(result.pcmData)),
           sampleRate: result.sampleRate,
           channels: result.channels,
           totalFrames: result.totalFrames,
           compactVisualWaveformData
         }
-        getWindow()?.webContents.send(successEvent, payload, filePath, requestId)
+        diagnostics.measureSync('send-pcm', () =>
+          getWindow()?.webContents.send(successEvent, payload, filePath, requestId)
+        )
       } catch (error) {
         const errorMsg = `解码歌曲文件失败(${eventName}) ${filePath}`
-        log.error(errorMsg, error)
+        if (!isDecodeJobSupersededError(error)) log.error(errorMsg, error)
         getWindow()?.webContents.send(errorEvent, filePath, (error as Error).message, requestId)
       }
     }
@@ -205,7 +215,7 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       getWindow()?.webContents.send('readedPreviewSongFile', payload, filePath, requestId)
     } catch (error) {
       const errorMsg = `解码预览文件失败 ${filePath}`
-      log.error(errorMsg, error)
+      if (!isDecodeJobSupersededError(error)) log.error(errorMsg, error)
       getWindow()?.webContents.send(
         'readPreviewSongFileError',
         filePath,

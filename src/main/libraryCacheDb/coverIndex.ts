@@ -13,8 +13,10 @@ import {
 import type { SqliteDatabase } from '../libraryDb'
 import { runTracedSync } from '../services/mainProcessActivityTraceState'
 import { isPackagedRcMainProcess } from '../services/rcDiagnosticEnvironment'
+import { collectSqliteReadContext } from '../services/sqliteReadDiagnostics'
 
 const migratedCoverRoots = new Set<string>()
+const slowReadContextCollected = new WeakSet<SqliteDatabase>()
 const coverIndexMigrationTasks = new Map<string, Promise<void>>()
 let coverIndexDbQueue: Promise<void> = Promise.resolve()
 let coverIndexDbTaskSequence = 0
@@ -415,6 +417,7 @@ export async function loadCoverIndexEntries(listRoot: string): Promise<CoverInde
       await ensureCoverIndexMigratedInternal(db, listRoot)
       const migrateMs = performance.now() - migrateStartedAt
       const queryStartedAt = performance.now()
+      const queryThreadCpuStarted = isPackagedRcMainProcess() ? process.threadCpuUsage() : null
       const rows = runTracedSync('sqlite:cover-index-load-entries', () =>
         db
           .prepare<CoverIndexRow>(
@@ -432,6 +435,9 @@ export async function loadCoverIndexEntries(listRoot: string): Promise<CoverInde
           )
         : []
       const queryMs = performance.now() - queryStartedAt
+      const queryThreadCpu = queryThreadCpuStarted
+        ? process.threadCpuUsage(queryThreadCpuStarted)
+        : null
       const mapStartedAt = performance.now()
       const toEntries = (rowsToUse: CoverIndexRow[], rootKey: string, legacyRelRoot?: string) =>
         (rowsToUse || [])
@@ -466,6 +472,14 @@ export async function loadCoverIndexEntries(listRoot: string): Promise<CoverInde
       }
       const elapsedMs = performance.now() - startedAt
       if (isPackagedRcMainProcess() && elapsedMs >= 1000) {
+        const context = slowReadContextCollected.has(db)
+          ? undefined
+          : collectSqliteReadContext(
+              db,
+              'SELECT file_path, hash, ext FROM cover_index WHERE list_root = ?',
+              [listRootKey]
+            )
+        slowReadContextCollected.add(db)
         log.warn('[cover-index] slow load-entries', {
           elapsedMs: Math.round(elapsedMs),
           migrateMs: Math.round(migrateMs),
@@ -473,7 +487,10 @@ export async function loadCoverIndexEntries(listRoot: string): Promise<CoverInde
           mapMs: Math.round(mapMs),
           legacyMigrateMs: Math.round(legacyMigrateMs),
           rowCount: rows.length,
-          legacyRowCount: legacyRows.length
+          legacyRowCount: legacyRows.length,
+          threadCpuUserMs: queryThreadCpu ? Math.round(queryThreadCpu.user / 1000) : null,
+          threadCpuSystemMs: queryThreadCpu ? Math.round(queryThreadCpu.system / 1000) : null,
+          context
         })
       }
       return result

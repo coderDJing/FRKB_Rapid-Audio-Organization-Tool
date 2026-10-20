@@ -8,6 +8,7 @@ import { createKeyAnalysisFailureTracker, type KeyAnalysisFailureTracker } from 
 import { hasCurrentKeyAnalysisJobOwnership } from './jobOwnership'
 import { KeyAnalysisDeferredQueue } from './deferredQueue'
 import { buildKeyAnalysisWorkerMessage } from './workerDispatch'
+import { getKeyAnalysisJobDiagnostics } from './diagnostics'
 import {
   addManualBatchIdsToJob,
   applyKeyAnalysisIncludeStructureOption,
@@ -169,6 +170,14 @@ export class KeyAnalysisQueue {
 
   getBackgroundStatusSnapshot(): KeyAnalysisBackgroundStatus {
     return this.background.getBackgroundStatusSnapshot()
+  }
+
+  getDiagnosticSnapshot() {
+    return {
+      workerCount: this.workers.length,
+      pending: this.pendingByPath.size,
+      jobs: getKeyAnalysisJobDiagnostics(this.inFlight.values())
+    }
   }
 
   isForegroundBusy(): boolean {
@@ -830,6 +839,7 @@ export class KeyAnalysisQueue {
         workerThreadId: worker.threadId,
         stage: trace?.lastStage || 'unknown',
         stageStuckMs,
+        diagnostic: getKeyAnalysisJobDiagnostics([activeJob])[0],
         elapsedMs: trace?.elapsedMs,
         decodeMs: trace?.decodeMs,
         analyzeMs: trace?.analyzeMs,

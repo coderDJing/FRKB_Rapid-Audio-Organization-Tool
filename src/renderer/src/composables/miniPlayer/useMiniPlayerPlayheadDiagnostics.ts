@@ -27,7 +27,12 @@ export const useMiniPlayerPlayheadDiagnostics = (hostState: Ref<MiniPlayerHostSt
   let lastUpdateReceivedAtMs: number | null = null
   let lastWatchFiredAtMs = 0
 
-  const reportDelayedPlayhead = (nowMs: number, state: PlayheadState, watchLateMs = 0) => {
+  const reportDelayedPlayhead = (
+    nowMs: number,
+    state: PlayheadState,
+    watchLateMs = 0,
+    incoming?: PlayheadUpdateMetadata
+  ) => {
     const delayedMs = nowMs - lastPlayheadAtMs
     if (
       delayedMs < PLAYHEAD_DELAY_THRESHOLD_MS ||
@@ -48,14 +53,17 @@ export const useMiniPlayerPlayheadDiagnostics = (hostState: Ref<MiniPlayerHostSt
       visibilityState: document.visibilityState,
       documentHidden: document.hidden,
       documentHasFocus: document.hasFocus(),
-      watchLateMs: Math.round(watchLateMs)
+      watchLateMs: Math.round(watchLateMs),
+      reportTrigger: incoming ? 'update' : 'watchdog',
+      incomingSequence: incoming?.sequence ?? null,
+      incomingPublishedAtMs: incoming?.publishedAtMs ?? null
     })
   }
 
   const notePlaybackUpdate = (state: PlayheadState, metadata?: PlayheadUpdateMetadata) => {
     const nowMs = Date.now()
     if (lastPlayheadAtMs > 0 && wasPlaying && state.isPlaying) {
-      reportDelayedPlayhead(nowMs, state)
+      reportDelayedPlayhead(nowMs, state, 0, metadata || { source: 'host-state' })
     }
     lastPlayheadAtMs = nowMs
     wasPlaying = state.isPlaying

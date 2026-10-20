@@ -23,6 +23,7 @@ export const createStageDiagnostics = (
     if (!enabled) return () => undefined
     const startedAt = performance.now()
     const startedCpu = process.cpuUsage()
+    const startedThreadCpu = process.threadCpuUsage()
     const id = beginMainThreadActivity({
       kind: synchronous ? 'sync' : 'async-phase',
       name: `${scope}:${stage}`,
@@ -36,6 +37,7 @@ export const createStageDiagnostics = (
       const elapsedMs = Math.round(performance.now() - startedAt)
       if (elapsedMs < thresholdMs) return
       const cpu = process.cpuUsage(startedCpu)
+      const threadCpu = process.threadCpuUsage(startedThreadCpu)
       log.warn(`[${scope}] slow stage`, {
         ...details,
         stage,
@@ -44,6 +46,8 @@ export const createStageDiagnostics = (
         thresholdMs,
         cpuUserMs: Math.round(cpu.user / 1000),
         cpuSystemMs: Math.round(cpu.system / 1000),
+        threadCpuUserMs: Math.round(threadCpu.user / 1000),
+        threadCpuSystemMs: Math.round(threadCpu.system / 1000),
         outcome
       })
     }

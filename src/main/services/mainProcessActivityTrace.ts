@@ -11,6 +11,8 @@ import {
   summarizeIpcArgHint
 } from './mainProcessActivityTraceState'
 import { TracedEventListenerRegistry, type EventListenerFn } from './tracedEventListeners'
+import { getWindowsDriveProbeSnapshot } from './pioneerDeviceLibrary/windowsDriveProbe'
+import { getKeyAnalysisDiagnosticSnapshot } from './keyAnalysisQueue'
 
 type InvokeListener = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -168,6 +170,8 @@ export const getMainProcessStallContext = (sinceMs: number) => {
     backgroundFileIo: getBackgroundFileIoDiagnosticSnapshot(now),
     coverTasks: getCoverTaskDiagnosticSnapshot(now),
     coverIndexDb: getCoverIndexDbDiagnosticSnapshot(now),
+    driveProbes: getWindowsDriveProbeSnapshot(),
+    keyAnalysis: getKeyAnalysisDiagnosticSnapshot(),
     activity: getMainThreadActivitySnapshot(sinceMs)
   }
 }

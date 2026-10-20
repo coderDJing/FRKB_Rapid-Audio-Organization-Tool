@@ -13,6 +13,7 @@ import type {
 } from './types'
 import { ensurePioneerUsbIdentity } from './usbIdentity'
 import { probeWindowsUsbWriteRoot } from './windowsUsbWriteProbe'
+import { runWindowsDriveProbe } from './windowsDriveProbe'
 
 const execFileAsync = promisify(execFile)
 
@@ -159,6 +160,7 @@ const getExecFailureDiagnostic = (error: unknown) => {
     killed?: unknown
     stderr?: string | Buffer
     message?: unknown
+    driveProbe?: unknown
   }
   const exitCode = typeof err.code === 'number' || typeof err.code === 'string' ? err.code : null
   const signal = typeof err.signal === 'string' ? err.signal : null
@@ -168,6 +170,7 @@ const getExecFailureDiagnostic = (error: unknown) => {
     signal,
     killed: err.killed === true,
     stderr: decodeExecOutput(err.stderr),
+    driveProbe: err.driveProbe,
     message
   }
 }
@@ -354,24 +357,12 @@ const runMacPlistCommand = async (command: string, args: string[]) => {
   return await convertPlistToJson(String(stdout || ''))
 }
 
-const runWindowsPowerShell = (script: string, timeoutMs: number) =>
-  execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-    {
-      windowsHide: true,
-      // PowerShell 输出与 Node 解码统一使用 UTF-8，避免卷标受系统代码页影响。
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      maxBuffer: 1024 * 1024 * 8
-    }
-  )
-
 async function listWindowsLogicalDisks(): Promise<Array<Record<string, unknown>>> {
   const script = [
     "$ErrorActionPreference = 'Stop'",
     "$ProgressPreference = 'SilentlyContinue'",
     '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
+    "Write-FrkbProbePhase 'logical-disks'",
     '$rows = @(Get-CimInstance -ClassName Win32_LogicalDisk -Property DeviceID,DriveType,VolumeName,FileSystem,Size,FreeSpace -OperationTimeoutSec 3 | ForEach-Object {',
     '  [PSCustomObject]@{',
     '    deviceId = [string]$_.DeviceID',
@@ -382,9 +373,14 @@ async function listWindowsLogicalDisks(): Promise<Array<Record<string, unknown>>
     '    freeSpace = if ($_.FreeSpace) { [int64]$_.FreeSpace } else { 0 }',
     '  }',
     '})',
+    "Write-FrkbProbePhase 'serialize-logical-disks'",
     "if ($rows.Count -eq 0) { '[]' } else { $rows | ConvertTo-Json -Compress -Depth 4 }"
   ].join('\n')
-  const { stdout, stderr } = await runWindowsPowerShell(script, WINDOWS_LOGICAL_DISK_TIMEOUT_MS)
+  const { stdout, stderr } = await runWindowsDriveProbe(
+    script,
+    WINDOWS_LOGICAL_DISK_TIMEOUT_MS,
+    'logical-disks'
+  )
   const partialProbeError = trimOutput(stderr)
   if (partialProbeError) {
     logDriveProbeError(
@@ -426,11 +422,14 @@ async function listWindowsUsbDriveLetters(): Promise<UsbLetterProbe> {
     "$ProgressPreference = 'SilentlyContinue'",
     '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
     "$letters = New-Object 'System.Collections.Generic.List[string]'",
+    "Write-FrkbProbePhase 'cim-disks'",
     'try {',
     '  Get-CimInstance -ClassName Win32_DiskDrive -OperationTimeoutSec 8 -ErrorAction Stop |',
     "    Where-Object { $_.InterfaceType -eq 'USB' -or ($_.PNPDeviceID -like 'USBSTOR*') } | ForEach-Object {",
     '      $disk = $_',
+    "      Write-FrkbProbePhase 'cim-partitions'",
     '      Get-CimAssociatedInstance -InputObject $disk -Association Win32_DiskDriveToDiskPartition -ErrorAction SilentlyContinue | ForEach-Object {',
+    "        Write-FrkbProbePhase 'cim-logical-disks'",
     '        Get-CimAssociatedInstance -InputObject $_ -Association Win32_LogicalDiskToPartition -ErrorAction SilentlyContinue | ForEach-Object {',
     '          $id = [string]$_.DeviceID',
     '          if ($id) { [void]$letters.Add($id.ToUpperInvariant()) }',
@@ -440,9 +439,12 @@ async function listWindowsUsbDriveLetters(): Promise<UsbLetterProbe> {
     '} catch {',
     '  [Console]::Error.WriteLine("cim-usb-association: $($_.Exception.Message)")',
     '}',
+    "Write-FrkbProbePhase 'storage-command-discovery'",
     'if (Get-Command Get-Disk -ErrorAction SilentlyContinue) {',
     '  try {',
+    "    Write-FrkbProbePhase 'storage-disks'",
     "    Get-Disk -ErrorAction Stop | Where-Object { $_.BusType -eq 'USB' } | ForEach-Object {",
+    "      Write-FrkbProbePhase 'storage-partitions'",
     '      Get-Partition -DiskNumber $_.Number -ErrorAction SilentlyContinue | ForEach-Object {',
     '        if ($_.DriveLetter) {',
     "          [void]$letters.Add((([string]$_.DriveLetter + ':').ToUpperInvariant()))",
@@ -454,10 +456,15 @@ async function listWindowsUsbDriveLetters(): Promise<UsbLetterProbe> {
     '  }',
     '}',
     '$unique = @($letters | Select-Object -Unique)',
+    "Write-FrkbProbePhase 'serialize-usb-letters'",
     "if ($unique.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $unique -Compress }"
   ].join('\n')
   try {
-    const { stdout, stderr } = await runWindowsPowerShell(script, WINDOWS_USB_LETTER_TIMEOUT_MS)
+    const { stdout, stderr } = await runWindowsDriveProbe(
+      script,
+      WINDOWS_USB_LETTER_TIMEOUT_MS,
+      'usb-letters'
+    )
     const probe = readUsbLetterProbe(String(stdout || ''), String(stderr || ''))
     const probeError = trimOutput(stderr)
     if (probeError) {

@@ -1,6 +1,7 @@
 import type { KeyAnalysisJob } from './types'
 import { resolveAudioTimeBasisOffsetMsForFile } from '../audioTimeBasisOffset'
 import { resolveAnalysisBpmRange } from '../../../shared/analysisBpmRange'
+import { isSqliteReadDiagnosticsEnabled } from '../sqliteReadDiagnostics'
 
 export const buildKeyAnalysisWorkerMessage = async (job: KeyAnalysisJob) => {
   const analysisBpmRange = resolveAnalysisBpmRange(job.analysisBpmRange?.id)
@@ -10,6 +11,7 @@ export const buildKeyAnalysisWorkerMessage = async (job: KeyAnalysisJob) => {
       : undefined
   return {
     jobId: job.jobId,
+    diagnostics: isSqliteReadDiagnosticsEnabled(),
     filePath: job.filePath,
     fastAnalysis: job.fastAnalysis,
     needsKey: job.needsKey,

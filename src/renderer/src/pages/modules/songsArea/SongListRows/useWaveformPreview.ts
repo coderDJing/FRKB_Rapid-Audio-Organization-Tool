@@ -34,6 +34,7 @@ import {
 import { createWaveformPreviewCanvasRegistry } from './waveformPreviewCanvasRegistry'
 import { createWaveformPreviewRetry, type WaveformPlaceholderState } from './waveformPreviewRetry'
 import { loadManualExternalWaveformPreviews } from './loadManualExternalWaveformPreviews'
+import { loadWaveformPreviewBatch } from './loadWaveformPreviewBatch'
 import { toWaveformPreviewWorkerData, type WaveformCacheEntry } from './waveformPreviewWorkerData'
 import { parseDurationToSeconds } from './waveformPreviewDuration'
 type VisibleSongItem = { song: ISongInfo; idx: number }
@@ -195,6 +196,9 @@ export function useWaveformPreview(params: {
       scheduleDraw()
     }
     if (el && result.bindingChanged) {
+      if (!dataMap.has(filePath) && !inflight.has(filePath)) {
+        scheduleLoad()
+      }
       if (canUseAsyncWaveformWorker) {
         syncWaveformDataToWorker(filePath, dataMap.get(filePath) ?? null)
       }
@@ -601,33 +605,7 @@ export function useWaveformPreview(params: {
       inflight.add(filePath)
       setWaveformPlaceholderLoading(filePath)
     }
-    let response: {
-      items?: Array<{ filePath: string; data: WaveformListPreviewData | null }>
-    } | null = null
-    try {
-      const groups = new Map<string, string[]>()
-      for (const filePath of filePaths) {
-        const listRoot = resolveWaveformListRootForFilePath(filePath)
-        const group = groups.get(listRoot) || []
-        group.push(filePath)
-        groups.set(listRoot, group)
-      }
-      const responses = await Promise.all(
-        Array.from(groups.entries()).map(([listRoot, groupedFilePaths]) =>
-          window.electron.ipcRenderer.invoke('waveform-list-preview-cache:batch', {
-            listRoot,
-            filePaths: groupedFilePaths,
-            queueIfMissing: false
-          })
-        )
-      )
-      response = {
-        items: responses.flatMap((item) => (Array.isArray(item?.items) ? item.items : []))
-      }
-    } catch {
-      response = null
-    }
-    const items = Array.isArray(response?.items) ? response!.items : null
+    const items = await loadWaveformPreviewBatch(filePaths, resolveWaveformListRootForFilePath)
     if (!items) {
       for (const filePath of filePaths) {
         inflight.delete(filePath)
@@ -850,11 +828,23 @@ export function useWaveformPreview(params: {
   }
   const handleWaveformUpdated: WaveformUpdatedHandler = (_event, payload) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
-    if (!filePath || !waveformVisible.value) return
+    if (!filePath) return
     const song = resolveVisibleSongByFilePath(filePath)
-    const visibleFilePath = typeof song?.filePath === 'string' ? song.filePath : ''
+    const visibleFilePath =
+      song?.filePath ||
+      [...dataMap.keys(), ...inflight].find(
+        (cachedPath) => normalizePath(cachedPath) === normalizePath(filePath)
+      )
     if (!visibleFilePath) return
-    if (!waveformCanvasRegistry.hasCanvasForFilePath(visibleFilePath)) return
+    // Offscreen rows retain their cached misses; invalidate them before checking canvas visibility.
+    if (
+      !waveformVisible.value ||
+      !song ||
+      !waveformCanvasRegistry.hasCanvasForFilePath(visibleFilePath)
+    ) {
+      clearWaveformDataForFilePath(visibleFilePath)
+      return
+    }
     const rootPath = resolveExternalRootPath()
     const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
     if (

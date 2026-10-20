@@ -409,6 +409,8 @@ export function isKeyAnalysisForegroundBusy(): boolean {
   return queue.isForegroundBusy()
 }
 
+export const getKeyAnalysisDiagnosticSnapshot = () => queue?.getDiagnosticSnapshot() ?? null
+
 /** Activity snapshot for library-merge busy gating (in-flight vs pending-only). */
 export function getKeyAnalysisLibraryMergeActivity(): {
   inFlight: boolean

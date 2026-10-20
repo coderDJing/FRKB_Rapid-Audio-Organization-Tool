@@ -104,6 +104,7 @@ export const attachMainWindowResponsivenessDiagnostics = (
   let rendererUnresponsiveIncident: RendererUnresponsiveIncident | null = null
   let lastHeartbeatAt = Date.now()
   let lastCpuUsage = process.cpuUsage()
+  let lastThreadCpuUsage = process.threadCpuUsage()
   let lastEventLoopUtilization = performance.eventLoopUtilization()
   let stallIncident: MainProcessStallIncident | null = null
   let backgroundStallIncident: MainProcessStallIncident | null = null
@@ -175,6 +176,10 @@ export const attachMainWindowResponsivenessDiagnostics = (
         const cpuUserMs = (currentCpuUsage.user - lastCpuUsage.user) / 1000
         const cpuSystemMs = (currentCpuUsage.system - lastCpuUsage.system) / 1000
         lastCpuUsage = currentCpuUsage
+        const currentThreadCpuUsage = process.threadCpuUsage()
+        const threadCpuUserMs = (currentThreadCpuUsage.user - lastThreadCpuUsage.user) / 1000
+        const threadCpuSystemMs = (currentThreadCpuUsage.system - lastThreadCpuUsage.system) / 1000
+        lastThreadCpuUsage = currentThreadCpuUsage
         const eventLoopUtilization: EventLoopUtilization =
           performance.eventLoopUtilization(lastEventLoopUtilization)
         lastEventLoopUtilization = performance.eventLoopUtilization()
@@ -215,6 +220,7 @@ export const attachMainWindowResponsivenessDiagnostics = (
         const cpuSystemMsRounded = Math.round(cpuSystemMs)
         const processCpuMs = Math.max(0, cpuUserMs + cpuSystemMs)
         const processCpuRatio = elapsedMs > 0 ? processCpuMs / elapsedMs : 0
+        const threadCpuRatio = elapsedMs > 0 ? (threadCpuUserMs + threadCpuSystemMs) / elapsedMs : 0
         const power = snapshot.power
         const isNonInteractiveSystemDelay =
           power.systemIdleState === 'locked' ||
@@ -246,15 +252,15 @@ export const attachMainWindowResponsivenessDiagnostics = (
                   : 'tracked-main-thread-activity-overlap',
               activity: meaningfulOverlappingActivity
             }
-          : processCpuRatio >= 0.7
+          : threadCpuRatio >= 0.7
             ? {
-                kind: 'process-cpu-bound',
-                processCpuRatio: Math.round(processCpuRatio * 1000) / 1000
+                kind: 'main-thread-cpu-bound',
+                threadCpuRatio: Math.round(threadCpuRatio * 1000) / 1000
               }
-            : processCpuRatio <= 0.1
+            : threadCpuRatio <= 0.1
               ? {
-                  kind: 'low-process-cpu',
-                  processCpuRatio: Math.round(processCpuRatio * 1000) / 1000
+                  kind: 'low-main-thread-cpu',
+                  threadCpuRatio: Math.round(threadCpuRatio * 1000) / 1000
                 }
               : { kind: 'unclassified', processCpuRatio: Math.round(processCpuRatio * 1000) / 1000 }
         log.error(
@@ -271,6 +277,12 @@ export const attachMainWindowResponsivenessDiagnostics = (
               cpuUserMs: cpuUserMsRounded,
               cpuSystemMs: cpuSystemMsRounded,
               processCpuRatio: Math.round(processCpuRatio * 1000) / 1000,
+              threadCpuUserMs: Math.round(threadCpuUserMs),
+              threadCpuSystemMs: Math.round(threadCpuSystemMs),
+              threadCpuRatio: Math.round(threadCpuRatio * 1000) / 1000,
+              // Electron 某些版本的 ELU 恒为 0，明确标记不可用，不能把它当成空闲证据。
+              eventLoopMetricsAvailable:
+                eventLoopUtilization.active + eventLoopUtilization.idle > 0,
               eventLoopActiveMs: Math.round(eventLoopUtilization.active),
               eventLoopIdleMs: Math.round(eventLoopUtilization.idle),
               eventLoopUtilization: Math.round(eventLoopUtilization.utilization * 1000) / 1000,

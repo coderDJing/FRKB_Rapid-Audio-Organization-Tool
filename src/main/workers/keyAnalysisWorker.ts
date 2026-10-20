@@ -34,9 +34,11 @@ import { buildSongStructureAnalysisV23 } from '../../shared/songStructureV23'
 import type { SongStructureAnalysisV23 } from '../../shared/songStructureV23Common'
 import type { AnalysisBpmRange } from '../../shared/analysisBpmRange'
 import type { SongEnergyAnalysisV5 } from '../../shared/songEnergy'
+import type { KeyAnalysisDiagnosticPhase } from '../services/keyAnalysis/types'
 
 type KeyJob = {
   jobId: number
+  diagnostics?: boolean
   filePath: string
   fastAnalysis?: boolean
   needsKey?: boolean
@@ -103,6 +105,7 @@ type KeyResponse = {
   jobId: number
   filePath: string
   progress?: KeyProgressPayload
+  diagnostic?: KeyAnalysisDiagnosticPhase
   result?: KeyResultPayload
   error?: string
 }
@@ -295,9 +298,10 @@ const analyzeKeyForFile = (
     analyzedTimeBasisOffsetMs?: number
     analysisBpmRange?: AnalysisBpmRange
   },
-  reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
+  reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void,
+  reportDiagnosticPhase?: (phase: string) => void
 ): Promise<KeyResultPayload> => {
-  return analyzeKeyForFileInternal(filePath, options, reportProgress)
+  return analyzeKeyForFileInternal(filePath, options, reportProgress, reportDiagnosticPhase)
 }
 
 const analyzeKeyForFileInternal = async (
@@ -315,7 +319,8 @@ const analyzeKeyForFileInternal = async (
     analyzedTimeBasisOffsetMs?: number
     analysisBpmRange?: AnalysisBpmRange
   },
-  reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
+  reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void,
+  reportDiagnosticPhase?: (phase: string) => void
 ): Promise<KeyResultPayload> => {
   const result: KeyResultPayload = {}
   const needsKey = Boolean(options.needsKey)
@@ -497,6 +502,7 @@ const analyzeKeyForFileInternal = async (
   }
 
   if (needsEnergy && !(needsBpm && result.bpmError)) {
+    reportDiagnosticPhase?.('energy:start')
     try {
       if (!energyDecoded) throw new Error('missing 16 kHz mono PCM for song energy model')
       const cachedGridProjection = projectSongBeatGridMapV2ToFixedGrid(options.cachedBeatGridMap)
@@ -520,7 +526,8 @@ const analyzeKeyForFileInternal = async (
         sampleRate: energyDecoded.sampleRate,
         channels: energyDecoded.channels,
         bpm: energyGrid.bpm,
-        firstBeatMs: energyGrid.firstBeatMs
+        firstBeatMs: energyGrid.firstBeatMs,
+        onDiagnosticPhase: reportDiagnosticPhase
       })
       if (!energy) throw new Error('audio is silent or shorter than the model input window')
       result.energyScore = energy.energyScore
@@ -529,6 +536,7 @@ const analyzeKeyForFileInternal = async (
     } catch (error) {
       result.energyError = error instanceof Error ? error.message : String(error)
     }
+    reportDiagnosticPhase?.(result.energyError ? 'energy:failed' : 'energy:done')
   }
 
   if (cachedUnifiedDisplayWaveformData) {
@@ -623,6 +631,7 @@ const analyzeKeyForFileInternal = async (
   }
 
   if (needsStructure) {
+    reportDiagnosticPhase?.('structure:start')
     const cachedBeatGridMap = normalizeSongBeatGridMapV2(options.cachedBeatGridMap, {
       allowSingleClip: true
     })
@@ -659,6 +668,7 @@ const analyzeKeyForFileInternal = async (
         result.structureBeatGridMap = beatGridMap
       } else result.songStructureError = 'v23 structure analyzer returned no result'
     }
+    reportDiagnosticPhase?.(result.songStructureError ? 'structure:failed' : 'structure:done')
   }
 
   return result
@@ -670,7 +680,24 @@ parentPort?.on('message', async (job: KeyJob) => {
     filePath: job?.filePath ?? ''
   }
   const startedAt = Date.now()
+  const startedThreadCpu = job.diagnostics ? process.threadCpuUsage() : null
+  const reportDiagnosticPhase = startedThreadCpu
+    ? (phase: string) => {
+        const cpu = process.threadCpuUsage(startedThreadCpu)
+        parentPort?.postMessage({
+          jobId: response.jobId,
+          filePath: response.filePath,
+          diagnostic: {
+            phase,
+            startedAtMs: Date.now(),
+            workerElapsedMs: Date.now() - startedAt,
+            workerThreadCpuMs: Math.round((cpu.user + cpu.system) / 1000)
+          }
+        } satisfies KeyResponse)
+      }
+    : undefined
   const reportProgress = (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => {
+    reportDiagnosticPhase?.(progress.stage)
     parentPort?.postMessage({
       jobId: response.jobId,
       filePath: response.filePath,
@@ -708,7 +735,8 @@ parentPort?.on('message', async (job: KeyJob) => {
         analyzedTimeBasisOffsetMs: job.analyzedTimeBasisOffsetMs,
         analysisBpmRange: job.analysisBpmRange
       },
-      reportProgress
+      reportProgress,
+      reportDiagnosticPhase
     )
     response.result = result
     reportProgress({ stage: 'job-done' })
@@ -721,7 +749,9 @@ parentPort?.on('message', async (job: KeyJob) => {
     })
   }
 
+  reportDiagnosticPhase?.('result:copy-buffers')
   const transferableResponse = copyBuffersToTransferableViews(response)
+  reportDiagnosticPhase?.('result:send')
   parentPort?.postMessage(
     transferableResponse,
     collectTransferableArrayBuffers(transferableResponse)

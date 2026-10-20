@@ -414,7 +414,12 @@ const readFloatTensorData = (tensor: ort.Tensor): Float32Array | Float64Array =>
   throw new Error(`unexpected song energy model tensor type: ${tensor.type}`)
 }
 
-const runArousalInference = async (frames: Float32Array, patchStarts: readonly number[]) => {
+const runArousalInference = async (
+  frames: Float32Array,
+  patchStarts: readonly number[],
+  onPhase?: (phase: string) => void
+) => {
+  onPhase?.('energy:model-sessions')
   const sessions = await getModelSessions()
   const deamPredictions: number[] = []
   const emomusicPredictions: number[] = []
@@ -430,6 +435,7 @@ const runArousalInference = async (frames: Float32Array, patchStarts: readonly n
         patchIndex * valuesPerPatch
       )
     }
+    onPhase?.(`energy:embedding-batch:${batchStart}/${patchStarts.length}`)
     const embeddingOutputs = await sessions.embedding.run({
       [EMBEDDING_INPUT]: new ort.Tensor('float32', inputData, [
         batchStarts.length,
@@ -439,6 +445,7 @@ const runArousalInference = async (frames: Float32Array, patchStarts: readonly n
     })
     const embeddings = embeddingOutputs[EMBEDDING_OUTPUT]
     if (!embeddings) throw new Error('MusiCNN embedding output missing')
+    onPhase?.(`energy:arousal-batch:${batchStart}/${patchStarts.length}`)
     const [deamOutputs, emomusicOutputs] = await Promise.all([
       sessions.deam.run({ [AROUSAL_INPUT]: embeddings }),
       sessions.emomusic.run({ [AROUSAL_INPUT]: embeddings })
@@ -977,6 +984,7 @@ export const analyzeSongEnergyWithModel = async (params: {
   channels: number
   bpm?: number
   firstBeatMs?: number
+  onDiagnosticPhase?: (phase: string) => void
 }): Promise<SongEnergyModelResult | null> => {
   if (
     params.sampleRate !== SONG_ENERGY_MODEL_SAMPLE_RATE ||
@@ -985,14 +993,17 @@ export const analyzeSongEnergyWithModel = async (params: {
     throw new Error(`song energy model requires ${SONG_ENERGY_MODEL_SAMPLE_RATE} Hz mono PCM`)
   }
   const rawSamples = toFloat32Samples(params.pcmData)
+  params.onDiagnosticPhase?.('energy:normalize-input')
   const { samples } = normalizeEnergyInputLevel(rawSamples)
   if (samples.length < SONG_ENERGY_MODEL_SAMPLE_RATE * 3) return null
+  params.onDiagnosticPhase?.('energy:mel-frames')
   const { frames, frameCount } = buildSongEnergyMelFrames(samples)
   const patchStarts = collectActivePatchStarts(samples, frameCount)
   if (patchStarts.length <= 0) return null
-  const predictions = await runArousalInference(frames, patchStarts)
+  const predictions = await runArousalInference(frames, patchStarts, params.onDiagnosticPhase)
   const analysis = summarizeSongEnergyPredictions({ ...predictions, patchStarts })
   if (!analysis) return null
+  params.onDiagnosticPhase?.('energy:summarize-acoustics')
   const acoustic = summarizeAcousticEnergy({
     samples,
     frames,

@@ -54,7 +54,15 @@ export type KeyAnalysisProgress = {
   partialResult?: KeyAnalysisWorkerPartialResult
 }
 
+export type KeyAnalysisDiagnosticPhase = {
+  phase: string
+  startedAtMs: number
+  workerElapsedMs: number
+  workerThreadCpuMs: number
+}
+
 type KeyAnalysisJobTrace = {
+  diagnosticPhases?: Array<KeyAnalysisDiagnosticPhase & { receivedAtMs: number }>
   lastStage?: KeyAnalysisProgressStage
   lastUpdateAt?: number
   elapsedMs?: number
@@ -132,10 +140,7 @@ export type KeyAnalysisJob = {
 export type KeyAnalysisFailureReason = 'timeout' | 'worker-exit' | 'worker-error' | 'analysis-error'
 
 export type KeyAnalysisPreemptionKind =
-  | 'background-resume'
-  | 'focus-superseded'
-  | 'lower-priority-resume'
-  | 'visible-superseded'
+  'background-resume' | 'focus-superseded' | 'lower-priority-resume' | 'visible-superseded'
 
 export type KeyAnalysisFailureRecord = {
   size: number
@@ -189,6 +194,7 @@ export type WorkerPayload = {
   jobId: number
   filePath: string
   progress?: KeyAnalysisProgress
+  diagnostic?: KeyAnalysisDiagnosticPhase
   result?: KeyAnalysisWorkerResult
   error?: string
 }

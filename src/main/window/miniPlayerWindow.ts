@@ -4,6 +4,8 @@ import path = require('path')
 import icon from '../../../resources/icon.png?asset'
 import { log } from '../log'
 import { isPackagedRcBuild } from '../services/rcDiagnostics'
+import { getMainProcessStallContext } from '../services/mainProcessActivityTrace'
+import { createMiniPlayerForwardDiagnostics } from './miniPlayerForwardDiagnostics'
 import store from '../store'
 import { mergeLayoutConfig, persistLayoutConfig } from '../layoutConfig'
 import { restrictExternalNavigation } from './externalNavigation'
@@ -40,6 +42,7 @@ let lastHostPlayheadReceivedAtMs: number | null = null
 let lastHostPlayheadSenderId: number | null = null
 let lastHostPlayheadSequence: number | null = null
 let lastHostPlayheadPublishedAtMs: number | null = null
+const playheadForwardDiagnostics = createMiniPlayerForwardDiagnostics()
 let ipcBound = false
 let mainListenersAttached = false
 let restoringMain = false
@@ -200,6 +203,7 @@ const destroyMiniWindow = (restoreMainWindow: boolean) => {
   lastHostPlayheadSenderId = null
   lastHostPlayheadSequence = null
   lastHostPlayheadPublishedAtMs = null
+  playheadForwardDiagnostics.clear()
   // 在主窗口恢复可见前先解除其快捷键禁用状态，避免首个按键被忽略。
   notifySession()
   if (restoreMainWindow) {
@@ -472,10 +476,31 @@ const setAlwaysOnTop = (next: boolean) => {
 }
 
 const forwardToMini = (channel: string, payload: unknown) => {
-  if (!isUsableWindow(miniPlayerWindow)) return
+  const tracePlayhead = channel === MINI_PLAYER_CHANNELS.playhead && isPackagedRcBuild()
+  const receivedAtMs = lastHostPlayheadReceivedAtMs ?? Date.now()
+  const record = (outcome: 'sent' | 'window-unavailable' | 'send-failed', error?: unknown) => {
+    if (!tracePlayhead) return
+    playheadForwardDiagnostics.record({
+      sequence: lastHostPlayheadSequence,
+      publishedAtMs: lastHostPlayheadPublishedAtMs,
+      receivedAtMs,
+      forwardedAtMs: Date.now(),
+      targetWindowId: miniPlayerWindow?.id ?? null,
+      outcome,
+      error:
+        error instanceof Error ? error.message : error === undefined ? undefined : String(error)
+    })
+  }
+  if (!isUsableWindow(miniPlayerWindow)) {
+    record('window-unavailable')
+    return
+  }
   try {
     miniPlayerWindow.webContents.send(channel, payload)
-  } catch {}
+    record('sent')
+  } catch (error) {
+    record('send-failed', error)
+  }
 }
 
 const forwardToMain = (channel: string, payload: unknown) => {
@@ -536,6 +561,20 @@ const ensureIpcHandlers = () => {
         currentSeconds: Math.max(0, Number(payload?.currentSeconds) || 0),
         durationSeconds: Math.max(0, Number(payload?.durationSeconds) || 0),
         detectedAtMs: toNullableFiniteNumber(payload?.detectedAtMs) ?? now,
+        reportDeliveryLagMs: Math.max(
+          0,
+          now - (toNullableFiniteNumber(payload?.detectedAtMs) ?? now)
+        ),
+        reportTrigger: payload?.reportTrigger,
+        incomingSequence: payload?.incomingSequence,
+        incomingPublishedAtMs: payload?.incomingPublishedAtMs,
+        forwarding: playheadForwardDiagnostics.snapshot(
+          payload?.lastUpdateSequence,
+          payload?.incomingSequence
+        ),
+        mainProcessContext: getMainProcessStallContext(
+          toNullableFiniteNumber(payload?.detectedAtMs) ?? now - 5000
+        ),
         lastUpdateSource: payload?.lastUpdateSource || null,
         lastUpdateSequence: toNullableFiniteNumber(payload?.lastUpdateSequence),
         lastUpdatePublishedAtMs: toNullableFiniteNumber(payload?.lastUpdatePublishedAtMs),

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, reactive, ref, shallowRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import type { SongListWaveformWorkerIncoming } from '@renderer/workers/songListWaveformPreview.types'
+import type { WaveformListPreviewData } from '@shared/waveformSurfaceCache'
 import type { WaveformUpdatedHandler } from './waveformPreviewIpcSubscriptions'
 import emitter from '@renderer/utils/mitt'
 import { useWaveformPreview } from './useWaveformPreview'
@@ -37,9 +38,38 @@ const worker = {
   addEventListener: vi.fn(),
   terminate: vi.fn()
 }
-const invoke = vi.fn(async (_channel: string, payload: { filePaths: string[] }) => ({
-  items: payload.filePaths.map((filePath) => ({ filePath, data: null }))
-}))
+type PreviewResponse = { items: Array<{ filePath: string; data: WaveformListPreviewData | null }> }
+const missingResponse = (filePaths: string[]): PreviewResponse => ({
+  items: filePaths.map((filePath) => ({ filePath, data: null }))
+})
+const invoke = vi.fn(
+  async (_channel: string, payload: { filePaths: string[] }): Promise<PreviewResponse> => ({
+    items: payload.filePaths.map((filePath) => ({ filePath, data: null }))
+  })
+)
+const readyPreview: WaveformListPreviewData = {
+  version: 1,
+  parameterVersion: 1,
+  surfaceKind: 'listPreview',
+  duration: 180,
+  sampleRate: 44100,
+  detailRate: 1,
+  overviewRate: 1,
+  bodyRateDivisor: 1,
+  colorRateDivisor: 1,
+  detailPeakTop: new Uint8Array([128]),
+  detailPeakBottom: new Uint8Array([128]),
+  detailBody: new Uint8Array([64]),
+  colorIndex: new Uint8Array([3]),
+  colorLow: new Uint8Array([128]),
+  colorMid: new Uint8Array([128]),
+  colorHigh: new Uint8Array([128]),
+  colorRed: new Uint8Array([128]),
+  colorGreen: new Uint8Array([128]),
+  colorBlue: new Uint8Array([128]),
+  overviewTop: new Uint8Array([128]),
+  overviewBottom: new Uint8Array([128])
+}
 const rafs = new Map<number, FrameRequestCallback>()
 let rafSequence = 0
 const scopes: ReturnType<typeof effectScope>[] = []
@@ -74,7 +104,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   lifecycle.cleanup.length = 0
   worker.postMessage.mockClear()
-  invoke.mockClear()
+  invoke.mockReset()
+  invoke.mockImplementation(async (_channel, payload) => missingResponse(payload.filePaths))
   rafs.clear()
   runtime.setting.waveformMode = 'half'
   runtime.setting.themeMode = 'light'
@@ -146,6 +177,77 @@ const mountWaveforms = (count = 3) => {
 }
 
 describe('list waveform redraw work follows changed surfaces', () => {
+  it('reloads cached missing rows analyzed after they scroll out of view', async () => {
+    const mounted = mountWaveforms()
+    await flushLoad()
+    expect(mounted.preview.getWaveformPlaceholderText(pathFor(0))).toBe(
+      'tracks.waveformPreviewUnavailable'
+    )
+    mounted.preview.setWaveformCanvasRef(pathFor(0), pathFor(0), null)
+    mounted.visibleSongsWithIndex.value = [{ song: songFor(3), idx: 3 }]
+    await flushLoad()
+    invoke.mockClear()
+    worker.postMessage.mockClear()
+    // The completion notification can use a different path spelling than the row cache.
+    subscriptions.updated?.(null, { filePath: pathFor(0).replace(/\\/g, '/').toUpperCase() })
+    await flushLoad()
+    expect(invoke).not.toHaveBeenCalled()
+    expect(renders()).toHaveLength(0)
+    invoke.mockResolvedValue({ items: [{ filePath: pathFor(0), data: readyPreview }] })
+    mounted.visibleSongsWithIndex.value = [{ song: songFor(0), idx: 0 }]
+    mounted.preview.setWaveformCanvasRef(pathFor(0), pathFor(0), canvas())
+    await flushLoad()
+    expect(invoke.mock.calls.at(-1)?.[1].filePaths).toEqual([pathFor(0)])
+    expect(mounted.preview.getWaveformPlaceholderText(pathFor(0))).toBe('')
+    expect(worker.postMessage.mock.calls.some(([message]) => message.type === 'setData')).toBe(true)
+  })
+
+  it.each(['hidden-column', 'unmounted-canvas'] as const)(
+    'invalidates a missing preview when analysis completes with %s',
+    async (state) => {
+      const mounted = mountWaveforms(1)
+      await flushLoad()
+      const columns = mounted.visibleColumns.value
+      if (state === 'hidden-column') mounted.visibleColumns.value = []
+      mounted.preview.setWaveformCanvasRef(pathFor(0), pathFor(0), null)
+      await flushDraw()
+      invoke.mockClear()
+      subscriptions.updated?.(null, { filePath: pathFor(0) })
+      await flushLoad()
+      expect(invoke).not.toHaveBeenCalled()
+      invoke.mockResolvedValue({ items: [{ filePath: pathFor(0), data: readyPreview }] })
+      mounted.visibleColumns.value = columns
+      mounted.preview.setWaveformCanvasRef(pathFor(0), pathFor(0), canvas())
+      await flushLoad()
+      expect(invoke.mock.calls.at(-1)?.[1].filePaths).toEqual([pathFor(0)])
+      expect(mounted.preview.getWaveformPlaceholderText(pathFor(0))).toBe('')
+    }
+  )
+
+  it('rejects an old missing response after an offscreen completion notification', async () => {
+    let resolveOld: ((response: PreviewResponse) => void) | undefined
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve
+        })
+    )
+    const mounted = mountWaveforms(1)
+    await flushLoad()
+    mounted.preview.setWaveformCanvasRef(pathFor(0), pathFor(0), null)
+    mounted.visibleSongsWithIndex.value = []
+    await flushDraw()
+    subscriptions.updated?.(null, { filePath: pathFor(0) })
+    resolveOld?.(missingResponse([pathFor(0)]))
+    await flushLoad()
+    invoke.mockResolvedValue({ items: [{ filePath: pathFor(0), data: readyPreview }] })
+    mounted.visibleSongsWithIndex.value = [{ song: songFor(0), idx: 0 }]
+    mounted.preview.setWaveformCanvasRef(pathFor(0), pathFor(0), canvas())
+    await flushLoad()
+    expect(invoke).toHaveBeenCalledTimes(2)
+    expect(mounted.preview.getWaveformPlaceholderText(pathFor(0))).toBe('')
+  })
+
   it('redraws only the entering row when a 50-row viewport advances by one', async () => {
     const mounted = mountWaveforms(50)
     await flushDraw()
@@ -224,7 +326,7 @@ describe('list waveform redraw work follows changed surfaces', () => {
     await flushLoad()
     worker.postMessage.mockClear()
     subscriptions.updated?.(null, { filePath: pathFor(1) })
-    await flushDraw()
+    await flushLoad()
     expect(renderedPaths()).toEqual([pathFor(1)])
     worker.postMessage.mockClear()
     emitter.emit('waveform-preview:progress', { filePath: pathFor(2), percent: 0.4 })

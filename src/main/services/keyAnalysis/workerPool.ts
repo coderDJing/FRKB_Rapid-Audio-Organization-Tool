@@ -7,6 +7,8 @@ import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
 import type { AnalysisBpmRangePresetId } from '../../../shared/analysisBpmRange'
 import { hasCurrentKeyAnalysisJobOwnership } from './jobOwnership'
+import { getKeyAnalysisJobDiagnostics, recordKeyAnalysisDiagnosticPhase } from './diagnostics'
+import { createStageDiagnostics } from '../stageDiagnostics'
 import {
   isNoBpmBeatGridResultError,
   isValidBpm,
@@ -226,7 +228,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       partialKeyPersisted: job.trace?.partialKeyPersisted === true,
       partialBpmPersisted: job.trace?.partialBpmPersisted === true,
       detail: job.trace?.detail,
-      errors
+      errors,
+      diagnostic: getKeyAnalysisJobDiagnostics([job])[0]
     })
   }
 
@@ -383,6 +386,13 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     const payloadError = payload?.error
     const workerTerminationExpected = deps.hasExpectedWorkerTermination(worker)
 
+    if (payload.diagnostic) {
+      if (job && isCurrentWorkerJob(worker, job)) {
+        recordKeyAnalysisDiagnosticPhase(job, payload.diagnostic)
+      }
+      return
+    }
+
     if (payloadProgress) {
       if (job && isCurrentWorkerJob(worker, job)) {
         applyWorkerProgress(worker, job, payloadProgress)
@@ -467,10 +477,15 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       }
 
       if (shouldPersist() && payloadResult?.mixxxWaveformData && job.needsWaveform) {
-        await deps.persistence.persistWaveform(
-          job.filePath,
-          payloadResult.mixxxWaveformData,
-          payloadResult.unifiedDisplayWaveformData ?? null
+        const waveformData = payloadResult.mixxxWaveformData
+        await createStageDiagnostics('analysis-persist-perf', { filePath: job.filePath }).measure(
+          'waveform',
+          () =>
+            deps.persistence.persistWaveform(
+              job.filePath,
+              waveformData,
+              payloadResult.unifiedDisplayWaveformData ?? null
+            )
         )
         if (shouldPersist()) {
           deps.events.emit('waveform-updated', { filePath: job.filePath })

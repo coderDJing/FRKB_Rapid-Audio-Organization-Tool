@@ -72,6 +72,9 @@ describe('readSongSearchPage', () => {
     expect(diagnosedPage).toEqual(firstPage)
     expect(timings?.rowCount).toBe(2)
     expect(timings?.jsonChars).toBeGreaterThan(0)
+    expect(timings?.threadCpuUserMs).toBeGreaterThanOrEqual(0)
+    expect(timings?.threadCpuSystemMs).toBeGreaterThanOrEqual(0)
+    expect(timings?.slowestSteps.length).toBeLessThanOrEqual(3)
     // 诊断迭代器已经释放，不得妨碍后续事务/查询。
     expect(db.prepare('SELECT count(*) AS count FROM song_cache').get()).toEqual({ count: 3 })
     const context = collectSqliteReadContext(
