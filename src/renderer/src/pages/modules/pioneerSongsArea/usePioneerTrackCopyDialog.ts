@@ -7,6 +7,7 @@ import { t } from '@renderer/utils/translate'
 import { notifyFilterLibraryReceivedSongs } from '@renderer/composables/userGuideBridge'
 import type { ISongInfo } from '../../../../../types/globals'
 import type { PioneerSongSnapshot } from './usePioneerSongsProjection'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 
 export type PioneerTransferTarget = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
@@ -121,10 +122,10 @@ export const usePioneerTrackCopyDialog = (params: UsePioneerTrackCopyDialogParam
           throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
         }
 
-        const result = (await window.electron.ipcRenderer.invoke('mixtape:append', {
-          playlistId: targetSongListUUID,
-          items
-        })) as MixtapeAppendResult | null
+        const result = (await window.electron.ipcRenderer.invoke(
+          'mixtape:append',
+          toIpcCloneablePayload({ playlistId: targetSongListUUID, items })
+        )) as MixtapeAppendResult | null
         const totalSkippedNoBpm = skippedNoBpm + Math.max(0, Number(result?.skippedNoBpm || 0))
         const inserted = Math.max(0, Number(result?.inserted || 0))
         if (inserted <= 0) {

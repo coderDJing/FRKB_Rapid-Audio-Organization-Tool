@@ -7,15 +7,14 @@ import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 import {
   resolveLibraryTransferActionModeForPlayback,
   type LibraryTransferActionMode
 } from '@renderer/utils/libraryTransfer'
 
 export type HorizontalBrowseDeckMoveTargetLibrary =
-  | 'CuratedLibrary'
-  | 'FilterLibrary'
-  | 'MixtapeLibrary'
+  'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
 type UseHorizontalBrowseDeckMoveParams = {
   getDeckSong: (deck: HorizontalBrowseDeckKey) => ISongInfo | null
@@ -150,7 +149,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
 
     if (!deck || !targetSongListUUID || !targetLibraryName) return
 
-    const song = getDeckSong(deck)
+    const song = toIpcCloneablePayload(getDeckSong(deck))
     if (!song?.filePath) return
     try {
       const copyMode = actionMode === 'copy'

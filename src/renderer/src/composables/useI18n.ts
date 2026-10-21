@@ -1,6 +1,7 @@
 import { useI18n as useVueI18n } from 'vue-i18n'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { setLocale, type SupportedLocale } from '@renderer/i18n'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 
 /**
  * 自定义i18n组合式函数
@@ -33,7 +34,7 @@ export function useI18n() {
     const langCode = newLocale === 'zh-CN' ? '' : 'enUS'
     if (runtime.setting.language !== langCode) {
       runtime.setting.language = langCode
-      await window.electron.ipcRenderer.invoke('setSetting', runtime.setting)
+      await window.electron.ipcRenderer.invoke('setSetting', toIpcCloneablePayload(runtime.setting))
     }
   }
 

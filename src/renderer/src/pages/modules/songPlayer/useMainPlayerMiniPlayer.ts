@@ -5,6 +5,7 @@ import type { WebAudioPlayer } from './webAudioPlayer'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { normalizeMiniPlayerSeekRatio } from '@shared/miniPlayerWindow'
 import emitter from '@renderer/utils/mitt'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 
 type MainPlayerActions = {
   pause: () => void
@@ -67,7 +68,7 @@ export function useMainPlayerMiniPlayer(params: {
       'exportSongsToDir',
       folderPath,
       shouldDelete,
-      [song]
+      toIpcCloneablePayload([song])
     )) as { removedPaths?: unknown; removedSetItemIds?: unknown } | undefined
     if (!shouldDelete || currentIndex < 0) return
 

@@ -5,6 +5,7 @@ import { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { buildMixtapeDragSessionItem } from '@renderer/utils/mixtapeDragSession'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 import { t } from '@renderer/utils/translate'
 import { type MoveSongsToDirSummary, useSongMoveTransaction } from './useSongMoveTransaction'
 import { isWindowsPathPlatform, normalizeFilePathForComparison } from '@shared/filePathComparison'
@@ -261,10 +262,10 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
         if (items.length === 0) {
           return []
         }
-        await window.electron.ipcRenderer.invoke('setList:append-items', {
-          playlistUuid: targetSongListUUID,
-          items
-        })
+        await window.electron.ipcRenderer.invoke(
+          'setList:append-items',
+          toIpcCloneablePayload({ playlistUuid: targetSongListUUID, items })
+        )
         try {
           emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
           emitter.emit('setList/itemsChanged', { uuids: [targetSongListUUID] })

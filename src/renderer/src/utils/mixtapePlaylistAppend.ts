@@ -2,6 +2,7 @@ import confirm from '@renderer/components/confirmDialog'
 import openSelectSongListDialog from '@renderer/components/selectSongListDialog'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
+import { toIpcCloneablePayload } from './ipcCloneablePayload'
 import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 import type {
   IPioneerPlaylistTrack,
@@ -138,10 +139,10 @@ const appendItemsToMixtape = async (playlistId: string, rawItems: MixtapeAppendI
     return
   }
 
-  const result = (await window.electron.ipcRenderer.invoke('mixtape:append', {
-    playlistId,
-    items
-  })) as MixtapeAppendResult | null
+  const result = (await window.electron.ipcRenderer.invoke(
+    'mixtape:append',
+    toIpcCloneablePayload({ playlistId, items })
+  )) as MixtapeAppendResult | null
   const skippedNoBpm = skippedBySnapshot + Math.max(0, Number(result?.skippedNoBpm || 0))
   const inserted = Math.max(0, Number(result?.inserted || 0))
   if (inserted <= 0) {

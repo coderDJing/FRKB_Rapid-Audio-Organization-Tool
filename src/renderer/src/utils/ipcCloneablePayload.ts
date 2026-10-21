@@ -1,7 +1,10 @@
 import { toRaw } from 'vue'
 
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+const isPlainRecord = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) return false
+  const prototype: unknown = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
 
 export const toIpcCloneablePayload = <T>(value: T): T => {
   const cloneUnknown = (input: unknown): unknown => {

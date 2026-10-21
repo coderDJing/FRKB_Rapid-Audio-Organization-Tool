@@ -9,6 +9,7 @@ import emitter from '@renderer/utils/mitt'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { isEditablePioneerUsbSong, deletePioneerUsbSong } from '@renderer/utils/pioneerUsbEditing'
@@ -676,7 +677,7 @@ export function usePlayerControlsLogic({
     if (!moveContext) {
       return
     }
-    const songToMove = moveContext.song
+    const songToMove = toIpcCloneablePayload(moveContext.song)
 
     const sourceActionMode = moveContext.actionMode
     const sourceListUuid = moveContext.sourceListUuid

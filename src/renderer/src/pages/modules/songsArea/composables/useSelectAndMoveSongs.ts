@@ -4,6 +4,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
+import { toIpcCloneablePayload } from '@renderer/utils/ipcCloneablePayload'
 import type { ISongInfo } from '../../../../../../types/globals'
 import { type MoveSongsToDirSummary, useSongMoveTransaction } from './useSongMoveTransaction'
 import {
@@ -13,10 +14,7 @@ import {
 import { isWindowsPathPlatform, normalizeFilePathForComparison } from '@shared/filePathComparison'
 
 export type MoveSongsLibraryName =
-  | 'CuratedLibrary'
-  | 'FilterLibrary'
-  | 'SetLibrary'
-  | 'MixtapeLibrary'
+  'CuratedLibrary' | 'FilterLibrary' | 'SetLibrary' | 'MixtapeLibrary'
 
 interface UseSelectAndMoveSongsParams {
   songsAreaState: ISongsAreaPaneRuntimeState
@@ -202,10 +200,10 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
         analysis: buildSongAnalysisSnapshot(song)
       }))
       if (items.length === 0) return
-      await window.electron.ipcRenderer.invoke('setList:append-items', {
-        playlistUuid: targetSongListUUID,
-        items
-      })
+      await window.electron.ipcRenderer.invoke(
+        'setList:append-items',
+        toIpcCloneablePayload({ playlistUuid: targetSongListUUID, items })
+      )
       songsAreaState.selectedSongFilePath.length = 0
       try {
         emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
@@ -293,10 +291,10 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
         emitNoBpmMixtapeHint(skippedNoBpm)
         return
       }
-      const result = (await window.electron.ipcRenderer.invoke('mixtape:append', {
-        playlistId: targetSongListUUID,
-        items
-      })) as MixtapeAppendResult | null
+      const result = (await window.electron.ipcRenderer.invoke(
+        'mixtape:append',
+        toIpcCloneablePayload({ playlistId: targetSongListUUID, items })
+      )) as MixtapeAppendResult | null
       const totalSkippedNoBpm = skippedNoBpm + Math.max(0, Number(result?.skippedNoBpm || 0))
       const inserted = Math.max(0, Number(result?.inserted || 0))
       if (inserted <= 0 && totalSkippedNoBpm > 0) {
