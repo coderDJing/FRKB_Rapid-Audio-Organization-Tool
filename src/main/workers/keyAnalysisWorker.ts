@@ -1,4 +1,4 @@
-import { parentPort } from 'node:worker_threads'
+import { parentPort, threadId } from 'node:worker_threads'
 import type { MixxxWaveformData } from '../waveformCodec'
 import {
   collectTransferableArrayBuffers,
@@ -361,18 +361,22 @@ const analyzeKeyForFileInternal = async (
     })
     const decodeStartAt = Date.now()
     if (useNativeLibavPrimaryDecode) {
+      reportDiagnosticPhase?.('decode:native-primary')
       reusableNativeLibavWaveformDecoded = decodeSongAnalysisAudio(resolveRustBinding(), filePath)
       decoded = reusableNativeLibavWaveformDecoded
     } else if (needsRustDecode) {
+      reportDiagnosticPhase?.('decode:rust-pcm')
       const rustDecoded = resolveRustBinding().decodeAudioFile(filePath)
       if (rustDecoded.error) {
         throw new Error(rustDecoded.error)
       }
       decoded = rustDecoded
     } else if (needsBpm) {
+      reportDiagnosticPhase?.('decode:beat-grid-pcm')
       beatGridDecoded = await decodeBeatGridPcmForFile(filePath)
     }
     if (needsEnergy) {
+      reportDiagnosticPhase?.('decode:energy-pcm')
       energyDecoded = await decodeSongEnergyPcmForFile(filePath)
     }
     const decodeMs = Date.now() - decodeStartAt
@@ -420,6 +424,7 @@ const analyzeKeyForFileInternal = async (
     let hasAnalysisError = false
 
     if (needsKey) {
+      reportDiagnosticPhase?.('key:native-start')
       if (!decoded) {
         throw new Error('Rust PCM decode missing for key analysis')
       }
@@ -435,6 +440,7 @@ const analyzeKeyForFileInternal = async (
       )
       result.keyText = keyOnly.keyText
       result.keyError = keyOnly.error
+      reportDiagnosticPhase?.('key:native-done')
       if (keyOnly.error) {
         hasAnalysisError = true
       }
@@ -443,21 +449,25 @@ const analyzeKeyForFileInternal = async (
     if (needsBpm) {
       try {
         if (!beatGridDecoded) {
+          reportDiagnosticPhase?.('bpm:decode')
           beatGridDecoded = await decodeBeatGridPcmForFile(filePath)
         }
+        reportDiagnosticPhase?.('bpm:beat-this-start')
         const beatThisResult = await analyzeBeatGridWithBeatThisSlidingWindowsFromPcm({
           pcmData: beatGridDecoded.pcmData,
           sampleRate: beatGridDecoded.sampleRate,
           channels: beatGridDecoded.channels,
           sourceFilePath: filePath,
           minBpm: options.analysisBpmRange?.minBpm,
-          maxBpm: options.analysisBpmRange?.maxBpm
+          maxBpm: options.analysisBpmRange?.maxBpm,
+          onDiagnosticPhase: reportDiagnosticPhase
         })
         result.bpm = beatThisResult.bpm
         result.firstBeatMs = beatThisResult.firstBeatMs
         result.downbeatBeatOffset = beatThisResult.downbeatBeatOffset
         result.timeBasisOffsetMs = options.analyzedTimeBasisOffsetMs
         result.bpmError = undefined
+        reportDiagnosticPhase?.('bpm:beat-this-done')
       } catch (error) {
         result.bpmError =
           error instanceof Error ? error.message : String(error || 'Beat This! analyze failed')
@@ -481,6 +491,7 @@ const analyzeKeyForFileInternal = async (
       }
 
       if (result.bpmError) {
+        reportDiagnosticPhase?.('bpm:failed')
         hasAnalysisError = true
       }
     }
@@ -681,17 +692,33 @@ parentPort?.on('message', async (job: KeyJob) => {
   }
   const startedAt = Date.now()
   const startedThreadCpu = job.diagnostics ? process.threadCpuUsage() : null
+  let memorySampledAt = 0
+  let workerMemory: KeyAnalysisDiagnosticPhase['workerMemory']
   const reportDiagnosticPhase = startedThreadCpu
     ? (phase: string) => {
         const cpu = process.threadCpuUsage(startedThreadCpu)
+        const now = Date.now()
+        if (now - memorySampledAt >= 1_000) {
+          const memory = process.memoryUsage()
+          const mb = (bytes: number) => Math.round((bytes / 1024 / 1024) * 10) / 10
+          workerMemory = {
+            rssMb: mb(memory.rss),
+            heapUsedMb: mb(memory.heapUsed),
+            externalMb: mb(memory.external),
+            arrayBuffersMb: mb(memory.arrayBuffers)
+          }
+          memorySampledAt = now
+        }
         parentPort?.postMessage({
           jobId: response.jobId,
           filePath: response.filePath,
           diagnostic: {
             phase,
-            startedAtMs: Date.now(),
-            workerElapsedMs: Date.now() - startedAt,
-            workerThreadCpuMs: Math.round((cpu.user + cpu.system) / 1000)
+            startedAtMs: now,
+            workerElapsedMs: now - startedAt,
+            workerThreadCpuMs: Math.round((cpu.user + cpu.system) / 1000),
+            workerThreadId: threadId,
+            workerMemory
           }
         } satisfies KeyResponse)
       }

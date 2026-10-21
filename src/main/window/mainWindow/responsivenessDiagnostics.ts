@@ -5,6 +5,7 @@ import { getMainProcessStallContext } from '../../services/mainProcessActivityTr
 import { getPlaylistScanDiagnosticSnapshot } from '../../services/playlistScanDiagnostics'
 import { getPlaylistOpenPerfSnapshot } from '../../services/playlistOpenPerfTrace'
 import { isPackagedRcBuild } from '../../services/rcDiagnostics'
+import { startMainThreadStallProfiler } from '../../services/mainThreadStallProfiler'
 
 const MAIN_PROCESS_STALL_THRESHOLD_MS = 3_000
 const MAIN_PROCESS_HEARTBEAT_INTERVAL_MS = 1_000
@@ -101,6 +102,7 @@ export const attachMainWindowResponsivenessDiagnostics = (
   options: MainWindowResponsivenessDiagnosticsOptions = {}
 ) => {
   const rcDiagnosticsEnabled = isPackagedRcBuild()
+  const stallProfiler = rcDiagnosticsEnabled ? startMainThreadStallProfiler() : null
   let rendererUnresponsiveIncident: RendererUnresponsiveIncident | null = null
   let lastHeartbeatAt = Date.now()
   let lastCpuUsage = process.cpuUsage()
@@ -210,11 +212,31 @@ export const attachMainWindowResponsivenessDiagnostics = (
         }
         finishBackgroundStallIncident()
         stallIncident = recordStall(stallIncident, now, stallDurationMs)
+        // 先落最小现场；后续快照抛错或原生指标调用卡住时仍能识别这一次停顿。
+        log.error(
+          '[main-window] main-process stall detected',
+          stringifyDiagnostic({
+            incidentStartedAtMs: stallIncident.startedAtMs,
+            stallIndex: stallIncident.count,
+            previousHeartbeatAtMs: previousHeartbeatAt,
+            detectedAtMs: now,
+            stallDurationMs,
+            threadCpuUserMs: Math.round(threadCpuUserMs),
+            threadCpuSystemMs: Math.round(threadCpuSystemMs)
+          })
+        )
+        stallProfiler?.capture(previousHeartbeatAt, now)
         // 每次达到阈值都保留现场，避免同一轮后续更严重的卡顿只剩汇总计数。
-        const snapshot = captureSnapshot(browserWindow, {
-          sinceMs: previousHeartbeatAt,
-          auxiliaryWindowVisible
-        })
+        let snapshot: ReturnType<typeof captureSnapshot>
+        try {
+          snapshot = captureSnapshot(browserWindow, {
+            sinceMs: previousHeartbeatAt,
+            auxiliaryWindowVisible
+          })
+        } catch (error) {
+          log.error('[main-window] stall snapshot failed', { detectedAtMs: now, error })
+          return
+        }
         const elapsedMs = Math.max(0, now - previousHeartbeatAt)
         const cpuUserMsRounded = Math.round(cpuUserMs)
         const cpuSystemMsRounded = Math.round(cpuSystemMs)
@@ -228,10 +250,7 @@ export const attachMainWindowResponsivenessDiagnostics = (
             power.systemIdleSeconds !== null &&
             power.systemIdleSeconds >= 10 &&
             processCpuRatio <= 0.1)
-        if (isNonInteractiveSystemDelay) {
-          finishStallIncident()
-          return
-        }
+        // 用户停止操作可能正是因为应用卡住；idle 仅作为上下文，不能丢弃现场。
         // 已记录到超过卡顿阈值的同步调用时优先显示它；长时间等待的异步阶段仅表示重叠。
         const syncActivity = snapshot.activity.longestSync
         const overlappingActivity =
@@ -269,6 +288,7 @@ export const attachMainWindowResponsivenessDiagnostics = (
             incidentStartedAtMs: stallIncident.startedAtMs,
             stallIndex: stallIncident.count,
             stallDurationMs,
+            isNonInteractiveSystemDelay,
             interactiveSurface: mainWindowVisible ? 'main-window' : 'mini-player',
             stallClassification,
             snapshot,
@@ -380,6 +400,7 @@ export const attachMainWindowResponsivenessDiagnostics = (
     finishStallIncident()
     finishBackgroundStallIncident()
     if (heartbeat) clearInterval(heartbeat)
+    stallProfiler?.dispose()
   }
   browserWindow.once('closed', dispose)
   return dispose

@@ -59,6 +59,13 @@ export type KeyAnalysisDiagnosticPhase = {
   startedAtMs: number
   workerElapsedMs: number
   workerThreadCpuMs: number
+  workerThreadId?: number
+  workerMemory?: {
+    rssMb: number
+    heapUsedMb: number
+    externalMb: number
+    arrayBuffersMb: number
+  }
 }
 
 type KeyAnalysisJobTrace = {

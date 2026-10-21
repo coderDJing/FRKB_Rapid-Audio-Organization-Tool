@@ -412,6 +412,7 @@ const analyzeBeatGridWithBeatThisFromPcm = async (params: {
   maxScanSec?: number
   minBpm?: number
   maxBpm?: number
+  onDiagnosticPhase?: (phase: string) => void
 }) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const totalSamples = Math.floor(pcmData.byteLength / 4)
@@ -421,9 +422,11 @@ const analyzeBeatGridWithBeatThisFromPcm = async (params: {
     throw new Error('decoded PCM is empty')
   }
 
+  params.onDiagnosticPhase?.('bpm:bridge-queue')
   const runRequest = bridgeRequestQueue
     .catch(() => undefined)
     .then(async () => {
+      params.onDiagnosticPhase?.('bpm:bridge-ready')
       const child = await ensureBridgeProcess()
       const requestId = `req-${Date.now()}-${++bridgeNextRequestId}`
       const pcmSlice =
@@ -449,9 +452,13 @@ const analyzeBeatGridWithBeatThisFromPcm = async (params: {
       })
 
       try {
+        params.onDiagnosticPhase?.('bpm:bridge-write')
         await writeToBridge(child, `${header}\n`)
         await writeToBridge(child, pcmSlice)
-        return await response
+        params.onDiagnosticPhase?.('bpm:bridge-inference-wait')
+        const result = await response
+        params.onDiagnosticPhase?.('bpm:bridge-result')
+        return result
       } catch (error) {
         bridgePendingRequests.delete(requestId)
         throw error
@@ -470,6 +477,7 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
   maxScanSec?: number
   minBpm?: number
   maxBpm?: number
+  onDiagnosticPhase?: (phase: string) => void
 }) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const sampleRate = Math.max(1, Math.floor(Number(params.sampleRate) || 0))
@@ -490,6 +498,7 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
     windowSec,
     maxScanSec,
     minBpm: params.minBpm,
-    maxBpm: params.maxBpm
+    maxBpm: params.maxBpm,
+    onDiagnosticPhase: params.onDiagnosticPhase
   })
 }
