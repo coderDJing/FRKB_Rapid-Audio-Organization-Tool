@@ -119,6 +119,7 @@ const handleOverlayClick = (e: MouseEvent) => {
   }
 }
 const handleEmptyOverlayClick = () => {
+  if (songsAreaState.searchQuery.trim()) return
   if (
     songsAreaState.songListUUID === RECYCLE_BIN_UUID ||
     songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
@@ -317,6 +318,8 @@ const {
   shouldPersistToLocalStorage: shouldPersistColumnsToLocalStorage
 })
 const { rowsVisibleColumns, handleColumnDragPreview } = useColumnDragPreview(columnDataArr)
+
+watch(() => songsAreaState.searchQuery, scrollCurrentListToTop)
 
 // 封面清理
 const { scheduleSweepCovers } = useSweepCovers({ runtime, songsAreaState })
@@ -935,6 +938,7 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
                 <SongListRows
                   v-if="displaySongs.length > 0"
                   :songs="displaySongs"
+                  :search-query="songsAreaState.searchQuery"
                   :visible-columns="rowsVisibleColumns"
                   :selected-song-file-paths="songsAreaState.selectedSongFilePath"
                   :playing-song-file-path="playingSongFilePathForRows"

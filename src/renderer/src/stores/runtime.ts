@@ -51,6 +51,7 @@ interface ISongsAreaState {
 }
 
 export interface ISongsAreaPaneRuntimeState extends ISongsAreaState {
+  searchQuery: string
   columnCacheByMode: Partial<Record<SongsAreaColumnMode, ISongsAreaColumn[]>>
 }
 
@@ -62,6 +63,7 @@ const createSongsAreaState = (): ISongsAreaPaneRuntimeState => ({
   selectedSongFilePath: [],
   scrollTop: 0,
   scrollLeft: 0,
+  searchQuery: '',
   columnCacheByMode: {}
 })
 
@@ -70,6 +72,7 @@ const assignSongsAreaState = (
   source?: Partial<ISongsAreaPaneRuntimeState> | null
 ) => {
   target.songListUUID = String(source?.songListUUID || '')
+  target.searchQuery = String(source?.searchQuery || '')
   target.songInfoArr = Array.isArray(source?.songInfoArr) ? [...source.songInfoArr] : []
   target.missingWaveformFilePaths = Array.isArray(source?.missingWaveformFilePaths)
     ? [...source.missingWaveformFilePaths]
@@ -103,12 +106,7 @@ const clearSongsAreaState = (target: ISongsAreaPaneRuntimeState) => {
   assignSongsAreaState(target, null)
 }
 type AnalysisRuntimeDownloadStatus =
-  | 'idle'
-  | 'available'
-  | 'downloading'
-  | 'extracting'
-  | 'ready'
-  | 'failed'
+  'idle' | 'available' | 'downloading' | 'extracting' | 'ready' | 'failed'
 
 type AnalysisRuntimeDownloadState = {
   status: AnalysisRuntimeDownloadStatus

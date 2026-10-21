@@ -7,6 +7,7 @@ import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/global
 type SongsAreaEmptyState = {
   songListUUID: string
   songInfoArr: ISongInfo[]
+  searchQuery?: string
 }
 
 export function useSongsAreaEmptyState({
@@ -18,7 +19,9 @@ export function useSongsAreaEmptyState({
   songsAreaState: SongsAreaEmptyState
   columnData: Ref<ISongsAreaColumn[]>
 }) {
-  const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
+  const hasActiveFilter = computed(
+    () => !!songsAreaState.searchQuery?.trim() || columnData.value.some((c) => !!c.filterActive)
+  )
   const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
   const isRecordingLibraryView = computed(
     () => songsAreaState.songListUUID === RECORDING_LIBRARY_UUID

@@ -391,6 +391,9 @@ onUnmounted(() => {
   align-items: baseline;
   gap: 5px;
   min-width: 0;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .deck-info-card__title-line {

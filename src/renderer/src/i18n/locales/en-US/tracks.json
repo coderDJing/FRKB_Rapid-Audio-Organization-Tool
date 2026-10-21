@@ -1,5 +1,7 @@
 {
   "tracks": {
+    "playlistSearchPlaceholder": "Search all playlist fields",
+    "clearPlaylistSearch": "Clear playlist search",
     "title": "Tracks",
     "noTracks": "No tracks",
     "noTracksHint": "Drop folders or audio files to import.",

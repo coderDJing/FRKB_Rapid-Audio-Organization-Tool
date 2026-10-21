@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ShallowRef } from 'vue'
+import { computed, ref, toRaw, watch, type ShallowRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { MIN_WIDTH_BY_KEY } from '../minWidth'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
@@ -16,6 +16,7 @@ import { matchTimestampByDateFilter } from '@shared/songAddedAt'
 import { matchComparableByFilter } from '@shared/filterCompare'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { getSongListFieldRawValue } from '@renderer/utils/songListFieldDisplay'
+import { filterSongsByPlaylistSearch } from '@renderer/utils/playlistSongSearch'
 import pkg from '../../../../../../../package.json'
 
 interface UseSongsAreaColumnsParams {
@@ -559,9 +560,31 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   }
 
   // --- 根据列筛选过滤并按当前排序排序 ---
+  const applyVisibleSongs = (songs: ISongInfo[]) => {
+    const current = songsAreaState.songInfoArr
+    if (
+      current.length === songs.length &&
+      current.every((song, index) => toRaw(song) === toRaw(songs[index]))
+    ) {
+      return
+    }
+    songsAreaState.songInfoArr = songs
+  }
+
   function applyFiltersAndSorting() {
     let filtered = [...originalSongInfoArr.value]
-    songsAreaState.totalSongCount = filtered.length
+    if (songsAreaState.totalSongCount !== filtered.length) {
+      songsAreaState.totalSongCount = filtered.length
+    }
+    filtered = filterSongsByPlaylistSearch(
+      filtered,
+      songsAreaState.searchQuery,
+      columnData.value.map((col) => col.key),
+      {
+        keyDisplayStyle: runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic',
+        isDesktopRekordboxSong: false
+      }
+    )
     for (const col of columnData.value) {
       if (!col.filterActive) continue
       if (col.filterType === 'text' && col.key) {
@@ -664,7 +687,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     }
 
     if (columnMode.value === 'mixtape') {
-      songsAreaState.songInfoArr = filtered
+      applyVisibleSongs(filtered)
       return
     }
 
@@ -771,11 +794,12 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       return true
     })
 
-    songsAreaState.songInfoArr = filtered
+    applyVisibleSongs(filtered)
   }
 
   const shouldApplyFiltersAndSortingForSongChange = (fields: string[]) => {
     if (!Array.isArray(fields) || fields.length === 0) return false
+    if (songsAreaState.searchQuery.trim()) return true
     if (columnMode.value === 'mixtape') return false
     const fieldSet = new Set(fields.filter(Boolean))
     if (!fieldSet.size) return false
@@ -812,6 +836,14 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   }
 
   watch(
+    () => songsAreaState.searchQuery,
+    () => {
+      applyFiltersAndSorting()
+      songsAreaState.selectedSongFilePath.length = 0
+    }
+  )
+
+  watch(
     () => columnMode.value,
     () => {
       columnData.value = loadColumnsForMode(columnMode.value)
@@ -824,7 +856,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     () => {
       const sortedCol = columnData.value.find((c) => c.order)
       const hasKeyFilter = columnData.value.some((c) => c.key === 'key' && c.filterActive)
-      if (sortedCol?.key === 'key' || hasKeyFilter) {
+      if (sortedCol?.key === 'key' || hasKeyFilter || songsAreaState.searchQuery.trim()) {
         applyFiltersAndSorting()
       }
     }

@@ -68,6 +68,8 @@ body,
 
 /* 主题变量：深色 */
 .theme-dark {
+  --song-search-match-bg: #665022;
+  --song-search-match-text: #fff0bb;
   --bg: #181818;
   --bg-elev: #1f1f1f;
   --waveform-bg: #151515;
@@ -94,6 +96,8 @@ body,
 
 /* 主题变量：浅色（2a 方案）*/
 .theme-light {
+  --song-search-match-bg: #ffe29a;
+  --song-search-match-text: #523600;
   --bg: #f7f7f7;
   --bg-elev: #ffffff;
   --waveform-bg: #d9dee6;

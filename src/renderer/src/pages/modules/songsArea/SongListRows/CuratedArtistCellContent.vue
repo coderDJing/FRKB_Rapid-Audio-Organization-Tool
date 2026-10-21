@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, type PropType } from 'vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
+import PlaylistSearchText from './PlaylistSearchText.vue'
 
 const props = defineProps({
+  searchQuery: {
+    type: String,
+    default: ''
+  },
   value: {
     type: [String, Number] as PropType<string | number>,
     required: true
@@ -31,7 +36,7 @@ const valueTitle = computed(() => String(props.value))
     :title="valueTitle"
     :only-when-overflow="onlyWhenOverflow"
   >
-    {{ value }}
+    <PlaylistSearchText :value="value" :query="searchQuery" />
   </bubbleBoxTrigger>
   <bubbleBoxTrigger tag="span" class="curated-artist-count-badge" :title="badgeTitle">
     {{ badgeText }}

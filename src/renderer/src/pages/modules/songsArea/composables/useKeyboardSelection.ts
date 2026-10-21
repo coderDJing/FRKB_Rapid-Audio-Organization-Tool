@@ -599,8 +599,8 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         return false
       })
       hotkeys('ctrl+c, command+c', 'windowGlobal', (event) => {
-        if (windowPreviewHotkeysLocked) return false
         if (shouldSkipClipboardHotkey(event)) return true
+        if (windowPreviewHotkeysLocked) return false
         const selectedKeys = [...songsAreaState.selectedSongFilePath]
         if (selectedKeys.length === 0) return true
         const selectedPaths = resolveSelectedFilePathsForState(songsAreaState, selectedKeys)

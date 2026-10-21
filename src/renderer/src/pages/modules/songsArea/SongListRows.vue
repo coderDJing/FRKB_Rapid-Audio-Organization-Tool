@@ -19,12 +19,17 @@ import { useWaveformPreview } from './SongListRows/useWaveformPreview'
 import CoverPreviewOverlay from './SongListRows/CoverPreviewOverlay.vue'
 import CoverThumbnailImage from './SongListRows/CoverThumbnailImage.vue'
 import CuratedArtistCellContent from './SongListRows/CuratedArtistCellContent.vue'
+import PlaylistSearchText from './SongListRows/PlaylistSearchText.vue'
 import RowAnalysisBar from './SongListRows/RowAnalysisBar.vue'
 import WaveformPreviewCell from './SongListRows/WaveformPreviewCell.vue'
 import { createTouchLongPressDrag } from '@renderer/utils/touchLongPressDrag'
 import { createInternalMouseDrag } from '@renderer/utils/internalMouseDrag'
 
 const props = defineProps({
+  searchQuery: {
+    type: String,
+    default: ''
+  },
   songs: {
     type: Array as PropType<ISongInfo[]>,
     required: true
@@ -764,7 +769,10 @@ onUnmounted(() => {
                   class="cell-title"
                   :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
                 >
-                  {{ getIndexCellValue(item.song, item.idx) }}
+                  <PlaylistSearchText
+                    :value="getIndexCellValue(item.song, item.idx)"
+                    :query="props.searchQuery"
+                  />
                 </div>
                 <div
                   v-else-if="col.key === 'cover'"
@@ -817,13 +825,16 @@ onUnmounted(() => {
                   <CuratedArtistCellContent
                     v-if="hasCuratedArtistBadge(item.song, col.key)"
                     :value="getCellValue(item.song, col.key)"
+                    :search-query="props.searchQuery"
                     :badge-text="getCuratedArtistBadgeText(item.song, col.key)"
                     :badge-title="getCuratedArtistBadgeTitle(item.song, col.key)"
                     :only-when-overflow="onlyWhenOverflowComputed"
                   />
-                  <template v-else>
-                    {{ getCellValue(item.song, col.key) }}
-                  </template>
+                  <PlaylistSearchText
+                    v-else
+                    :value="getCellValue(item.song, col.key)"
+                    :query="props.searchQuery"
+                  />
                   <bubbleBox
                     v-if="
                       hoveredCellKey === getCellKey(item.song, col.key) &&

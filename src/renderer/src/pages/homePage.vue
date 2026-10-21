@@ -13,8 +13,7 @@ import {
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
-import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
-import EmptyRecycleBinIcon from '@renderer/components/EmptyRecycleBinIcon.vue'
+import SongsAreaPaneHeader from './modules/songsArea/SongsAreaPaneHeader.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
@@ -252,6 +251,7 @@ const cloneSongsAreaPaneState = (
   state: ISongsAreaPaneRuntimeState
 ): ISongsAreaPaneRuntimeState => ({
   songListUUID: String(state.songListUUID || ''),
+  searchQuery: String(state.searchQuery || ''),
   songInfoArr: Array.isArray(state.songInfoArr) ? [...state.songInfoArr] : [],
   missingWaveformFilePaths: Array.isArray(state.missingWaveformFilePaths)
     ? [...state.missingWaveformFilePaths]
@@ -779,28 +779,13 @@ const drop = async (e: DragEvent) => {
               :class="[`splitSongsAreaPane--${pane}`, { 'is-active': isSplitPaneActive(pane) }]"
               @mousedown.capture="handleSplitPaneMouseDown(pane)"
             >
-              <div class="splitSongsAreaPaneHeader">
-                <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle(pane) }}</div>
-                <bubbleBoxTrigger
-                  v-if="showEmptyRecycleBinButton"
-                  tag="button"
-                  class="splitSongsAreaPaneClose"
-                  type="button"
-                  :title="t('recycleBin.emptyRecycleBin')"
-                  @click.stop="emptyRecycleBinWithOptimisticUpdate(runtime)"
-                >
-                  <EmptyRecycleBinIcon />
-                </bubbleBoxTrigger>
-                <bubbleBoxTrigger
-                  tag="button"
-                  class="splitSongsAreaPaneClose"
-                  type="button"
-                  :title="t('common.close')"
-                  @click.stop="handleSplitPaneClose(pane)"
-                >
-                  <span aria-hidden="true">×</span>
-                </bubbleBoxTrigger>
-              </div>
+              <SongsAreaPaneHeader
+                v-model:search-query="runtime.songsAreaPanels.panes[pane].searchQuery"
+                :title="resolveSongsPaneTitle(pane)"
+                :show-empty-recycle-bin-button="showEmptyRecycleBinButton"
+                @empty-recycle-bin="emptyRecycleBinWithOptimisticUpdate(runtime)"
+                @close="handleSplitPaneClose(pane)"
+              />
               <songsArea
                 :pane="pane"
                 :enable-preview-player="pane === 'left'"
@@ -821,28 +806,14 @@ const drop = async (e: DragEvent) => {
             ></div>
           </div>
           <div v-else class="singleSongsAreaShell">
-            <div v-if="showSingleSongsAreaHeader" class="splitSongsAreaPaneHeader">
-              <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle('single') }}</div>
-              <bubbleBoxTrigger
-                v-if="showEmptyRecycleBinButton"
-                tag="button"
-                class="splitSongsAreaPaneClose"
-                type="button"
-                :title="t('recycleBin.emptyRecycleBin')"
-                @click.stop="emptyRecycleBinWithOptimisticUpdate(runtime)"
-              >
-                <EmptyRecycleBinIcon />
-              </bubbleBoxTrigger>
-              <bubbleBoxTrigger
-                tag="button"
-                class="splitSongsAreaPaneClose"
-                type="button"
-                :title="t('common.close')"
-                @click.stop="handleSinglePaneClose"
-              >
-                <span aria-hidden="true">×</span>
-              </bubbleBoxTrigger>
-            </div>
+            <SongsAreaPaneHeader
+              v-if="showSingleSongsAreaHeader"
+              v-model:search-query="runtime.songsAreaPanels.panes.single.searchQuery"
+              :title="resolveSongsPaneTitle('single')"
+              :show-empty-recycle-bin-button="showEmptyRecycleBinButton"
+              @empty-recycle-bin="emptyRecycleBinWithOptimisticUpdate(runtime)"
+              @close="handleSinglePaneClose"
+            />
             <songsArea
               pane="single"
               :enable-preview-player="true"
@@ -1023,45 +994,6 @@ const drop = async (e: DragEvent) => {
 :global(body.songs-area-split-resizing *) {
   cursor: ew-resize !important;
   user-select: none !important;
-}
-
-.splitSongsAreaPaneHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 90%, var(--font-color) 10%);
-  flex-shrink: 0;
-}
-
-.splitSongsAreaPaneTitle {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--font-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.splitSongsAreaPaneClose {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--font-color);
-  cursor: pointer;
-  flex-shrink: 0;
-
-  &:hover {
-    background: color-mix(in srgb, var(--main-color) 18%, transparent);
-  }
 }
 
 @keyframes librarySwitchFade {
