@@ -507,6 +507,18 @@ impl HorizontalBrowseTransportEngine {
     self.is_playing_audible_at(deck, now_ms) || self.is_negative_silent_lead_in_ready(deck, now_ms)
   }
 
+  fn can_hold_master(&self, deck: DeckId, now_ms: f64) -> bool {
+    if self.is_sync_ready(deck, now_ms) {
+      return true;
+    }
+    // A finished track stays loaded and preserves play intent, but has no audible frames.
+    // It may hold Master while idle; an unbuffered playhead before the end may not.
+    let target = self.deck(deck);
+    self.is_loaded(deck)
+      && Self::effective_track_end_sec(target)
+        .is_some_and(|end_sec| Self::estimate_current_sec(target, now_ms) >= end_sec)
+  }
+
   fn auto_select_leader_from_playback(&mut self) {
     let now_ms = self.last_now_ms;
     if let Some(leader) = self.manually_selected_leader {
@@ -534,10 +546,13 @@ impl HorizontalBrowseTransportEngine {
         }
       }
       _ => {
-        if self.leader.map_or(true, |leader| !self.is_sync_ready(leader, now_ms)) {
+        if self
+          .leader
+          .map_or(true, |leader| !self.can_hold_master(leader, now_ms))
+        {
           self.leader = [DeckId::Top, DeckId::Bottom]
             .into_iter()
-            .find(|deck| self.is_sync_ready(*deck, now_ms));
+            .find(|deck| self.can_hold_master(*deck, now_ms));
         }
       }
     }

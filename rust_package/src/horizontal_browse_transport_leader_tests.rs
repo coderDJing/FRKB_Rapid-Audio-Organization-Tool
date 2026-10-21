@@ -138,3 +138,92 @@ fn an_initially_stopped_manual_master_can_play_then_hand_over_when_paused() {
 
   assert_eq!(engine.leader, Some(DeckId::Bottom));
 }
+
+#[test]
+fn ejecting_the_playing_master_hands_back_to_the_deck_at_track_end() {
+  for ended in [DeckId::Top, DeckId::Bottom] {
+    for manual_master in [false, true] {
+      // Metadata may end before PCM, or fully decoded PCM before metadata.
+      for (duration_sec, end_sec) in [(16.0, 16.0), (24.0, 20.0)] {
+        let mut engine = loaded_engine();
+        let playing = ended.other();
+        engine.top.playing = true;
+        engine.bottom.playing = true;
+        engine.leader = Some(ended);
+        if manual_master {
+          engine.set_leader(Some(ended));
+        }
+        {
+          let target = engine.deck_mut(ended);
+          target.fully_decoded_file_path = target.file_path.clone();
+          target.duration_sec = duration_sec;
+          target.current_sec = end_sec;
+          target.last_observed_at_ms = -1.0;
+        }
+        engine.refresh();
+        assert_eq!(engine.leader, Some(playing));
+        if manual_master {
+          engine.set_leader(Some(playing));
+        }
+
+        engine.deck_mut(playing).file_path = None;
+        engine.deck_mut(playing).playing = false;
+        engine.sync_enabled = [true, true];
+        for _ in 0..3 {
+          engine.refresh();
+          assert_eq!(engine.leader, Some(ended));
+          assert_eq!(engine.manually_selected_leader, None);
+          let snapshot = engine.deck_snapshot(ended, 1000.0);
+          assert!(snapshot.leader);
+          assert!(snapshot.playing);
+          assert!(!snapshot.playing_audible);
+          assert_eq!(snapshot.current_sec, end_sec);
+          assert_eq!(snapshot.sync_lock, "off");
+        }
+
+        engine.seek(ended, 1000.0, 1.0);
+        assert!(engine.deck_snapshot(ended, 1000.0).playing_audible);
+        assert_eq!(engine.leader, Some(ended));
+      }
+    }
+  }
+}
+
+#[test]
+fn both_finished_decks_keep_the_existing_master_until_it_is_ejected() {
+  for master in [DeckId::Top, DeckId::Bottom] {
+    let mut engine = loaded_engine();
+    for deck in [DeckId::Top, DeckId::Bottom] {
+      let target = engine.deck_mut(deck);
+      target.playing = true;
+      target.current_sec = target.duration_sec;
+      target.last_observed_at_ms = -1.0;
+    }
+    engine.leader = Some(master);
+    engine.refresh();
+    assert_eq!(engine.leader, Some(master));
+
+    engine.deck_mut(master).file_path = None;
+    engine.refresh();
+    assert_eq!(engine.leader, Some(master.other()));
+
+    engine.deck_mut(master.other()).file_path = None;
+    engine.refresh();
+    assert_eq!(engine.leader, None);
+  }
+}
+
+#[test]
+fn an_unbuffered_playhead_before_track_end_is_not_a_finished_master_candidate() {
+  let mut engine = loaded_engine();
+  engine.top.playing = true;
+  engine.bottom.playing = true;
+  engine.top.current_sec = 5.0;
+  engine.top.pcm_data = Arc::new(vec![0.0; 8]);
+  engine.refresh();
+  assert_eq!(engine.leader, Some(DeckId::Bottom));
+
+  engine.bottom.file_path = None;
+  engine.refresh();
+  assert_eq!(engine.leader, None);
+}

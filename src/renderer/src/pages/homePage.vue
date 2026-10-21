@@ -240,13 +240,6 @@ const resolveSongsPaneTitle = (pane: SplitSongsAreaPaneKey | 'single') => {
   if (!dirName) return libraryLabel
   return `${libraryLabel} / ${dirName}`
 }
-const syncLibrarySelectionByPane = (pane: SplitSongsAreaPaneKey | 'single') => {
-  const nextLibrary = resolveLibrarySelectionBySongListUUID(
-    runtime.songsAreaPanels.panes[pane].songListUUID
-  )
-  if (!nextLibrary || runtime.libraryAreaSelected === nextLibrary) return
-  runtime.libraryAreaSelected = nextLibrary
-}
 const cloneSongsAreaPaneState = (
   state: ISongsAreaPaneRuntimeState
 ): ISongsAreaPaneRuntimeState => ({
@@ -448,13 +441,12 @@ watch(
 const isSplitPaneActive = (pane: SplitSongsAreaPaneKey) =>
   runtime.songsAreaPanels.activePane === pane
 const handleSplitPaneMouseDown = (pane: SplitSongsAreaPaneKey) => {
+  // 激活歌曲操作的目标面板，不联动左侧正在浏览的库。
   activateSongsAreaPane(runtime, pane)
-  syncLibrarySelectionByPane(pane)
 }
 const handleSplitPaneClose = (pane: SplitSongsAreaPaneKey) => {
   const remainingPane = getSongsAreaOppositePane(pane)
   exitSongsAreaSplit(runtime, remainingPane)
-  syncLibrarySelectionByPane('single')
 }
 const handleSinglePaneClose = () => {
   runtime.clearSongsAreaPaneState('single')

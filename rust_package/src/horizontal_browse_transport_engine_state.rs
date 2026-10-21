@@ -480,7 +480,7 @@ impl HorizontalBrowseTransportEngine {
     if let Some(leader) = self.leader {
       let now_ms = self.last_now_ms;
       if !self.is_sync_ready(leader, now_ms) {
-        self.leader = None;
+        // A loaded track at its end can hold Master without providing a live sync clock.
         for deck in [DeckId::Top, DeckId::Bottom] {
           self.set_sync_lock(deck, "off");
         }
