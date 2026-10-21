@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { useTemplateRef } from 'vue'
+import { computed, useTemplateRef } from 'vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import EmptyRecycleBinIcon from '@renderer/components/EmptyRecycleBinIcon.vue'
+import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import { t } from '@renderer/utils/translate'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { useHarmonicReferenceKey } from '@renderer/composables/useHarmonicReferenceKey'
+import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 
 defineProps<{
   title: string
   showEmptyRecycleBinButton: boolean
 }>()
 const searchQuery = defineModel<string>('searchQuery', { required: true })
+const compatibleKeyOnly = defineModel<boolean>('compatibleKeyOnly', { required: true })
+const runtime = useRuntimeStore()
+const harmonicReferenceKey = useHarmonicReferenceKey(runtime)
+const hasHarmonicReference = computed(() =>
+  isHarmonicMixCompatible(harmonicReferenceKey.value, harmonicReferenceKey.value)
+)
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'empty-recycle-bin'): void
@@ -32,6 +42,24 @@ const clearSearch = () => {
       @click.stop="emit('empty-recycle-bin')"
     >
       <EmptyRecycleBinIcon />
+    </bubbleBoxTrigger>
+    <bubbleBoxTrigger
+      v-if="runtime.mainWindowBrowseMode !== 'browser'"
+      class="songs-pane-header__key-filter"
+      :title="
+        hasHarmonicReference
+          ? t('tracks.compatibleKeyOnlyHint')
+          : t('tracks.compatibleKeyNeedsReference')
+      "
+      @click.stop
+      @keydown.stop
+    >
+      <singleCheckbox
+        v-model="compatibleKeyOnly"
+        :disabled="!compatibleKeyOnly && !hasHarmonicReference"
+      >
+        {{ t('tracks.compatibleKeyOnly') }}
+      </singleCheckbox>
     </bubbleBoxTrigger>
     <div class="songs-pane-header__search" @click.stop @keydown.stop>
       <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -112,6 +140,14 @@ const clearSearch = () => {
   &:hover {
     background: color-mix(in srgb, var(--main-color) 18%, transparent);
   }
+}
+
+.songs-pane-header__key-filter {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .songs-pane-header__search {

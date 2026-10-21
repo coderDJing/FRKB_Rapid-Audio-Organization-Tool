@@ -2,6 +2,9 @@
   "tracks": {
     "playlistSearchPlaceholder": "Search all playlist fields",
     "clearPlaylistSearch": "Clear playlist search",
+    "compatibleKeyOnly": "Compatible keys only",
+    "compatibleKeyOnlyHint": "Only show tracks with keys compatible with the current Master deck",
+    "compatibleKeyNeedsReference": "Load a reference track with a valid key first; dual-deck mode uses the Master deck",
     "title": "Tracks",
     "noTracks": "No tracks",
     "noTracksHint": "Drop folders or audio files to import.",

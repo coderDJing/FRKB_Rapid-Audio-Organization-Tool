@@ -83,8 +83,9 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
         Boolean(String(col.filterDateTo || '').trim())
     )
     const hasPlaylistSearch = !!songsAreaState.searchQuery.trim()
-    if (!hasActiveFilter && !hasPlaylistSearch) return false
+    if (!hasActiveFilter && !hasPlaylistSearch && !songsAreaState.compatibleKeyOnly) return false
     songsAreaState.searchQuery = ''
+    songsAreaState.compatibleKeyOnly = false
 
     columnData.value = columnData.value.map((col) => ({
       ...col,

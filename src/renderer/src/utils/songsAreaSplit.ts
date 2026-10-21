@@ -13,6 +13,7 @@ const cloneSongsAreaPaneState = (
 ): ISongsAreaPaneRuntimeState => ({
   songListUUID: String(state.songListUUID || ''),
   searchQuery: String(state.searchQuery || ''),
+  compatibleKeyOnly: !!state.compatibleKeyOnly,
   songInfoArr: Array.isArray(state.songInfoArr) ? [...state.songInfoArr] : [],
   missingWaveformFilePaths: Array.isArray(state.missingWaveformFilePaths)
     ? [...state.missingWaveformFilePaths]
@@ -38,6 +39,7 @@ const buildPaneStateWithSongList = (
   ...cloneSongsAreaPaneState(source),
   songListUUID,
   searchQuery: '',
+  compatibleKeyOnly: false,
   songInfoArr: [],
   missingWaveformFilePaths: [],
   totalSongCount: 0,

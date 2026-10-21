@@ -2,7 +2,8 @@ import { computed, ref, toRaw, watch, type ShallowRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { MIN_WIDTH_BY_KEY } from '../minWidth'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
-import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
+import { getKeyDisplayText, getKeySortText, isHarmonicMixCompatible } from '@shared/keyDisplay'
+import { useHarmonicReferenceKey } from '@renderer/composables/useHarmonicReferenceKey'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
@@ -303,6 +304,10 @@ export const buildSongsAreaDefaultColumns = (mode: SongsAreaColumnMode): ISongsA
 
 export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const { runtime, songsAreaState, originalSongInfoArr, shouldPersistToLocalStorage } = params
+  const harmonicReferenceKey = useHarmonicReferenceKey(runtime)
+  const compatibleKeyFilterActive = computed(
+    () => songsAreaState.compatibleKeyOnly && runtime.mainWindowBrowseMode !== 'browser'
+  )
 
   const getSongField = (song: ISongInfo, key: string): unknown =>
     getSongListFieldRawValue(song, key)
@@ -585,6 +590,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
         isDesktopRekordboxSong: false
       }
     )
+    if (compatibleKeyFilterActive.value) {
+      filtered = filtered.filter((song) =>
+        isHarmonicMixCompatible(harmonicReferenceKey.value, String(song.key || ''))
+      )
+    }
     for (const col of columnData.value) {
       if (!col.filterActive) continue
       if (col.filterType === 'text' && col.key) {
@@ -800,6 +810,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const shouldApplyFiltersAndSortingForSongChange = (fields: string[]) => {
     if (!Array.isArray(fields) || fields.length === 0) return false
     if (songsAreaState.searchQuery.trim()) return true
+    if (compatibleKeyFilterActive.value && fields.includes('key')) return true
     if (columnMode.value === 'mixtape') return false
     const fieldSet = new Set(fields.filter(Boolean))
     if (!fieldSet.size) return false
@@ -850,6 +861,28 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       applyFiltersAndSorting()
     }
   )
+
+  watch([compatibleKeyFilterActive, harmonicReferenceKey], ([active], [wasActive]) => {
+    if (!active && !wasActive) return
+    applyFiltersAndSorting()
+    if (active !== wasActive) {
+      songsAreaState.selectedSongFilePath.length = 0
+    } else {
+      const visibleKeys = new Set(
+        songsAreaState.songInfoArr.map((song) =>
+          isMixtapeView.value
+            ? song.mixtapeItemId || song.filePath
+            : isSetView.value
+              ? song.setItemId || song.filePath
+              : song.filePath
+        )
+      )
+      const selected = songsAreaState.selectedSongFilePath
+      if (selected.some((key) => !visibleKeys.has(key))) {
+        songsAreaState.selectedSongFilePath = selected.filter((key) => visibleKeys.has(key))
+      }
+    }
+  })
 
   watch(
     () => runtime.setting.keyDisplayStyle,
@@ -916,6 +949,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   })
 
   return {
+    compatibleKeyFilterActive,
     columnData,
     columnDataArr,
     totalColumnsWidth,

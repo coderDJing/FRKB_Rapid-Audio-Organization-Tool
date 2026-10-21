@@ -13,14 +13,19 @@ type SongsAreaEmptyState = {
 export function useSongsAreaEmptyState({
   isRequesting,
   songsAreaState,
-  columnData
+  columnData,
+  compatibleKeyFilterActive
 }: {
   isRequesting: Ref<boolean>
   songsAreaState: SongsAreaEmptyState
   columnData: Ref<ISongsAreaColumn[]>
+  compatibleKeyFilterActive: Ref<boolean>
 }) {
   const hasActiveFilter = computed(
-    () => !!songsAreaState.searchQuery?.trim() || columnData.value.some((c) => !!c.filterActive)
+    () =>
+      compatibleKeyFilterActive.value ||
+      !!songsAreaState.searchQuery?.trim() ||
+      columnData.value.some((c) => !!c.filterActive)
   )
   const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
   const isRecordingLibraryView = computed(

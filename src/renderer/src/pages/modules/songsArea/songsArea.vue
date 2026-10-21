@@ -119,7 +119,7 @@ const handleOverlayClick = (e: MouseEvent) => {
   }
 }
 const handleEmptyOverlayClick = () => {
-  if (songsAreaState.searchQuery.trim()) return
+  if (songsAreaState.searchQuery.trim() || compatibleKeyFilterActive.value) return
   if (
     songsAreaState.songListUUID === RECYCLE_BIN_UUID ||
     songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
@@ -299,6 +299,7 @@ type WaveformPreviewStatePayload = {
 
 // 列、筛选、排序与表头交互
 const {
+  compatibleKeyFilterActive,
   columnData,
   columnDataArr,
   totalColumnsWidth,
@@ -320,6 +321,7 @@ const {
 const { rowsVisibleColumns, handleColumnDragPreview } = useColumnDragPreview(columnDataArr)
 
 watch(() => songsAreaState.searchQuery, scrollCurrentListToTop)
+watch(() => songsAreaState.compatibleKeyOnly, scrollCurrentListToTop)
 
 // 封面清理
 const { scheduleSweepCovers } = useSweepCovers({ runtime, songsAreaState })
@@ -865,7 +867,8 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
 const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmptyState({
   isRequesting,
   songsAreaState,
-  columnData
+  columnData,
+  compatibleKeyFilterActive
 })
 
 // 播放列表同步由 useSongsAreaEvents 管理

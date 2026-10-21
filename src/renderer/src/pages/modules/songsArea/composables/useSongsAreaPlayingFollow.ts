@@ -1,6 +1,7 @@
 import { computed, ref, watch, type ComputedRef } from 'vue'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import type { ISongInfo } from '../../../../../../types/globals'
+import { useHarmonicReferenceKey } from '@renderer/composables/useHarmonicReferenceKey'
 
 type SongsAreaViewState = 'welcome' | 'blank' | 'loading' | 'list'
 
@@ -31,20 +32,7 @@ export function useSongsAreaPlayingFollow(params: {
     if (bottomDeckSong) keys.add(getRowKey(bottomDeckSong))
     return [...keys]
   })
-  const harmonicReferenceKeyForRows = computed(() => {
-    if (runtime.mainWindowBrowseMode === 'browser') return ''
-    if (runtime.mainWindowBrowseMode === 'edit') {
-      return String(runtime.horizontalBrowseDecks.topSong?.key || '').trim()
-    }
-    const leaderDeck = runtime.horizontalBrowseDecks.leaderDeck
-    if (leaderDeck === 'top') {
-      return String(runtime.horizontalBrowseDecks.topSong?.key || '').trim()
-    }
-    if (leaderDeck === 'bottom') {
-      return String(runtime.horizontalBrowseDecks.bottomSong?.key || '').trim()
-    }
-    return ''
-  })
+  const harmonicReferenceKeyForRows = useHarmonicReferenceKey(runtime)
   const currentPlayingRowKey = computed(() => {
     if (runtime.mainWindowBrowseMode === 'edit') {
       const topDeckSong = runtime.horizontalBrowseDecks.topSong

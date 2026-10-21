@@ -252,6 +252,7 @@ const cloneSongsAreaPaneState = (
 ): ISongsAreaPaneRuntimeState => ({
   songListUUID: String(state.songListUUID || ''),
   searchQuery: String(state.searchQuery || ''),
+  compatibleKeyOnly: !!state.compatibleKeyOnly,
   songInfoArr: Array.isArray(state.songInfoArr) ? [...state.songInfoArr] : [],
   missingWaveformFilePaths: Array.isArray(state.missingWaveformFilePaths)
     ? [...state.missingWaveformFilePaths]
@@ -781,6 +782,7 @@ const drop = async (e: DragEvent) => {
             >
               <SongsAreaPaneHeader
                 v-model:search-query="runtime.songsAreaPanels.panes[pane].searchQuery"
+                v-model:compatible-key-only="runtime.songsAreaPanels.panes[pane].compatibleKeyOnly"
                 :title="resolveSongsPaneTitle(pane)"
                 :show-empty-recycle-bin-button="showEmptyRecycleBinButton"
                 @empty-recycle-bin="emptyRecycleBinWithOptimisticUpdate(runtime)"
@@ -809,6 +811,7 @@ const drop = async (e: DragEvent) => {
             <SongsAreaPaneHeader
               v-if="showSingleSongsAreaHeader"
               v-model:search-query="runtime.songsAreaPanels.panes.single.searchQuery"
+              v-model:compatible-key-only="runtime.songsAreaPanels.panes.single.compatibleKeyOnly"
               :title="resolveSongsPaneTitle('single')"
               :show-empty-recycle-bin-button="showEmptyRecycleBinButton"
               @empty-recycle-bin="emptyRecycleBinWithOptimisticUpdate(runtime)"

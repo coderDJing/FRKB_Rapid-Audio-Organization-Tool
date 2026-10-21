@@ -52,6 +52,7 @@ interface ISongsAreaState {
 
 export interface ISongsAreaPaneRuntimeState extends ISongsAreaState {
   searchQuery: string
+  compatibleKeyOnly: boolean
   columnCacheByMode: Partial<Record<SongsAreaColumnMode, ISongsAreaColumn[]>>
 }
 
@@ -64,6 +65,7 @@ const createSongsAreaState = (): ISongsAreaPaneRuntimeState => ({
   scrollTop: 0,
   scrollLeft: 0,
   searchQuery: '',
+  compatibleKeyOnly: false,
   columnCacheByMode: {}
 })
 
@@ -73,6 +75,7 @@ const assignSongsAreaState = (
 ) => {
   target.songListUUID = String(source?.songListUUID || '')
   target.searchQuery = String(source?.searchQuery || '')
+  target.compatibleKeyOnly = !!source?.compatibleKeyOnly
   target.songInfoArr = Array.isArray(source?.songInfoArr) ? [...source.songInfoArr] : []
   target.missingWaveformFilePaths = Array.isArray(source?.missingWaveformFilePaths)
     ? [...source.missingWaveformFilePaths]
