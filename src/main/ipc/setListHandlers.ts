@@ -29,6 +29,7 @@ import type { ISongInfo } from '../../types/globals'
 import { normalizeAddedAtMs } from '../../shared/songAddedAt'
 import { normalizeFilePathForComparison } from '../../shared/filePathComparison'
 import { buildSetAnalysisSnapshot } from '../services/setAnalysisSnapshot'
+import { mergeSetSongGridAnalysis } from '../services/setSongGridAnalysis'
 import {
   listSetItemsByPlaylist,
   listSetItemsByIds,
@@ -100,7 +101,7 @@ function persistSetAnalysisSnapshotIfChanged(
 
 function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | null): ISongInfo {
   if (!source) return target
-  const next = { ...target }
+  const next = mergeSetSongGridAnalysis({ ...target }, source)
   if (!hasCompleteKeyAnalysis(next) && hasCompleteKeyAnalysis(source)) {
     next.key = source.key as string
     if (hasPositiveInteger(source.keyAnalysisAlgorithmVersion)) {

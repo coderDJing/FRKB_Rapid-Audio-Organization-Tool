@@ -321,6 +321,7 @@ struct HorizontalBrowseTransportEngine {
   output_channels: u16,
   leader: Option<DeckId>,
   manually_selected_leader: Option<DeckId>,
+  manually_selected_leader_was_playing: bool,
   sync_enabled: [bool; 2],
   sync_lock: [&'static str; 2],
   beat_distance: [f64; 2],
@@ -352,6 +353,7 @@ impl Default for HorizontalBrowseTransportEngine {
       output_channels: 2,
       leader: None,
       manually_selected_leader: None,
+      manually_selected_leader_was_playing: false,
       sync_enabled: [false, false],
       sync_lock: ["off", "off"],
       beat_distance: [0.0, 0.0],
@@ -508,11 +510,15 @@ impl HorizontalBrowseTransportEngine {
   fn auto_select_leader_from_playback(&mut self) {
     let now_ms = self.last_now_ms;
     if let Some(leader) = self.manually_selected_leader {
-      if self.is_sync_ready(leader, now_ms) {
+      let playing = self.deck(leader).playing;
+      let stopped = self.manually_selected_leader_was_playing && !playing;
+      if !stopped && self.is_sync_ready(leader, now_ms) {
+        self.manually_selected_leader_was_playing = playing;
         self.leader = Some(leader);
         return;
       }
       self.manually_selected_leader = None;
+      self.manually_selected_leader_was_playing = false;
     }
     let top_audible = self.is_playing_audible_at(DeckId::Top, now_ms);
     let bottom_audible = self.is_playing_audible_at(DeckId::Bottom, now_ms);
@@ -528,10 +534,10 @@ impl HorizontalBrowseTransportEngine {
         }
       }
       _ => {
-        if let Some(leader) = self.leader {
-          if !self.is_sync_ready(leader, now_ms) {
-            self.leader = None;
-          }
+        if self.leader.map_or(true, |leader| !self.is_sync_ready(leader, now_ms)) {
+          self.leader = [DeckId::Top, DeckId::Bottom]
+            .into_iter()
+            .find(|deck| self.is_sync_ready(*deck, now_ms));
         }
       }
     }
@@ -1035,6 +1041,9 @@ mod horizontal_browse_transport_grid_sync_tests;
 #[cfg(test)]
 #[path = "horizontal_browse_transport_tests.rs"]
 mod horizontal_browse_transport_tests;
+#[cfg(test)]
+#[path = "horizontal_browse_transport_leader_tests.rs"]
+mod horizontal_browse_transport_leader_tests;
 #[cfg(test)]
 #[path = "horizontal_browse_transport_loop_tests.rs"]
 mod horizontal_browse_transport_loop_tests;
