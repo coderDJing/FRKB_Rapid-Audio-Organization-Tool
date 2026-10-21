@@ -148,6 +148,28 @@ const clearSearch = () => {
   flex-shrink: 0;
   font-size: 12px;
   white-space: nowrap;
+
+  :deep(.checkBoxContainer) {
+    gap: 5px;
+  }
+
+  :deep(.checkBox) {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+
+  :deep(.checkBox .box) {
+    width: 12px;
+    height: 12px;
+  }
+
+  :deep(.checkBox .box::after) {
+    width: 7px;
+    height: 4px;
+    top: 2px;
+    left: 2px;
+  }
 }
 
 .songs-pane-header__search {
