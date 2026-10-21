@@ -2,6 +2,11 @@
   "tracks": {
     "playlistSearchPlaceholder": "Search all playlist fields",
     "clearPlaylistSearch": "Clear playlist search",
+    "locateCurrentSong": "Locate current track",
+    "locateTopDeck": "Locate top deck",
+    "locateBottomDeck": "Locate bottom deck",
+    "locateTopDeckHint": "Locate the top deck track in the song list",
+    "locateBottomDeckHint": "Locate the bottom deck track in the song list",
     "compatibleKeyOnly": "Compatible keys only",
     "compatibleKeyOnlyHint": "Only show tracks with keys compatible with the current Master deck",
     "compatibleKeyNeedsReference": "Load a reference track with a valid key first; dual-deck mode uses the Master deck",

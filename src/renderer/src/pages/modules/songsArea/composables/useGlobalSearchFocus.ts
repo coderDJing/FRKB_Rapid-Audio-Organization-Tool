@@ -8,10 +8,11 @@ import type {
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { isWindowsPathPlatform, normalizeFilePathForComparison } from '@shared/filePathComparison'
 
-type FocusSongPayload = {
+export type FocusSongPayload = {
   pane?: SongsAreaPaneKey | 'pioneer'
   songListUUID?: string
   filePath?: string
+  rowKey?: string
   autoPlay?: boolean
   flash?: boolean
   waitForListStabilize?: boolean
@@ -62,11 +63,8 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   let focusAutoPlayed = false
   let focusStabilizeUntil = 0
 
-  const findVisibleSongIndexByPath = (targetPath: string) =>
-    songsAreaState.songInfoArr.findIndex((song) => normalizeSongPath(song.filePath) === targetPath)
-
-  const hasSongInOriginalByPath = (targetPath: string) =>
-    originalSongInfoArr.value.some((song) => normalizeSongPath(song.filePath) === targetPath)
+  const matchesTarget = (song: ISongInfo, targetPath: string, rowKey?: string) =>
+    normalizeSongPath(song.filePath) === targetPath && (!rowKey || getRowKey(song) === rowKey)
 
   const clearColumnFiltersForGlobalLocate = () => {
     const hasActiveFilter = columnData.value.some(
@@ -112,12 +110,19 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     if (targetListUUID && targetListUUID !== songsAreaState.songListUUID) {
       return false
     }
-    let targetIndex = findVisibleSongIndexByPath(targetPath)
-    if (targetIndex < 0 && hasSongInOriginalByPath(targetPath)) {
+    const findTargetIndex = () =>
+      songsAreaState.songInfoArr.findIndex((song) =>
+        matchesTarget(song, targetPath, payload.rowKey)
+      )
+    let targetIndex = findTargetIndex()
+    if (
+      targetIndex < 0 &&
+      originalSongInfoArr.value.some((song) => matchesTarget(song, targetPath, payload.rowKey))
+    ) {
       const didClearFilters = clearColumnFiltersForGlobalLocate()
       if (didClearFilters) {
         await nextTick()
-        targetIndex = findVisibleSongIndexByPath(targetPath)
+        targetIndex = findTargetIndex()
       }
     }
     if (targetIndex < 0) {
@@ -217,4 +222,6 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     emitter.off('songsArea/focus-song', handleFocusSongRequest)
     stopFocusRetryLoop()
   })
+
+  return { focusSong: handleFocusSongRequest }
 }

@@ -48,7 +48,11 @@ export function useSongsAreaPlayingFollow(params: {
     return songsAreaState.songInfoArr.findIndex((song) => getRowKey(song) === rowKey)
   })
   const showScrollToPlaying = computed(() => {
-    return viewState.value === 'list' && currentPlayingIndex.value >= 0
+    return (
+      runtime.mainWindowBrowseMode !== 'horizontal' &&
+      viewState.value === 'list' &&
+      currentPlayingIndex.value >= 0
+    )
   })
 
   const lastAutoScrollKey = ref('')

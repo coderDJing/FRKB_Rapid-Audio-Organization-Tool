@@ -32,7 +32,8 @@ import welcomePage from '@renderer/components/welcomePage.vue'
 import SongListHeader from './SongListHeader.vue'
 import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
-import PlaylistAnalysisFloatingButton from './PlaylistAnalysisFloatingButton.vue'
+import SongsAreaFloatingActions from './SongsAreaFloatingActions.vue'
+import { useSongsAreaDeckLocate } from './composables/useSongsAreaDeckLocate'
 
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
@@ -745,7 +746,7 @@ const {
   triggerFlash: triggerGlobalSearchFlash
 } = useSongLocateFlash()
 
-useGlobalSearchFocus({
+const { focusSong } = useGlobalSearchFocus({
   runtime,
   pane: props.pane,
   songsAreaState,
@@ -858,6 +859,15 @@ const {
   getRowKey,
   scrollToIndex,
   scrollToIndexIfNeeded
+})
+
+const { deckLocateTargets, locateDeckSong } = useSongsAreaDeckLocate({
+  runtime,
+  songsAreaState,
+  originalSongInfoArr,
+  viewState,
+  getRowKey,
+  focusSong
 })
 
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
@@ -973,23 +983,15 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
           </Transition>
         </OverlayScrollbarsComponent>
 
-        <PlaylistAnalysisFloatingButton
-          v-if="playlistAnalysisActionVisible"
-          :pending="playlistAnalysisActionPending"
-          :with-jump="showScrollToPlaying"
+        <SongsAreaFloatingActions
+          :deck-targets="deckLocateTargets"
+          :show-playing="showScrollToPlaying"
+          :analysis-visible="playlistAnalysisActionVisible"
+          :analysis-pending="playlistAnalysisActionPending"
+          @locate="locateDeckSong"
+          @playing="handleScrollToPlaying"
           @analyze="analyzeDismissedPlaylist"
         />
-
-        <bubbleBoxTrigger
-          v-if="showScrollToPlaying"
-          tag="button"
-          class="songs-area-float-jump"
-          type="button"
-          title="Scroll to playing"
-          @click.stop="handleScrollToPlaying"
-        >
-          <span class="songs-area-float-jump__icon" aria-hidden="true"></span>
-        </bubbleBoxTrigger>
 
         <Transition name="songs-area-drag-hint">
           <div

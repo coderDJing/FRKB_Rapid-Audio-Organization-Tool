@@ -4,7 +4,6 @@ import { t } from '@renderer/utils/translate'
 
 defineProps<{
   pending: boolean
-  withJump: boolean
 }>()
 
 const emit = defineEmits<{
@@ -16,7 +15,6 @@ const emit = defineEmits<{
   <bubbleBoxTrigger
     tag="button"
     class="playlist-analysis-floating-button"
-    :class="{ 'playlist-analysis-floating-button--with-jump': withJump }"
     type="button"
     :disabled="pending"
     :title="t('bottomInfo.analyzePending')"
@@ -36,9 +34,6 @@ const emit = defineEmits<{
 
 <style lang="scss" scoped>
 .playlist-analysis-floating-button {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
   height: 30px;
   padding: 0 12px 0 10px;
   box-sizing: border-box;
@@ -58,10 +53,6 @@ const emit = defineEmits<{
     opacity 0.15s ease,
     transform 0.15s ease,
     box-shadow 0.15s ease;
-}
-
-.playlist-analysis-floating-button--with-jump {
-  right: 48px;
 }
 
 .playlist-analysis-floating-button:hover:not(:disabled) {
