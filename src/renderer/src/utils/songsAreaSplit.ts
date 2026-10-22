@@ -48,8 +48,10 @@ const buildPaneStateWithSongList = (
   scrollLeft: 0
 })
 
-const isPlainSongListUUID = (uuid: string) =>
-  libraryUtils.getLibraryTreeByUUID(uuid)?.type === 'songList'
+const isPanePlaylistUUID = (uuid: string) => {
+  const type = libraryUtils.getLibraryTreeByUUID(uuid)?.type
+  return type === 'songList' || type === 'setList' || type === 'mixtapeList'
+}
 
 const syncPlayingSongListDataFromVisiblePane = (runtime: RuntimeStore) => {
   const playingSongListUUID = String(runtime.playingData.playingSongListUUID || '')
@@ -115,10 +117,10 @@ export const showSongListInPane = (
   }
 
   const singleSnapshot = cloneSongsAreaPaneState(panes.single)
-  const currentIsPlainSongList = isPlainSongListUUID(singleSnapshot.songListUUID)
-  const preserveSnapshot = currentIsPlainSongList ? singleSnapshot : null
+  const currentIsPlaylist = isPanePlaylistUUID(singleSnapshot.songListUUID)
+  const preserveSnapshot = currentIsPlaylist ? singleSnapshot : null
   const paneSnapshot =
-    currentIsPlainSongList && singleSnapshot.songListUUID === songListUUID
+    currentIsPlaylist && singleSnapshot.songListUUID === songListUUID
       ? singleSnapshot
       : buildPaneStateWithSongList(singleSnapshot, songListUUID)
 
