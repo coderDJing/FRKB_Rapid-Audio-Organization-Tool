@@ -34,6 +34,7 @@ export const createHorizontalBrowseDeckEjectHandler = (
 ) => {
   return async (deck: HorizontalBrowseDeckKey) => {
     const cuePreviewState = params.resolveDeckCuePreviewRuntimeState(deck)
+    const restoreSyncEnabled = cuePreviewState.active && cuePreviewState.syncEnabledBefore
     cuePreviewState.active = false
     cuePreviewState.pointerId = null
     cuePreviewState.cueSeconds = 0
@@ -41,10 +42,6 @@ export const createHorizontalBrowseDeckEjectHandler = (
     cuePreviewState.syncLockBefore = 'off'
     cuePreviewState.token += 1
     params.suppressDeckCueClick[deck] = false
-
-    if (params.resolveTransportDeckSnapshot(deck).syncEnabled) {
-      await params.nativeTransport.setSyncEnabled(deck, false)
-    }
 
     params.setDeckSong(deck, null)
     const nowMs = performance.now()
@@ -55,5 +52,9 @@ export const createHorizontalBrowseDeckEjectHandler = (
       playing: false,
       playbackRate: 1
     })
+    // CUE 试听会临时关闭同步；卸载歌曲后恢复轨道开关，避免把临时状态留给下一首。
+    if (restoreSyncEnabled && !params.resolveTransportDeckSnapshot(deck).syncEnabled) {
+      await params.nativeTransport.setSyncEnabled(deck, true)
+    }
   }
 }

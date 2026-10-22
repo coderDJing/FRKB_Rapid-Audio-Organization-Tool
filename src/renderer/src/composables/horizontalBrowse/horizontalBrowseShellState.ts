@@ -40,7 +40,7 @@ export const resolveHorizontalBrowseDeckSyncUiEnabled = (
   cuePreviewActive: boolean,
   cuePreviewSyncEnabledBefore: boolean
 ) => {
-  return hasSong && (syncEnabled || (cuePreviewActive && cuePreviewSyncEnabledBefore))
+  return syncEnabled || (hasSong && cuePreviewActive && cuePreviewSyncEnabledBefore)
 }
 
 export const resolveHorizontalBrowseDeckWaveformGain = (snapshot: {
@@ -101,8 +101,7 @@ export const buildHorizontalBrowseDeckToolbarState = (
   showSplitAfterPlayhead: toolbarState.showSplitAfterPlayhead === true,
   showDeleteBoundary: toolbarState.showDeleteBoundary === true,
   gridAdjustScope: (toolbarState.gridAdjustScope === 'after' ? 'after' : 'whole') as
-    | 'whole'
-    | 'after',
+    'whole' | 'after',
   loopBeatLabel: loopState?.loopBeatLabel || '8',
   loopActive: loopState?.loopActive === true,
   loopDisabled: loopState?.loopDisabled === true

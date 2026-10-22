@@ -95,7 +95,7 @@ export const useHorizontalBrowseDeckPreselection = (params: Params) => {
       }
       return
     }
-    if (params.resolveDeckSong(deck)) {
+    if (params.resolveDeckSong(deck) || params.resolveDeckSnapshot(deck).syncEnabled) {
       await params.activateBeatSync(deck)
       return
     }

@@ -29,6 +29,18 @@ const setup = () => {
 }
 
 describe('empty deck sync preselection', () => {
+  it('turns off retained Beat Sync on an ejected deck without preselecting it again', async () => {
+    const { state, activateBeatSync, selection } = setup()
+    state.bottom.syncEnabled = true
+
+    await selection.triggerDeckBeatSync('bottom')
+    await nextTick()
+
+    expect(activateBeatSync).toHaveBeenCalledOnce()
+    expect(state.bottom.syncEnabled).toBe(false)
+    expect(selection.pendingBeatSync.bottom).toBe(false)
+  })
+
   it('keeps Master pending until the selected deck audio is loaded', async () => {
     const { state, bottomSong, activateMaster, selection } = setup()
     state.leaderDeck = 'top'
